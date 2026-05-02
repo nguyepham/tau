@@ -56,17 +56,15 @@ tau update
 ---
 ## The Commands You Need to Know
 
-### `/login` — Start here
+### Auth
 
-Pick a provider, enter your credentials, done. Tau saves everything so you never do this twice. No env variables. No config files to hunt down.
+**`/login` - Start here**
+Pick a provider, enter your credentials, and Tau saves the setup. No env variables, no config hunt.
 
-### `/providers` — See the full picture
+### Models
 
-Shows every connected provider and their current status. Configured, available, needing login — all of it at a glance.
-
-### `/models` — Pick your weapon
-
-Live model browser. Fetches the actual catalog from your provider's API in real time. Search, filter, and set any model as your active one.
+**`/models` - Pick your model**
+Live model browser. Fetches the real catalog from your provider API, lets you search, filter, and set the active model.
 
 ```
 /models                     open the full picker
@@ -75,13 +73,35 @@ Live model browser. Fetches the actual catalog from your provider's API in real 
 /model kimi-k2-5            set a model directly
 ```
 
-### `/fallback` — Recover automatically
+### Session
 
-Automatic recovery when a model fails mid-session. Configure a fallback and never lose your work to a provider outage again.
+**`/tree` - Navigate the session graph**
+Move through your conversation history like nodes, so branches and forks stay understandable.
 
-### `/usage` — Watch the meter
+**`/clone` - Clone the session**
+Create a copy of the current session when you want a backup or a clean duplicate to continue from.
 
-Tracks usage across every provider you're logged into. Quotas, remaining credit, request counts — see what each one has left before you hit a wall.
+**`/branch` - Open a fork**
+Start a fork from the current point in the session without losing the original path.
+
+**`/resume` - Continue later**
+Resume the last useful session or pick an older one when you want to continue where you left off.
+
+### Monitoring and Reporting
+
+**`/usage` - Watch provider usage**
+Shows real streaming provider usage as it happens, so you can see provider consumption while working.
+
+**`/statistics` - Review the current session**
+Shows statistics for the active session, including session activity and tool-call details.
+
+**`/report` - Generate a final report**
+Creates a clean content report for the session in Markdown, PDF, or HTML. This is for readable session quality, not usage statistics.
+
+### Features
+
+**`/fallback` - Recover automatically**
+Automatic recovery when a model fails mid-session. Configure a fallback and keep working through provider outages.
 
 ---
 
@@ -118,6 +138,12 @@ Tau adapts context windows when switching between models and providers, so large
 
 **Fallback recovery**
 A configurable fallback system can move work to another model/provider when the current one fails or overloads.
+
+**Session management and flexibility**
+Tree navigation, cloning, branching, and resume commands make long sessions easier to control without losing context.
+
+**High-visibility monitoring and reporting**
+Tau separates live usage, session statistics, and final reports, so you can monitor consumption while still producing readable end-of-session summaries.
 
 ---
 
