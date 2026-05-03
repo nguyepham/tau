@@ -2,21 +2,18 @@
 
 ## [Unreleased]
 
-### Added
-- Allow /github release to inspect workflow runs via `gh run list`.
+## [v0.6.3] - 2026-05-03
 
 ### Added
-- Improved cache-hit notes in `/stats` with better formatting and detailed explanations.
+- New `/github` command suite: issue creation with safe permissions, wrap-to-commit/push, and release publish flow.
+- Allow `/github release` to inspect workflow runs via `gh run list`.
 
 ### Changed
 - Refined `/github wrap` prompt with strict writing style and clearer task phases.
 - Updated `/github wrap` safety protocol and authorization rules.
 
-### Added
-- New `/github` command (Phase 1) for repository interaction.
-- Hardened `/github issue` flow with permission gating to prevent visible failures on read-only repos.
-- Silent labeling for GitHub issues: only applies existing labels and skips label creation if unauthorized.
-- Improved attachment handling in GitHub issues: fetches images/PDFs once via WebFetch with explicit 404/timeout handling.
+### Fixed
+- `/github release` version input no longer auto-submits on every keystroke; partial semver now stops and asks for a full tag.
 
 ## 0.6.2
 
