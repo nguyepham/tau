@@ -106,7 +106,7 @@ const VoiceKeybindingHandler: typeof import('../hooks/useVoiceIntegration.js').V
 const heyModeAvailable = isHeyModeFeatureOn();
 const HeyKeybindingHandler: typeof import('../hooks/useHeyIntegration.js').HeyKeybindingHandler = heyModeAvailable ? require('../hooks/useHeyIntegration.js').HeyKeybindingHandler : () => null;
 const useHeyIntegrationImpl: typeof import('../hooks/useHeyIntegration.js').useHeyIntegration = heyModeAvailable ? require('../hooks/useHeyIntegration.js').useHeyIntegration : ({ onSubmit: _o }: { onSubmit: (t: string) => void }) => ({ stripTrailing: () => 0, handleKeyEvent: () => {}, state: 'idle' as const });
-const useHeyResponseSpeakerImpl: typeof import('../hooks/useHeyResponseSpeaker.js').useHeyResponseSpeaker = heyModeAvailable ? require('../hooks/useHeyResponseSpeaker.js').useHeyResponseSpeaker : (_args: { enabled: boolean; messages: unknown[]; isLoading: boolean }) => {};
+const useHeyResponseSpeakerImpl: typeof import('../hooks/useHeyResponseSpeaker.js').useHeyResponseSpeaker = heyModeAvailable ? require('../hooks/useHeyResponseSpeaker.js').useHeyResponseSpeaker : (_args: { enabled: boolean; messages: unknown[]; isLoading: boolean; streamingText?: string | null }) => {};
 const useHeyEnabledImpl: typeof import('../hooks/useHeyEnabled.js').useHeyEnabled = heyModeAvailable ? require('../hooks/useHeyEnabled.js').useHeyEnabled : () => false;
 // Frustration detection is ant-only (dogfooding). Conditional require so external
 // builds eliminate the module entirely (including its two O(n) useMemos that run
@@ -174,7 +174,8 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js';
 import { resolveAgentTools } from '../tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '../tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
-import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
+import { getAPIProvider } from '../utils/model/providers.js';
+import { useAppState, useSetAppState, useAppStateStore, type AppState } from '../state/AppState.js';
 import type { ContentBlockParam, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
 import type { PastedContent } from '../utils/config.js';
@@ -309,6 +310,17 @@ const HISTORY_STUB = {
 // up to read the start → start typing → before this fix, snapped to bottom.
 // https://anthropic.slack.com/archives/C07VBSHV7EV/p1773545449871739
 const RECENT_SCROLL_REPIN_WINDOW_MS = 3000;
+
+function looksLikeConcreteOpenAIModelId(value: unknown): value is string {
+  return typeof value === 'string' && value.toLowerCase().startsWith('gpt-');
+}
+
+function getFreshOpenAIMainLoopModel(fallback: string, state: AppState, renderedMainLoopModel?: string): string {
+  if (getAPIProvider() !== 'openai') return fallback;
+  if (renderedMainLoopModel !== undefined && fallback !== renderedMainLoopModel) return fallback;
+  const selected = state.mainLoopModelForSession ?? state.mainLoopModel;
+  return looksLikeConcreteOpenAIModelId(selected) ? selected : fallback;
+}
 
 // Use LRU cache to prevent unbounded memory growth
 // 100 files should be sufficient for most coding sessions while preventing
@@ -1490,9 +1502,12 @@ export function REPL({
   // throttle batches rapid updates). Cleared on message arrival (messages.ts)
   // so displayedMessages switches from deferredMessages to messages atomically.
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [streamingSpeechText, setStreamingSpeechText] = useState<string | null>(null);
+  const heyTtsStreamingEnabledRef = useRef(false);
   const reducedMotion = useAppState(s => s.settings.prefersReducedMotion) ?? false;
   const showStreamingText = !reducedMotion && !hasCursorUpViewportYankBug();
   const onStreamingText = useCallback((f: (current: string | null) => string | null) => {
+    if (heyTtsStreamingEnabledRef.current) setStreamingSpeechText(f);
     if (!showStreamingText) return;
     setStreamingText(f);
   }, [showStreamingText]);
@@ -1605,6 +1620,7 @@ export function REPL({
     responseLengthRef.current = 0;
     apiMetricsRef.current = [];
     setStreamingText(null);
+    setStreamingSpeechText(null);
     setStreamingToolUses([]);
     setSpinnerMessage(null);
     setSpinnerColor(null);
@@ -2436,7 +2452,7 @@ export function REPL({
       reject
     }]);
   }), []);
-  const getToolUseContext = useCallback((messages: MessageType[], newMessages: MessageType[], abortController: AbortController, mainLoopModel: string): ProcessUserInputContext => {
+  const getToolUseContext = useCallback((messages: MessageType[], newMessages: MessageType[], abortController: AbortController, mainLoopModelParam: string): ProcessUserInputContext => {
     // Read mutable values fresh from the store rather than closure-capturing
     // useAppState() snapshots. Same values today (closure is refreshed by the
     // render between turns); decouples freshness from React's render cycle for
@@ -2455,6 +2471,7 @@ export function REPL({
       if (!mainThreadAgentDefinition) return merged;
       return resolveAgentTools(mainThreadAgentDefinition, merged, false, true).resolvedTools;
     };
+    const effectiveMainLoopModel = getFreshOpenAIMainLoopModel(mainLoopModelParam, s, mainLoopModel);
     return {
       abortController,
       options: {
@@ -2462,7 +2479,7 @@ export function REPL({
         tools: computeTools(),
         debug,
         verbose: s.verbose,
-        mainLoopModel,
+        mainLoopModel: effectiveMainLoopModel,
         thinkingConfig: s.thinkingEnabled !== false ? thinkingConfig : {
           type: 'disabled'
         },
@@ -2567,7 +2584,7 @@ export function REPL({
       requestPrompt: feature('HOOK_PROMPTS') ? requestPrompt : undefined,
       contentReplacementState: contentReplacementStateRef.current
     };
-  }, [commands, combinedInitialTools, mainThreadAgentDefinition, debug, initialMcpClients, ideInstallationStatus, dynamicMcpConfig, theme, allowedAgentTypes, store, setAppState, reverify, addNotification, setMessages, onChangeDynamicMcpConfig, resume, requestPrompt, disabled, customSystemPrompt, appendSystemPrompt, setConversationId]);
+  }, [commands, combinedInitialTools, mainThreadAgentDefinition, debug, initialMcpClients, ideInstallationStatus, dynamicMcpConfig, theme, allowedAgentTypes, store, mainLoopModel, setAppState, reverify, addNotification, setMessages, onChangeDynamicMcpConfig, resume, requestPrompt, disabled, customSystemPrompt, appendSystemPrompt, setConversationId]);
 
   // Session backgrounding (Ctrl+B to background/foreground)
   const handleBackgroundQuery = useCallback(() => {
@@ -2579,7 +2596,7 @@ export function REPL({
     const removedNotifications = removeByFilter(cmd => cmd.mode === 'task-notification');
     void (async () => {
       const toolUseContext = getToolUseContext(messagesRef.current, [], new AbortController(), mainLoopModel);
-      const [defaultSystemPrompt, userContext, systemContext] = await Promise.all([getSystemPrompt(toolUseContext.options.tools, mainLoopModel, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), toolUseContext.options.mcpClients), getUserContext(), getSystemContext()]);
+      const [defaultSystemPrompt, userContext, systemContext] = await Promise.all([getSystemPrompt(toolUseContext.options.tools, toolUseContext.options.mainLoopModel, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), toolUseContext.options.mcpClients), getUserContext(), getSystemContext()]);
       const systemPrompt = buildEffectiveSystemPrompt({
         mainThreadAgentDefinition,
         toolUseContext,
@@ -2798,7 +2815,8 @@ export function REPL({
     // and now. Turn 1 via processInitialMessage is the main beneficiary.
     const {
       tools: freshTools,
-      mcpClients: freshMcpClients
+      mcpClients: freshMcpClients,
+      mainLoopModel: effectiveMainLoopModel
     } = toolUseContext.options;
 
     // Scope the skill's effort override to this turn's context only —
@@ -2816,7 +2834,7 @@ export function REPL({
     // IMPORTANT: do this after setMessages() above, to avoid UI jank
     checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
     // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
-    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
+    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, effectiveMainLoopModel, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
@@ -2944,6 +2962,7 @@ export function REPL({
       apiMetricsRef.current = [];
       setStreamingToolUses([]);
       setStreamingText(null);
+      setStreamingSpeechText(null);
 
       // messagesRef is updated synchronously by the setMessages wrapper
       // above, so it already includes newMessages from the append at the
@@ -4127,10 +4146,11 @@ export function REPL({
 
   // biome-ignore lint/correctness/useHookAtTopLevel: heyModeAvailable is a process-lifetime constant
   const heyEnabledForTts = heyModeAvailable ? useHeyEnabledImpl() : false;
-  // Speak completed assistant turns aloud while hey-mode is on. Listens
-  // for the isLoading→idle edge and grabs the latest assistant message.
+  heyTtsStreamingEnabledRef.current = heyEnabledForTts;
+  // Speak assistant turns aloud while hey-mode is on. Streaming text lets TTS
+  // start with a short preview before long responses finish.
   // biome-ignore lint/correctness/useHookAtTopLevel: heyModeAvailable is a process-lifetime constant
-  if (heyModeAvailable) useHeyResponseSpeakerImpl({ enabled: heyEnabledForTts, messages, isLoading });
+  if (heyModeAvailable) useHeyResponseSpeakerImpl({ enabled: heyEnabledForTts, messages, isLoading, streamingText: streamingSpeechText });
   useInboxPoller({
     enabled: isAgentSwarmsEnabled(),
     isLoading,

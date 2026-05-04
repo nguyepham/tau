@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import * as React from 'react'
+import { setMainLoopModelOverride } from '../../bootstrap/state.js'
 import { ProviderModelPicker } from '../../components/ProviderModelPicker.js'
 import type { CommandResultDisplay } from '../../commands.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
@@ -29,6 +30,10 @@ import {
   getVoiceConversationModelDisplayName,
   setSelectedVoiceModel,
 } from '../../voice/voiceConversation.js'
+
+function looksLikeConcreteOpenAIModelId(value: unknown): value is string {
+  return typeof value === 'string' && value.toLowerCase().startsWith('gpt-')
+}
 
 function renderSearchBadges(tags?: readonly string[]): string {
   if (!tags || tags.length === 0) {
@@ -82,6 +87,9 @@ function ModelsPickerWrapper({
     const modelChanged = currentModel !== selection.modelId
     if (providerChanged) {
       setActiveProvider(provider)
+    }
+    if (provider === 'openai' && looksLikeConcreteOpenAIModelId(selection.modelId)) {
+      setMainLoopModelOverride(selection.modelId)
     }
 
     setAppState(prev => ({

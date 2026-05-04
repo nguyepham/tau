@@ -1,7 +1,9 @@
-// Speaks completed assistant text aloud while hey-mode is enabled.
+// Speaks assistant text aloud while hey-mode is enabled.
 //
-// We watch isLoading transition from true → false (turn finished) and grab
-// the latest assistant message at that moment. Text blocks are
+// Streaming text can trigger one short spoken preview before the turn
+// finishes. If no preview was spoken, we watch isLoading transition from
+// true → false (turn finished) and grab the latest assistant message.
+// Text blocks are
 // concatenated, tool-use blocks are silently dropped (announcing every
 // tool name out loud is noisy and doesn't help conversation flow), and
 // the result is sent to ttsLocal.speak. Subsequent identical messages are
@@ -66,6 +68,10 @@ const DENSE_SPEECH_LEAD_CHARS = 420
 const STRUCTURED_DETAIL_COUNT = 3
 const STRUCTURED_DETAIL_CHARS = 130
 const DENSE_SPEECH_SUFFIX = 'The full detail is on screen.'
+const STREAMING_PREVIEW_MIN_CHARS = 180
+const STREAMING_PREVIEW_MIN_SENTENCE_CHARS = 90
+const STREAMING_PREVIEW_MAX_CHARS = 320
+const STREAMING_PREVIEW_MAX_SENTENCES = 2
 
 function isStructuredLine(line: string): boolean {
   const trimmed = line.trim()
@@ -205,6 +211,35 @@ export function makeConversationalSpeech(markdown: string): string {
     : `${lead} ${DENSE_SPEECH_SUFFIX}`
 }
 
+export function makeStreamingSpeechPreview(markdown: string): string {
+  const leadMarkdown = getLeadMarkdown(markdown)
+  const plain = plainifyForSpeech(leadMarkdown || markdown)
+  if (!plain) return ''
+
+  const hasSentence = /[.!?](?:\s|$)/.test(plain)
+  const enoughForEarlySpeech =
+    plain.length >= STREAMING_PREVIEW_MIN_CHARS ||
+    (hasSentence && plain.length >= STREAMING_PREVIEW_MIN_SENTENCE_CHARS)
+  if (!enoughForEarlySpeech) return ''
+
+  if (!leadMarkdown) {
+    const details = getStructuredSpeechDetails(markdown)
+    if (details.length > 0) {
+      return limitToSentences(
+        details.map(endAsSentence).join(' '),
+        STREAMING_PREVIEW_MAX_CHARS,
+        STREAMING_PREVIEW_MAX_SENTENCES,
+      )
+    }
+  }
+
+  return limitToSentences(
+    plain,
+    STREAMING_PREVIEW_MAX_CHARS,
+    STREAMING_PREVIEW_MAX_SENTENCES,
+  )
+}
+
 function extractAssistantText(msg: AssistantMessage): string {
   const content = msg.message.content
   if (typeof content === 'string') return content
@@ -226,18 +261,21 @@ type UseHeyResponseSpeakerArgs = {
   enabled: boolean
   messages: Message[]
   isLoading: boolean
+  streamingText?: string | null
 }
 
 export function useHeyResponseSpeaker({
   enabled,
   messages,
   isLoading,
+  streamingText,
 }: UseHeyResponseSpeakerArgs): void {
   // Track which assistant message id we've already spoken so we don't
   // re-speak on every re-render or when downstream effects mutate the
   // messages array (compaction, edits) without producing a new turn.
   const lastSpokenIdRef = useRef<string | null>(null)
   const wasLoadingRef = useRef(isLoading)
+  const streamingPreviewSpokenRef = useRef(false)
 
   useEffect(() => {
     if (!enabled) {
@@ -253,11 +291,18 @@ export function useHeyResponseSpeaker({
     try {
       const wasLoading = wasLoadingRef.current
       wasLoadingRef.current = isLoading
+      if (!wasLoading && isLoading) {
+        streamingPreviewSpokenRef.current = false
+      }
       if (!enabled || !isHeyTtsEnabled()) return
       // Only fire on the loading-to-idle edge. Without this guard a fresh
       // render mid-stream would speak partial output, then re-speak the
       // full output on completion.
       if (!(wasLoading && !isLoading)) return
+      if (streamingPreviewSpokenRef.current) {
+        logForDebugging('[hey] TTS final skipped: streaming preview already spoken')
+        return
+      }
 
       const last = getLastAssistantMessage(messages)
       if (!last) {
@@ -307,4 +352,34 @@ export function useHeyResponseSpeaker({
       logError(error)
     }
   }, [enabled, isLoading, messages])
+
+  useEffect(() => {
+    try {
+      if (!enabled || !isHeyTtsEnabled() || !isLoading) return
+      if (streamingPreviewSpokenRef.current) return
+
+      const preview = makeStreamingSpeechPreview(streamingText ?? '')
+      if (!preview) return
+
+      streamingPreviewSpokenRef.current = true
+      logForDebugging(
+        `[hey] speaking streaming preview (streamChars=${streamingText?.length ?? 0}, speakChars=${preview.length})`,
+      )
+      void loadTts()
+        .then(mod => mod.speak(preview))
+        .catch(err => {
+          const error = toError(err)
+          logForDebugging(`[hey] TTS preview failed: ${error.stack ?? error.message}`, {
+            level: 'error',
+          })
+          logError(error)
+        })
+    } catch (err) {
+      const error = toError(err)
+      logForDebugging(`[hey] TTS preview effect failed: ${error.stack ?? error.message}`, {
+        level: 'error',
+      })
+      logError(error)
+    }
+  }, [enabled, isLoading, streamingText])
 }

@@ -359,7 +359,43 @@ export function getProviderModelSet(provider: string): TierModelSet {
     return { opus: 'gpt-5.4', sonnet: 'gpt-5.4', haiku: 'gpt-5.4-mini' }
   }
   const tier = getProviderTier(provider)
-  return config.tiers[tier]
+  const modelSet = config.tiers[tier]
+  const currentOpenAIModel = getCurrentOpenAIModelSelection(provider)
+  if (!currentOpenAIModel) return modelSet
+
+  return {
+    ...modelSet,
+    opus: process.env.OPENAI_MODEL_OPUS ?? currentOpenAIModel,
+    sonnet: process.env.OPENAI_MODEL_SONNET ?? currentOpenAIModel,
+  }
+}
+
+function getCurrentOpenAIModelSelection(provider: string): string | null {
+  if (provider !== 'openai') return null
+
+  const selected = getMainLoopModelOverride()
+  if (selected !== undefined) {
+    return looksLikeConcreteOpenAIModelId(selected) ? selected : null
+  }
+
+  if (looksLikeConcreteOpenAIModelId(process.env.ANTHROPIC_MODEL)) {
+    return process.env.ANTHROPIC_MODEL
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const settingsMod = require('../settings/settings.js') as {
+      getSettings_DEPRECATED?: () => { model?: unknown } | undefined
+    }
+    const settings = settingsMod.getSettings_DEPRECATED?.()
+    return looksLikeConcreteOpenAIModelId(settings?.model) ? settings.model : null
+  } catch {
+    return null
+  }
+}
+
+function looksLikeConcreteOpenAIModelId(value: unknown): value is string {
+  return typeof value === 'string' && value.toLowerCase().startsWith('gpt-')
 }
 
 /**
