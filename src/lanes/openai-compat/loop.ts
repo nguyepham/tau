@@ -273,7 +273,7 @@ export class OpenAICompatLane implements Lane {
     const provider = cfg.provider
     const isLocal = isLocalBaseUrl(cfg.baseUrl)
     const cacheSessionId =
-      provider === 'copilot' || provider === 'openrouter' || provider === 'agentrouter'
+      provider === 'copilot' || provider === 'openrouter' || provider === 'agentrouter' || provider === 'moonshot'
         ? sessionId
         : undefined
 

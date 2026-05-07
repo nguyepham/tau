@@ -53,8 +53,9 @@ export const moonshotTransformer: Transformer = {
     delete bag.reasoning_effort
     delete bag.reasoning
     delete bag.store
-    delete bag.prompt_cache_key
     delete bag.prompt_cache_retention
+    if (ctx.sessionId) body.prompt_cache_key = ctx.sessionId
+    else delete bag.prompt_cache_key
 
     if (supportsMoonshotThinkingToggle(body.model)) {
       body.thinking = { type: ctx.isReasoning ? 'enabled' : 'disabled' }

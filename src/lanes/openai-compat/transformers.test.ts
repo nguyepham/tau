@@ -543,6 +543,20 @@ function main(): void {
         `${model} prompt_cache_key=${body.prompt_cache_key}`)
     }
   })
+  test('moonshot stamps prompt_cache_key from session id without cache_control markers', () => {
+    const body = mkBody('kimi-k2.6')
+    TRANSFORMERS.moonshot.transformRequest(body, {
+      model: 'kimi-k2.6',
+      isReasoning: false,
+      reasoningEffort: null,
+      sessionId: 'session-fixed',
+    })
+    assert(body.prompt_cache_key === 'session-fixed', `prompt_cache_key=${body.prompt_cache_key}`)
+    assert(body.prompt_cache_retention === undefined,
+      `prompt_cache_retention=${body.prompt_cache_retention}`)
+    assert(TRANSFORMERS.moonshot.cacheControlMode('kimi-k2.6') === 'none',
+      'moonshot should not use cache_control markers')
+  })
   test('copilot sends stable session affinity headers', () => {
     const h = TRANSFORMERS.copilot.buildHeaders?.('copilot-token', {
       model: 'gpt-5.2',
