@@ -96,6 +96,7 @@ export function ThemePicker({
       ? [{ label: 'Auto (match terminal)', value: 'auto' as const }]
       : []),
     { label: 'Tau dark (red/brown glow)', value: 'dark' },
+    { label: 'Studio (peach / blue / purple on near-black)', value: 'studio' },
     { label: 'Light mode', value: 'light' },
     {
       label: 'Dark mode (colorblind-friendly)',

@@ -86,6 +86,22 @@ export type Theme = {
   rainbow_blue_shimmer: string
   rainbow_indigo_shimmer: string
   rainbow_violet_shimmer: string
+
+  // Modern UI palette slots (UX/UI refresh Phase 1).
+  // Existing themes derive these from their established palette so legacy
+  // callers stay visually unchanged; the 'studio' theme uses the refreshed
+  // palette directly.
+  primary: string
+  secondary: string
+  accent: string
+  info: string
+  textMuted: string
+  border: string
+  borderActive: string
+  borderSubtle: string
+  backgroundPanel: string
+  backgroundElement: string
+  backgroundMenu: string
 }
 
 export const THEME_NAMES = [
@@ -95,6 +111,7 @@ export const THEME_NAMES = [
   'dark-daltonized',
   'light-ansi',
   'dark-ansi',
+  'studio',
 ] as const
 
 /** A renderable theme. Always resolvable to a concrete color palette. */
@@ -188,6 +205,18 @@ const lightTheme: Theme = {
   rainbow_blue_shimmer: 'rgb(180,205,240)',
   rainbow_indigo_shimmer: 'rgb(195,180,230)',
   rainbow_violet_shimmer: 'rgb(230,180,210)',
+  // Studio palette slots (mapped from existing palette)
+  primary: 'rgb(120,190,120)', // claude (brand green)
+  secondary: 'rgb(130,165,210)', // permission/suggestion blue
+  accent: 'rgb(135,0,255)', // autoAccept electric violet
+  info: 'rgb(130,165,210)', // permission blue
+  textMuted: 'rgb(102,102,102)', // inactive
+  border: 'rgb(153,153,153)', // promptBorder
+  borderActive: 'rgb(183,183,183)', // promptBorderShimmer
+  borderSubtle: 'rgb(175,175,175)', // subtle
+  backgroundPanel: 'rgb(240,242,238)', // userMessageBackground
+  backgroundElement: 'rgb(228,236,232)', // messageActionsBackground
+  backgroundMenu: 'rgb(245,248,245)', // bashMessageBackgroundColor
 }
 
 /**
@@ -269,6 +298,18 @@ const lightAnsiTheme: Theme = {
   rainbow_blue_shimmer: 'ansi:cyanBright',
   rainbow_indigo_shimmer: 'ansi:blueBright',
   rainbow_violet_shimmer: 'ansi:magentaBright',
+  // Studio palette slots (ansi-only mapping)
+  primary: 'ansi:greenBright',
+  secondary: 'ansi:blue',
+  accent: 'ansi:magenta',
+  info: 'ansi:blue',
+  textMuted: 'ansi:blackBright',
+  border: 'ansi:white',
+  borderActive: 'ansi:whiteBright',
+  borderSubtle: 'ansi:blackBright',
+  backgroundPanel: 'ansi:white',
+  backgroundElement: 'ansi:white',
+  backgroundMenu: 'ansi:whiteBright',
 }
 
 /**
@@ -350,6 +391,18 @@ const darkAnsiTheme: Theme = {
   rainbow_blue_shimmer: 'ansi:cyanBright',
   rainbow_indigo_shimmer: 'ansi:blueBright',
   rainbow_violet_shimmer: 'ansi:magentaBright',
+  // Studio palette slots (ansi-only mapping, dark variant)
+  primary: 'ansi:greenBright',
+  secondary: 'ansi:blueBright',
+  accent: 'ansi:magentaBright',
+  info: 'ansi:blueBright',
+  textMuted: 'ansi:white',
+  border: 'ansi:white',
+  borderActive: 'ansi:whiteBright',
+  borderSubtle: 'ansi:white',
+  backgroundPanel: 'ansi:blackBright',
+  backgroundElement: 'ansi:blackBright',
+  backgroundMenu: 'ansi:black',
 }
 
 /**
@@ -431,6 +484,18 @@ const lightDaltonizedTheme: Theme = {
   rainbow_blue_shimmer: 'rgb(180,205,240)',
   rainbow_indigo_shimmer: 'rgb(195,180,230)',
   rainbow_violet_shimmer: 'rgb(230,180,210)',
+  // Studio palette slots (daltonized, light variant)
+  primary: 'rgb(100,180,100)', // claude (daltonized green)
+  secondary: 'rgb(51,102,255)', // permission bright blue
+  accent: 'rgb(135,0,255)', // autoAccept electric violet
+  info: 'rgb(51,102,255)',
+  textMuted: 'rgb(102,102,102)',
+  border: 'rgb(153,153,153)',
+  borderActive: 'rgb(183,183,183)',
+  borderSubtle: 'rgb(175,175,175)',
+  backgroundPanel: 'rgb(220,220,220)',
+  backgroundElement: 'rgb(210,216,226)',
+  backgroundMenu: 'rgb(250,245,250)',
 }
 
 /**
@@ -512,6 +577,18 @@ const darkTheme: Theme = {
   rainbow_blue_shimmer: 'rgb(170,225,255)',
   rainbow_indigo_shimmer: 'rgb(200,180,255)',
   rainbow_violet_shimmer: 'rgb(240,180,240)',
+  // Studio palette slots (electric-cyan dark variant)
+  primary: 'rgb(120,255,220)', // claude electric cyan-mint
+  secondary: 'rgb(140,180,255)', // claudeBlue cobalt
+  accent: 'rgb(190,130,255)', // autoAccept electric violet
+  info: 'rgb(130,200,255)', // ide bright electric blue
+  textMuted: 'rgb(150,155,175)', // inactive
+  border: 'rgb(120,130,180)', // promptBorder
+  borderActive: 'rgb(170,180,230)', // promptBorderShimmer
+  borderSubtle: 'rgb(75,78,95)', // subtle
+  backgroundPanel: 'rgb(40,45,62)', // userMessageBackground
+  backgroundElement: 'rgb(40,46,62)', // messageActionsBackground
+  backgroundMenu: 'rgb(50,48,64)', // bashMessageBackgroundColor
 }
 
 /**
@@ -590,6 +667,18 @@ const tauDarkTheme: Theme = {
   rainbow_blue_shimmer: 'rgb(176,122,104)',
   rainbow_indigo_shimmer: 'rgb(214,118,112)',
   rainbow_violet_shimmer: 'rgb(244,132,140)',
+  // Studio palette slots (Tau ember palette)
+  primary: 'rgb(255,86,66)', // claude ember red
+  secondary: 'rgb(204,82,54)', // claudeBlue (warmed)
+  accent: 'rgb(224,56,48)', // autoAccept
+  info: 'rgb(190,92,62)', // ide
+  textMuted: 'rgb(150,112,94)', // inactive
+  border: 'rgb(115,62,45)', // promptBorder
+  borderActive: 'rgb(210,92,62)', // promptBorderShimmer
+  borderSubtle: 'rgb(58,36,30)', // subtle
+  backgroundPanel: 'rgb(31,20,17)', // userMessageBackground
+  backgroundElement: 'rgb(50,29,24)', // messageActionsBackground
+  backgroundMenu: 'rgb(24,17,15)', // bashMessageBackgroundColor
 }
 
 /**
@@ -671,6 +760,113 @@ const darkDaltonizedTheme: Theme = {
   rainbow_blue_shimmer: 'rgb(180,205,240)',
   rainbow_indigo_shimmer: 'rgb(195,180,230)',
   rainbow_violet_shimmer: 'rgb(230,180,210)',
+  // Studio palette slots (daltonized, dark variant)
+  primary: 'rgb(130,200,130)', // claude daltonized green
+  secondary: 'rgb(153,204,255)', // permission light blue
+  accent: 'rgb(175,135,255)', // autoAccept electric violet
+  info: 'rgb(150,185,230)', // ide
+  textMuted: 'rgb(153,153,153)',
+  border: 'rgb(136,136,136)',
+  borderActive: 'rgb(166,166,166)',
+  borderSubtle: 'rgb(80,80,80)',
+  backgroundPanel: 'rgb(55,55,55)',
+  backgroundElement: 'rgb(44,50,62)',
+  backgroundMenu: 'rgb(65,60,65)',
+}
+
+/**
+ * Studio theme. Refined dark UI: peach primary, blue secondary, purple accent
+ * on near-black background. Built on top of darkTheme so legacy slots stay
+ * sensible while the new modern-UI slots use the refreshed palette directly.
+ */
+const studioTheme: Theme = {
+  ...darkTheme,
+  // Brand / accents
+  autoAccept: 'rgb(157,124,216)', // accent purple
+  bashBorder: 'rgb(157,124,216)',
+  claude: 'rgb(250,178,131)', // primary peach
+  claudeShimmer: 'rgb(255,192,159)',
+  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(92,156,245)',
+  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(140,184,250)',
+  permission: 'rgb(92,156,245)',
+  permissionShimmer: 'rgb(140,184,250)',
+  planMode: 'rgb(86,182,194)', // info cyan
+  ide: 'rgb(92,156,245)',
+  promptBorder: 'rgb(72,72,72)',
+  promptBorderShimmer: 'rgb(96,96,96)',
+  text: 'rgb(238,238,238)',
+  inverseText: 'rgb(10,10,10)',
+  inactive: 'rgb(128,128,128)',
+  inactiveShimmer: 'rgb(160,160,160)',
+  subtle: 'rgb(60,60,60)',
+  suggestion: 'rgb(92,156,245)',
+  remember: 'rgb(157,124,216)',
+  background: 'rgb(10,10,10)',
+  // Status
+  success: 'rgb(127,216,143)',
+  error: 'rgb(224,108,117)',
+  warning: 'rgb(245,167,66)',
+  merged: 'rgb(157,124,216)',
+  warningShimmer: 'rgb(248,192,118)',
+  // Diff
+  diffAdded: 'rgb(79,214,190)',
+  diffRemoved: 'rgb(197,59,83)',
+  diffAddedDimmed: 'rgb(32,48,59)',
+  diffRemovedDimmed: 'rgb(55,34,44)',
+  diffAddedWord: 'rgb(184,219,135)',
+  diffRemovedWord: 'rgb(226,106,117)',
+  // Subagent palette (mapped to studio hues)
+  red_FOR_SUBAGENTS_ONLY: 'rgb(224,108,117)',
+  blue_FOR_SUBAGENTS_ONLY: 'rgb(92,156,245)',
+  green_FOR_SUBAGENTS_ONLY: 'rgb(127,216,143)',
+  yellow_FOR_SUBAGENTS_ONLY: 'rgb(229,192,123)',
+  purple_FOR_SUBAGENTS_ONLY: 'rgb(157,124,216)',
+  orange_FOR_SUBAGENTS_ONLY: 'rgb(245,167,66)',
+  pink_FOR_SUBAGENTS_ONLY: 'rgb(224,108,117)',
+  cyan_FOR_SUBAGENTS_ONLY: 'rgb(86,182,194)',
+  // Misc
+  professionalBlue: 'rgb(92,156,245)',
+  chromeYellow: 'rgb(229,192,123)',
+  clawd_body: 'rgb(250,178,131)',
+  clawd_background: 'rgb(20,20,20)',
+  userMessageBackground: 'rgb(20,20,20)',
+  userMessageBackgroundHover: 'rgb(30,30,30)',
+  messageActionsBackground: 'rgb(40,40,40)',
+  selectionBg: 'rgb(50,50,50)',
+  bashMessageBackgroundColor: 'rgb(20,20,20)',
+  memoryBackgroundColor: 'rgb(30,30,30)',
+  rate_limit_fill: 'rgb(250,178,131)',
+  rate_limit_empty: 'rgb(40,40,40)',
+  fastMode: 'rgb(245,167,66)',
+  fastModeShimmer: 'rgb(248,192,118)',
+  briefLabelYou: 'rgb(92,156,245)',
+  briefLabelClaude: 'rgb(250,178,131)',
+  rainbow_red: 'rgb(224,108,117)',
+  rainbow_orange: 'rgb(245,167,66)',
+  rainbow_yellow: 'rgb(229,192,123)',
+  rainbow_green: 'rgb(127,216,143)',
+  rainbow_blue: 'rgb(92,156,245)',
+  rainbow_indigo: 'rgb(157,124,216)',
+  rainbow_violet: 'rgb(157,124,216)',
+  rainbow_red_shimmer: 'rgb(238,140,148)',
+  rainbow_orange_shimmer: 'rgb(248,192,118)',
+  rainbow_yellow_shimmer: 'rgb(238,210,148)',
+  rainbow_green_shimmer: 'rgb(168,228,180)',
+  rainbow_blue_shimmer: 'rgb(140,184,250)',
+  rainbow_indigo_shimmer: 'rgb(190,162,232)',
+  rainbow_violet_shimmer: 'rgb(190,162,232)',
+  // Studio palette slots — refreshed dark UI values
+  primary: 'rgb(250,178,131)', // peach
+  secondary: 'rgb(92,156,245)', // blue
+  accent: 'rgb(157,124,216)', // purple
+  info: 'rgb(86,182,194)', // cyan
+  textMuted: 'rgb(128,128,128)',
+  border: 'rgb(72,72,72)',
+  borderActive: 'rgb(96,96,96)',
+  borderSubtle: 'rgb(60,60,60)',
+  backgroundPanel: 'rgb(20,20,20)',
+  backgroundElement: 'rgb(30,30,30)',
+  backgroundMenu: 'rgb(30,30,30)',
 }
 
 export function getTheme(themeName: ThemeName): Theme {
@@ -687,6 +883,8 @@ export function getTheme(themeName: ThemeName): Theme {
       return lightDaltonizedTheme
     case 'dark-daltonized':
       return darkDaltonizedTheme
+    case 'studio':
+      return studioTheme
     default:
       return tauDarkTheme
   }
