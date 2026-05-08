@@ -71,7 +71,7 @@ import type { ImageDimensions } from '../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
 import { logError } from '../../utils/log.js';
-import { isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { isOpus1mMergeEnabled, renderModelName } from '../../utils/model/model.js';
 import { modelDisplayStringForProvider } from '../../utils/model/display.js';
 import { isSurfEnabled } from '../../utils/surf/state.js';
 import { setAutoModeActive } from '../../utils/permissions/autoModeState.js';
@@ -2248,10 +2248,10 @@ function PromptInput({
     return 'primary';
   };
   if (isExternalEditorActive) {
-    // Studio prompt frame: left bar in mode color + ╵ foot below.
+    // Studio prompt frame: left bar + filled panel + ╵ foot.
     return <>
         <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={getBorderColor()} borderStyle="round" borderTop={false} borderRight={false} borderBottom={false} width="100%">
-          <Box flexGrow={1} paddingLeft={1}>
+          <Box flexGrow={1} paddingLeft={1} backgroundColor="backgroundElement">
             <Text dimColor italic>
               Save and close editor to continue...
             </Text>
@@ -2288,17 +2288,26 @@ function PromptInput({
           </Box>
           <Text color={swarmBanner.bgColor}>{'─'.repeat(columns)}</Text>
         </> : <>
-          {/* Studio prompt frame: left bar in mode color + ╵ foot below. */}
+          {/* Studio prompt frame: left bar + filled panel + ╵ foot. */}
           <Box flexDirection="row" alignItems="flex-start" justifyContent="flex-start" borderColor={getBorderColor()} borderStyle="round" borderTop={false} borderRight={false} borderBottom={false} width="100%">
-            <Box flexDirection="row" flexGrow={1} flexShrink={1} paddingLeft={1} onClick={handleInputClick}>
-              <PromptInputModeIndicator mode={mode} isLoading={isLoading} viewingAgentName={viewingAgentName} viewingAgentColor={viewingAgentColor} />
-              <Box flexGrow={1} flexShrink={1}>
-                {textInputElement}
+            <Box flexDirection="column" flexGrow={1} flexShrink={1} paddingLeft={1} backgroundColor="backgroundElement" onClick={handleInputClick}>
+              <Box flexDirection="row">
+                <PromptInputModeIndicator mode={mode} isLoading={isLoading} viewingAgentName={viewingAgentName} viewingAgentColor={viewingAgentColor} />
+                <Box flexGrow={1} flexShrink={1}>
+                  {textInputElement}
+                </Box>
+              </Box>
+              <Box flexDirection="row" gap={1} flexShrink={0}>
+                <Text color={getBorderColor()}>
+                  {mode === 'bash' ? 'Shell' : (viewingAgentName ?? 'Tau')}
+                </Text>
+                <Text dimColor>{renderModelName(mainLoopModel)}</Text>
               </Box>
             </Box>
           </Box>
-          <Box height={1} flexShrink={0}>
+          <Box height={1} flexShrink={0} flexDirection="row" gap={1}>
             <Text color={getBorderColor()}>╵</Text>
+            {isLoading && <Text dimColor>esc to interrupt</Text>}
           </Box>
         </>}
       <PromptInputFooter apiKeyStatus={apiKeyStatus} debug={debug} exitMessage={exitMessage} vimMode={isVimModeEnabled() ? vimMode : undefined} mode={mode} autoUpdaterResult={autoUpdaterResult} isAutoUpdating={isAutoUpdating} verbose={verbose} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={setIsAutoUpdating} suggestions={suggestions} selectedSuggestion={selectedSuggestion} maxColumnWidth={maxColumnWidth} toolPermissionContext={effectiveToolPermissionContext} helpOpen={helpOpen} suppressHint={input.length > 0} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} bridgeSelected={bridgeSelected} tmuxSelected={tmuxSelected} teammateFooterIndex={teammateFooterIndex} ideSelection={ideSelection} mcpClients={mcpClients} isPasting={isPasting} isInputWrapped={isInputWrapped} messages={messages} isSearching={isSearchingHistory} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={isFullscreenEnvEnabled() ? handleOpenTasksDialog : undefined} />
