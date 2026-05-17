@@ -1,6 +1,6 @@
 {
   "name": "tau-git-memory",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Git-backed local memory store for Tau sessions, with branch-aware recall and manual capture.",
   "author": {
     "name": "AbdoKnbGit"

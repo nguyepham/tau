@@ -73,6 +73,7 @@ const BIGRAM_PATH_SCORE = 6
 const BIGRAM_BODY_SCORE = 3
 const LOCK_FILE = '.tau-git-memory.lock'
 const PINNED_CONTEXT_CACHE_FILE = '.tau-git-memory-pinned-context-cache.json'
+const SESSION_STATE_FILE_PREFIX = '.tau-git-memory-session-state-'
 
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
@@ -456,7 +457,7 @@ function ensureStoreUnlocked(store) {
   configureGitIdentity(store)
 
   const ignorePath = path.join(store, '.gitignore')
-  const ignoreLines = [LOCK_FILE, PINNED_CONTEXT_CACHE_FILE]
+  const ignoreLines = [LOCK_FILE, PINNED_CONTEXT_CACHE_FILE, `${SESSION_STATE_FILE_PREFIX}*.json`]
   const existingIgnore = fs.existsSync(ignorePath)
     ? fs.readFileSync(ignorePath, 'utf8')
     : ''
@@ -584,7 +585,11 @@ function openContext(opts, hookInput, fn, options = {}) {
     ? fastGitRootOf(projectDir) || projectDir
     : gitRootOf(projectDir)
   const store = resolveStore(opts, projectRoot)
-  if (options.skipMissingStore && !fs.existsSync(memoriesDir(store))) {
+  if (
+    options.skipMissingStore &&
+    !fs.existsSync(memoriesDir(store)) &&
+    !fs.existsSync(gitDirPath(store))
+  ) {
     return options.missingStoreValue ?? {}
   }
 
@@ -1172,6 +1177,46 @@ function writePinnedContextCache(store, payload) {
   }
 }
 
+function sessionStateKeyFromHookInput(hookInput = {}) {
+  const raw =
+    hookInput.session_id ||
+    hookInput.sessionId ||
+    hookInput.transcript_path ||
+    hookInput.transcriptPath ||
+    hookInput.cwd ||
+    'default'
+  const key = String(raw)
+    .replace(/\\/g, '/')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(-120)
+  return key || 'default'
+}
+
+function sessionStatePath(store, hookInput) {
+  return path.join(store, `${SESSION_STATE_FILE_PREFIX}${sessionStateKeyFromHookInput(hookInput)}.json`)
+}
+
+function readSessionState(store, hookInput) {
+  try {
+    return JSON.parse(fs.readFileSync(sessionStatePath(store, hookInput), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeSessionState(store, hookInput, payload) {
+  try {
+    fs.writeFileSync(
+      sessionStatePath(store, hookInput),
+      `${JSON.stringify(payload, null, 2)}\n`,
+      'utf8',
+    )
+  } catch {
+    // Session refresh state is an optimization; missing it only means no delta injection.
+  }
+}
+
 function renderPinnedSessionContext(pinned) {
   if (!pinned.items.length) return ''
   const lines = ['Pinned memories (always injected at session start):']
@@ -1184,19 +1229,21 @@ function renderPinnedSessionContext(pinned) {
   return lines.join('\n')
 }
 
-function cachedPinnedSessionContext(status, config) {
+function pinnedSessionSnapshot(status, config) {
   const pinnedItems = status.memories.filter(item => hasTag(item, 'pinned'))
-  if (!pinnedItems.length) return ''
-
   const signature = pinnedCacheSignature(status, pinnedItems, config)
   const signatureJson = JSON.stringify(signature)
+  if (!pinnedItems.length) {
+    return { context: '', signatureJson }
+  }
+
   const cached = readPinnedContextCache(status.store)
   if (
     cached &&
     cached.signatureJson === signatureJson &&
     typeof cached.context === 'string'
   ) {
-    return cached.context
+    return { context: cached.context, signatureJson }
   }
 
   const pinned = enrichMemoryItems(pinnedItems, config.snippetChars, config.pinnedLimit)
@@ -1207,7 +1254,36 @@ function cachedPinnedSessionContext(status, config) {
     context,
     cachedAt: new Date().toISOString(),
   })
-  return context
+  return { context, signatureJson }
+}
+
+function recordSessionPinnedState(status, config, hookInput) {
+  const snapshot = pinnedSessionSnapshot(status, config)
+  writeSessionState(status.store, hookInput, {
+    version: 1,
+    pinnedSignatureJson: snapshot.signatureJson,
+    updatedAt: new Date().toISOString(),
+  })
+  return snapshot.context
+}
+
+function pinnedRefreshContext(status, config, hookInput) {
+  const snapshot = pinnedSessionSnapshot(status, config)
+  const sessionState = readSessionState(status.store, hookInput)
+  if (sessionState?.pinnedSignatureJson === snapshot.signatureJson) return ''
+
+  writeSessionState(status.store, hookInput, {
+    version: 1,
+    pinnedSignatureJson: snapshot.signatureJson,
+    updatedAt: new Date().toISOString(),
+  })
+
+  if (!snapshot.context) return ''
+  return snapshot.context
+    .replace(
+      'Pinned memories (always injected at session start):',
+      'Pinned memories changed since SessionStart:',
+    )
 }
 
 function renderSessionContext(status, pinnedContext = '') {
@@ -1265,9 +1341,10 @@ function enrichMemoryItems(items, snippetChars, limit = null) {
   }
 }
 
-function promptMemoryRetrieval(ctx, opts, prompt) {
+function promptMemoryRetrieval(ctx, opts, prompt, hookInput = {}) {
   const config = contextConfig(opts)
   return withMemoryReadBranch(ctx, opts, status => {
+    const pinnedRefresh = pinnedRefreshContext(status, config, hookInput)
     const keyword = searchMemoryItems(
       status.memories,
       {
@@ -1294,6 +1371,7 @@ function promptMemoryRetrieval(ctx, opts, prompt) {
       branch: status.branch,
       codeBranch: status.codeBranch,
       branchFallback: status.branchFallback,
+      pinnedRefresh,
       keyword,
       fallback,
     }
@@ -1305,11 +1383,12 @@ function renderMemoryItemLine(item) {
 }
 
 function renderPromptMemoryContext(retrieval) {
+  const hasPinnedRefresh = Boolean(retrieval.pinnedRefresh)
   const hasKeyword = retrieval.keyword.matches.length > 0
   const hasFallback = retrieval.fallback.items.length > 0
-  if (!hasKeyword && !hasFallback) return ''
+  if (!hasPinnedRefresh && !hasKeyword && !hasFallback) return ''
 
-  const mode = hasKeyword ? 'keyword' : 'fallback'
+  const mode = hasKeyword ? 'keyword' : hasFallback ? 'fallback' : 'pinned refresh'
   const lines = [
     '# Tau Git Memory Context',
     `memory branch: ${retrieval.branch}`,
@@ -1319,6 +1398,10 @@ function renderPromptMemoryContext(retrieval) {
   ]
   const branchLine = fallbackBranchLine(retrieval)
   if (branchLine) lines.splice(3, 0, branchLine)
+
+  if (hasPinnedRefresh) {
+    lines.push(retrieval.pinnedRefresh, '')
+  }
 
   if (hasKeyword) {
     lines.push(`Keyword matches (normal memories, terms: ${retrieval.keyword.terms.join(', ')}, min score: ${retrieval.keyword.minScore}):`)
@@ -1392,7 +1475,7 @@ function main() {
     const output = openContext(opts, hookInput, ctx => {
       const config = contextConfig(opts)
       return withMemoryReadBranch(ctx, opts, status => {
-        const pinnedContext = cachedPinnedSessionContext(status, config)
+        const pinnedContext = recordSessionPinnedState(status, config, hookInput)
         const context = renderSessionContext(status, pinnedContext)
         const result = {
           systemMessage: `[tau-git-memory] ${status.branch} - ${status.count} memories`,
@@ -1420,7 +1503,7 @@ function main() {
       return
     }
     const output = openContext(opts, hookInput, ctx => {
-      const retrieval = promptMemoryRetrieval(ctx, opts, prompt)
+      const retrieval = promptMemoryRetrieval(ctx, opts, prompt, hookInput)
       const context = renderPromptMemoryContext(retrieval)
       if (!context) return {}
       return {

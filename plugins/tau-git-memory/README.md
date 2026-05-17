@@ -57,6 +57,7 @@ The plugin uses Tau hooks:
 
 - `SessionStart` reads an existing store, injects the tag-zone rules, a compact list of available memory paths, and cached compact `pinned` snippets.
 - `UserPromptSubmit` keyword-searches `normal` memories on the current memory branch.
+- If pinned memories change after `SessionStart`, the next `UserPromptSubmit` injects the refreshed pinned snippets once, then records the new session state.
 - If keyword search finds matches above the score floor, it injects keyword matches.
 - If keyword search finds no normal match, it injects `fallback` memories.
 - Pinned and fallback memories are not searched for keyword injection because they belong to separate zones.
