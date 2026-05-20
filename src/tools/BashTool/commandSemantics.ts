@@ -5,8 +5,6 @@
  * For example, grep returns 1 when no matches are found, which is not an error condition.
  */
 
-import { splitCommand_DEPRECATED } from '../../utils/bash/commands.js'
-
 export type CommandSemantic = (
   exitCode: number,
   stdout: string,
@@ -66,6 +64,15 @@ const COMMAND_SEMANTICS: Map<string, CommandSemantic> = new Map([
     }),
   ],
 
+  // cmp: 0=files equal, 1=files differ, 2+=error
+  [
+    'cmp',
+    (exitCode, _stdout, _stderr) => ({
+      isError: exitCode >= 2,
+      message: exitCode === 1 ? 'Files differ' : undefined,
+    }),
+  ],
+
   // test/[: 0=condition true, 1=condition false, 2+=error
   [
     'test',
@@ -102,7 +109,78 @@ function getCommandSemantic(command: string): CommandSemantic {
  * Extract just the command name (first word) from a single command string.
  */
 function extractBaseCommand(command: string): string {
-  return command.trim().split(/\s+/)[0] || ''
+  const parts = command.trim().split(/\s+/).filter(Boolean)
+  while (parts.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(parts[0]!)) {
+    parts.shift()
+  }
+  return parts[0] || ''
+}
+
+function splitCommandForSemantics(command: string): string[] {
+  const segments: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+  let escaped = false
+
+  function pushCurrent(): void {
+    const segment = current.trim()
+    if (segment) segments.push(segment)
+    current = ''
+  }
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!
+    const next = command[i + 1]
+
+    if (escaped) {
+      current += ch
+      escaped = false
+      continue
+    }
+
+    if (ch === '\\') {
+      current += ch
+      escaped = true
+      continue
+    }
+
+    if (quote) {
+      current += ch
+      if (ch === quote) quote = null
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      current += ch
+      continue
+    }
+
+    if (ch === ';' || ch === '\n' || ch === '|') {
+      pushCurrent()
+      if (ch === '|' && next === '|') i++
+      continue
+    }
+
+    if (ch === '&') {
+      if (next === '&') {
+        pushCurrent()
+        i++
+        continue
+      }
+      if (command[i - 1] === '>' || command[i - 1] === '<') {
+        current += ch
+        continue
+      }
+      pushCurrent()
+      continue
+    }
+
+    current += ch
+  }
+
+  pushCurrent()
+  return segments.length > 0 ? segments : [command]
 }
 
 /**
@@ -110,7 +188,7 @@ function extractBaseCommand(command: string): string {
  * May get it super wrong - don't depend on this for security
  */
 function heuristicallyExtractBaseCommand(command: string): string {
-  const segments = splitCommand_DEPRECATED(command)
+  const segments = splitCommandForSemantics(command)
 
   // Take the last command as that's what determines the exit code
   const lastCommand = segments[segments.length - 1] || command

@@ -349,11 +349,16 @@ export async function exec(
             O_NOFOLLOW,
     )
   }
+  const baseEnv = subprocessEnv()
 
   try {
     const childProcess = spawn(spawnBinary, shellArgs, {
       env: {
-        ...subprocessEnv(),
+        ...baseEnv,
+        // Shell tools redirect stdout/stderr to files. On Windows, native
+        // Python otherwise often defaults redirected stdio to the ANSI code
+        // page, so printing Unicode can fail with UnicodeEncodeError.
+        PYTHONIOENCODING: baseEnv.PYTHONIOENCODING || 'utf-8',
         SHELL: shellType === 'bash' ? binShell : undefined,
         GIT_EDITOR: 'true',
         CLAUDECODE: '1',

@@ -41,6 +41,8 @@ import { buildLargeToolResultMessage, ensureToolResultsDir, generatePreview, get
 import { userFacingName as fileEditUserFacingName } from '../FileEditTool/UI.js';
 import { trackGitOperations } from '../shared/gitOperationTracking.js';
 import { bashToolHasPermission, commandHasAnyCd, matchWildcardPattern, permissionRuleExtractPrefix } from './bashPermissions.js';
+import { appendBashFailureGuidance } from './bashFailureGuidance.js';
+import { validateBashSyntax } from './bashSyntaxValidation.js';
 import { getPlatform } from '../../utils/platform.js';
 import { findGitBashPath } from '../../utils/windowsPaths.js';
 import { interpretCommandResult } from './commandSemantics.js';
@@ -544,6 +546,14 @@ export const BashTool = buildTool({
         };
       }
     }
+    const syntaxValidation = await validateBashSyntax(input.command);
+    if (!syntaxValidation.ok) {
+      return {
+        result: false,
+        message: syntaxValidation.message,
+        errorCode: 11
+      };
+    }
     return {
       result: true
     };
@@ -727,7 +737,8 @@ export const BashTool = buildTool({
         // stderr is merged into stdout (merged fd); outputWithSbFailures
         // already has the full output. Pass '' for stdout to avoid
         // duplication in getErrorParts() and processBashCommand.
-        throw new ShellError('', outputWithSbFailures, result.code, result.interrupted);
+        const outputWithFailureGuidance = appendBashFailureGuidance(input.command, result.code, outputWithSbFailures);
+        throw new ShellError('', outputWithFailureGuidance, result.code, result.interrupted);
       }
       wasInterrupted = result.interrupted;
     } finally {
