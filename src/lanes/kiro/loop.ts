@@ -557,10 +557,27 @@ export class KiroLane implements Lane {
         || lowered.includes('context window')
         || lowered.includes('too long')
         || lowered.includes('inputtokens')
+      const isImproperlyFormed =
+        responseStatus === 400 && lowered.includes('improperly formed')
       const headline = isPromptTooLong
         ? `Prompt is too long (kiro ${responseStatus})`
         : `kiro API error ${responseStatus}`
-      yield* _emitErrorText(`${headline}: ${errText.slice(0, 500)}`)
+      // "Improperly formed request" is a generic AWS-side 400 with no
+      // structured reason. The most useful thing we can do is (a) dump the
+      // payload so the user can inspect what Kiro rejected, and (b) hint at
+      // the common causes so a fix is one step closer.
+      let extra = ''
+      if (isImproperlyFormed) {
+        const dumpPath = _dumpKiroRequestBody(body)
+        const hint =
+          'Common causes: an MCP tool name with characters Kiro disallows, ' +
+          'a tool input_schema field not handled by sanitizeSchemaForLane, ' +
+          'or a history shape that lost role alternation during fallback.'
+        extra = dumpPath
+          ? ` ${hint} Request body dumped to ${dumpPath}.`
+          : ` ${hint} Set CLAUDEX_KIRO_DEBUG_DUMP=1 to capture the request body on the next failure.`
+      }
+      yield* _emitErrorText(`${headline}: ${errText.slice(0, 500)}${extra}`)
       yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } }
       yield { type: 'message_stop' }
       return _blankUsage()
@@ -1231,6 +1248,32 @@ function* _emitErrorText(text: string): Generator<AnthropicStreamEvent> {
   yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }
   yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }
   yield { type: 'content_block_stop', index: 0 }
+}
+
+/**
+ * Persist the rejected Kiro request body to a tmp file for inspection.
+ * Gated by CLAUDEX_KIRO_DEBUG_DUMP=1 so it never fires for normal users.
+ * Returns the file path on success, null otherwise (env off, write failed).
+ * Best-effort: never throws — diagnostic logging must not double-fault a
+ * request that already failed.
+ */
+function _dumpKiroRequestBody(body: unknown): string | null {
+  if (process.env.CLAUDEX_KIRO_DEBUG_DUMP !== '1') return null
+  try {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const fs = require('node:fs') as typeof import('node:fs')
+    const path = require('node:path') as typeof import('node:path')
+    const os = require('node:os') as typeof import('node:os')
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    const dir = path.join(os.tmpdir(), 'tau-kiro-debug')
+    fs.mkdirSync(dir, { recursive: true })
+    const fileName = `kiro-improperly-formed-${Date.now()}.json`
+    const filePath = path.join(dir, fileName)
+    fs.writeFileSync(filePath, JSON.stringify(body, null, 2), 'utf-8')
+    return filePath
+  } catch {
+    return null
+  }
 }
 
 // ─── Singleton ───────────────────────────────────────────────────
