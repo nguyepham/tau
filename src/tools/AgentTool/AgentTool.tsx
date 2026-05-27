@@ -56,7 +56,7 @@ import { runAgent } from './runAgent.js';
 import { runWithForcedProvider } from '../../utils/forcedProvider.js';
 import { isAPIProvider } from '../../utils/model/providers.js';
 import type { ModelAlias } from '../../utils/model/aliases.js';
-import { isTeamModeEnabled } from '../../utils/teamMode/state.js';
+import { getActiveTeamModeRoles, getTeamModeFallbackWorker, isTeamModeEnabled, isTeamModeFallbackEnabled } from '../../utils/teamMode/state.js';
 import { renderGroupedAgentToolUse, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseRejectedMessage, renderToolUseTag, userFacingName, userFacingNameBackgroundColor } from './UI.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -268,6 +268,48 @@ export const AgentTool = buildTool({
     const teamModeOn = isTeamModeEnabled();
     const providerParam = teamModeOn ? rawProviderParam : undefined;
     const modelIdParam = teamModeOn ? rawModelIdParam : undefined;
+
+    // Team-mode role-binding validation. When team mode is ON and the caller
+    // passes BOTH a provider and a model_id, the pair must match either an
+    // active role binding from the roster OR the shared fallback worker.
+    // Without this, an LLM that mis-maps the roster (e.g. spawns the
+    // Implementer role with the Architect's model_id, because the roster
+    // table was ambiguous to parse) silently produces a request on the wrong
+    // worker — the upstream provider answers with the wrong model and the
+    // user sees the wrong work get done.
+    //
+    // We only validate the FULL pair. If the LLM passes provider alone (rare
+    // — the orchestrator prompt always asks for both) we let it through so
+    // the parent's mainLoopModel still applies; that path is the legacy
+    // pre-roster behavior and isn't expected in team mode but isn't harmful.
+    if (teamModeOn && providerParam !== undefined && modelIdParam !== undefined) {
+      const requestedProvider = providerParam.trim()
+      const requestedModel = modelIdParam.trim()
+      const activeRoles = getActiveTeamModeRoles()
+      const matchedRole = activeRoles.find(
+        r => r.provider === requestedProvider && r.model === requestedModel,
+      )
+      const fallback = isTeamModeFallbackEnabled() ? getTeamModeFallbackWorker() : null
+      const matchesFallback =
+        fallback !== null &&
+        fallback.provider === requestedProvider &&
+        fallback.model === requestedModel
+      if (!matchedRole && !matchesFallback) {
+        const rosterLines = activeRoles.map(
+          r => `  - ${r.role}: provider="${r.provider}", model_id="${r.model}"`,
+        )
+        const fallbackLine = fallback
+          ? `\n  - <fallback>: provider="${fallback.provider}", model_id="${fallback.model}"`
+          : ''
+        throw new Error(
+          `team-mode role binding mismatch: ` +
+          `provider="${requestedProvider}" + model_id="${requestedModel}" does not match any configured role.\n` +
+          `Configured bindings:\n${rosterLines.join('\n')}${fallbackLine}\n` +
+          `Copy the provider and model_id pair verbatim from the role you want to spawn — ` +
+          `do not mix one role's provider with another role's model.`,
+        )
+      }
+    }
 
     // Provider override — pin every getAPIProvider() call inside this agent's
     // lifecycle to the requested provider. /team-mode uses this to route each

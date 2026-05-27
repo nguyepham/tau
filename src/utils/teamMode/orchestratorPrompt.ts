@@ -25,6 +25,18 @@ import {
   TEAM_MODE_ROLE_META,
 } from './state.js'
 
+// Insert `separator` between consecutive items of `items`. Used so each role
+// block / spawn template in the orchestrator prompt is followed by a blank
+// line, keeping the rendered markdown legible without trailing separators.
+function interleave<T>(items: readonly T[], separator: T): T[] {
+  const out: T[] = []
+  for (let i = 0; i < items.length; i++) {
+    if (i > 0) out.push(separator)
+    out.push(items[i]!)
+  }
+  return out
+}
+
 export function getTeamModeOrchestratorAddendum(): string | null {
   if (!isTeamModeEnabled()) return null
   const roles = getActiveTeamModeRoles()
@@ -34,10 +46,45 @@ export function getTeamModeOrchestratorAddendum(): string | null {
   // rosters produce identical strings across sessions and turns. Don't sort
   // by display label — that's the same in practice but ordering by id makes
   // the contract explicit.
-  const rosterLines = roles.map(role => {
+  //
+  // Format is structured (one binding per fenced block, fields on their own
+  // lines) rather than a `display-name / model-id` single line. The previous
+  // format collided with model ids that contain slashes ("tencent/hy3-preview",
+  // "openai/gpt-oss-120b") and forced the LLM to translate display names
+  // ("OpenRouter") back to enum values ("openrouter") at spawn time — both
+  // failure modes caused the orchestrator to grab the wrong row's model_id
+  // (gh: "agent tried to use Architect's model instead of Implementer's").
+  const rosterBlocks = roles.map(role => {
     const meta = TEAM_MODE_ROLE_META[role.role]
-    const provider = PROVIDER_DISPLAY_NAMES[role.provider]
-    return `- ${meta.label} (${role.role}): ${provider} / ${role.model} — ${meta.description}`
+    const displayName = PROVIDER_DISPLAY_NAMES[role.provider]
+    return [
+      `### ${meta.label} (role id: \`${role.role}\`) — ${meta.description}`,
+      '```',
+      `provider:  "${role.provider}"   // ${displayName}`,
+      `model_id:  "${role.model}"`,
+      '```',
+    ].join('\n')
+  })
+
+  // Per-role copy-paste spawn templates. Each role gets its OWN block with
+  // the literal provider + model_id values pre-filled — no lookup, no
+  // translation. The orchestrator picks the role's block, copies it, fills
+  // in description + prompt, and sends. No way to swap roster rows by
+  // accident because the values are baked into the example.
+  const spawnExamples = roles.map(role => {
+    const meta = TEAM_MODE_ROLE_META[role.role]
+    return [
+      `**Spawn ${meta.label}:**`,
+      '```',
+      'Agent({',
+      '  subagent_type: "general-purpose",',
+      '  description: "<3-5 word phase title>",',
+      '  prompt: "<task for this worker>",',
+      `  provider: "${role.provider}",`,
+      `  model_id: "${role.model}"`,
+      '})',
+      '```',
+    ].join('\n')
   })
 
   const swarmSection = isAgentSwarmsEnabled()
@@ -59,25 +106,21 @@ export function getTeamModeOrchestratorAddendum(): string | null {
   return [
     '# Team Mode (Auto-Orchestration)',
     '',
-    'You are operating with /team-mode ON. The user has bound a fixed roster of specialized roles to specific provider+model pairs:',
+    'You are operating with /team-mode ON. The user has bound a fixed roster of specialized roles to specific provider+model pairs. **The `provider` and `model_id` values you pass to the Agent tool MUST be copied EXACTLY from the role you intend to spawn.** Do not transliterate display names. Do not mix one role\'s provider with another role\'s model — the runtime rejects mismatched pairs with `team-mode role binding mismatch`.',
     '',
-    ...rosterLines,
+    '## Configured role bindings',
+    '',
+    ...interleave(rosterBlocks, ''),
     '',
     '## How to use the team',
     '',
     'For non-trivial work, decompose the task into parallel-safe phases and spawn the right role(s) via the Agent tool. Each spawned worker runs through its bound provider and model — you do NOT need to switch your own provider.',
     '',
-    'Spawn syntax (always include `provider` and `model_id` from the roster above):',
+    '## Spawn templates (per role — copy verbatim)',
     '',
-    '```',
-    'Agent({',
-    '  subagent_type: "general-purpose",',
-    '  description: "<3-5 word phase title>",',
-    '  prompt: "<task for this worker — give them full context and a concrete deliverable>",',
-    '  provider: "<role\'s provider, e.g. kiro>",',
-    '  model_id: "<role\'s model, e.g. claude-sonnet-4-5>"',
-    '})',
-    '```',
+    'Pick the role you need, copy its block, fill in `description` + `prompt`, send. The `provider` and `model_id` values are already correct; do not edit them.',
+    '',
+    ...interleave(spawnExamples, ''),
     '',
     'Spawn multiple agents in the SAME tool-call message when their work is independent — that gives you true parallelism across providers.',
     '',
