@@ -60,6 +60,9 @@ export function getNextPermissionMode(
       return 'plan'
 
     case 'plan':
+      return 'explore'
+
+    case 'explore':
       if (canCycleToBypass()) {
         return 'bypassPermissions'
       }

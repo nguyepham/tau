@@ -3922,6 +3922,25 @@ You have exited plan mode. You can now make edits, run tools, and take actions.$
         createUserMessage({ content, isMeta: true }),
       ])
     }
+    case 'explore_mode': {
+      if (attachment.isSubAgent) {
+        return []
+      }
+      const content = `Explore mode is active. You are in an exploratory, research-oriented session.
+
+The user's intent here is to investigate, search, read, and answer questions about the codebase — not to make changes. Treat this like a focused walkthrough:
+
+- Lead with file lookups, grep/glob searches, reading code, and summarizing findings.
+- Prefer concise, well-cited answers (use file_path:line_number references) over speculation.
+- Do not write or edit files, run commits, install packages, or otherwise modify system state unless the user explicitly asks you to during this turn.
+- If the user's request would require making changes, surface that and ask whether they want to switch out of explore mode first.
+
+You still have access to your full toolset; this is a behavioral guideline, not a permission lock.`
+
+      return wrapMessagesInSystemReminder([
+        createUserMessage({ content, isMeta: true }),
+      ])
+    }
     case 'auto_mode': {
       return getAutoModeInstructions(attachment)
     }

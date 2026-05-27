@@ -578,6 +578,10 @@ export type Attachment =
       planExists: boolean
     }
   | {
+      type: 'explore_mode'
+      isSubAgent?: boolean
+    }
+  | {
       type: 'auto_mode'
       reminderType: 'full' | 'sparse'
     }
@@ -880,6 +884,7 @@ export async function getAttachments(
     // replaces it; see src/services/skillSearch/prefetch.ts.
     maybe('plan_mode', () => getPlanModeAttachments(messages, toolUseContext)),
     maybe('plan_mode_exit', () => getPlanModeExitAttachment(toolUseContext)),
+    maybe('explore_mode', () => getExploreModeAttachments(toolUseContext)),
     ...(feature('TRANSCRIPT_CLASSIFIER')
       ? [
           maybe('auto_mode', () =>
@@ -1270,6 +1275,18 @@ async function getPlanModeExitAttachment(
   // planning. The user_message signal already fires on the request that
   // triggers planning ("plan how to deploy this"), which is the right moment.
   return [{ type: 'plan_mode_exit', planFilePath, planExists }]
+}
+
+async function getExploreModeAttachments(
+  toolUseContext: ToolUseContext,
+): Promise<Attachment[]> {
+  const appState = toolUseContext.getAppState()
+  if (appState.toolPermissionContext.mode !== 'explore') {
+    return []
+  }
+  return [
+    { type: 'explore_mode', isSubAgent: !!toolUseContext.agentId },
+  ]
 }
 
 function getAutoModeAttachmentTurnCount(messages: Message[]): {

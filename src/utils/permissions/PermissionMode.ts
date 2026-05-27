@@ -56,6 +56,13 @@ const PERMISSION_MODE_CONFIG: Partial<
     color: 'planMode',
     external: 'plan',
   },
+  explore: {
+    title: 'Explore Mode',
+    shortTitle: 'Explore',
+    symbol: '⌕',
+    color: 'planMode',
+    external: 'explore',
+  },
   acceptEdits: {
     title: 'Accept edits',
     shortTitle: 'Accept',

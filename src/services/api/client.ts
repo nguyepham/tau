@@ -20,6 +20,7 @@ import {
   isFirstPartyAnthropicBaseUrl,
   isThirdPartyProvider,
 } from 'src/utils/model/providers.js'
+import { getForcedProvider } from 'src/utils/forcedProvider.js'
 import { createProviderShim } from './providers/providerShim.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
 import {
@@ -85,11 +86,20 @@ function _autoCorrectProvider(
   current: import('../../utils/model/providers.js').APIProvider,
   model: string,
 ): import('../../utils/model/providers.js').APIProvider {
-  const m = model.toLowerCase()
-  if (ANTIGRAVITY_MODEL_IDS.has(m)) {
-    return 'antigravity'
+  // If a caller explicitly pinned a provider via runWithForcedProvider
+  // (team-mode roles, per-agent provider overrides), never rewrite the
+  // choice. The whole point of forcing is to bypass session-level routing.
+  if (getForcedProvider() !== undefined) {
+    return current
   }
 
+  // Explicitly-selected third-party providers are authoritative. The user
+  // (or /team-mode roster) picked this provider for this model — don't
+  // second-guess it just because some sibling provider also lists the
+  // model id. Without this guard, claude-sonnet-4-6 on Kiro silently
+  // re-routed to Antigravity, gemini-3-flash on OpenRouter silently
+  // re-routed to Antigravity, etc. — exactly the cross-provider
+  // contamination users hit when picking flash via opencode.
   if (
     current === 'kiro'
     || current === 'antigravity'
@@ -100,7 +110,9 @@ function _autoCorrectProvider(
     || current === 'requesty'
     || current === 'opencode'
     || current === 'groq'
+    || current === 'mistral'
     || current === 'nim'
+    || current === 'deepseek'
     || current === 'glm'
     || current === 'moonshot'
     || current === 'minimax'
@@ -114,6 +126,21 @@ function _autoCorrectProvider(
   ) {
     return current
   }
+
+  // Below here, `current` is one of {openai, gemini} — the legacy single-
+  // provider paths where users routinely mismatch model + provider. These
+  // get the cross-domain auto-correct so a Gemini model picked on the
+  // OpenAI provider still lands somewhere sane.
+
+  const m = model.toLowerCase()
+
+  // Antigravity hosts a small fixed set of Gemini 3.x + Claude 4.6 ids on
+  // cloudcode-pa. Only auto-route to it from a non-pinned provider — never
+  // from another 3P provider that may also serve the same id.
+  if (ANTIGRAVITY_MODEL_IDS.has(m)) {
+    return 'antigravity'
+  }
+
   // Gemini models → must use the Gemini provider
   if (
     current === 'openai'

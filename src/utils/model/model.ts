@@ -24,6 +24,7 @@ import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider, isThirdPartyProvider } from './providers.js'
+import { getForcedProvider } from '../forcedProvider.js'
 import { getProviderModelSet, isAgentRouterModelId } from './configs.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -175,6 +176,16 @@ export function getRuntimeMainLoopModel(params: {
   exceeds200kTokens?: boolean
 }): ModelName {
   const { permissionMode, mainLoopModel, exceeds200kTokens = false } = params
+
+  // When a caller pinned a provider for this run (team-mode role binding,
+  // per-agent provider override), the mainLoopModel passed in IS the model
+  // the user picked for that pinned provider. The opusplan/haiku→plan-mode
+  // swaps below read the session-global `model` setting and would replace
+  // the worker's model with a default Anthropic id, which the worker's
+  // pinned 3P provider does not serve. Honor the explicit pairing.
+  if (getForcedProvider() !== undefined) {
+    return mainLoopModel
+  }
 
   // opusplan uses Opus in plan mode without [1m] suffix.
   if (
