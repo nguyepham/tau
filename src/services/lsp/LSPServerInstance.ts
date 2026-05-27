@@ -1,3 +1,5 @@
+import { existsSync } from 'fs'
+import { createRequire } from 'module'
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import type { InitializeParams } from 'vscode-languageserver-protocol'
@@ -6,6 +8,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { sleep } from '../../utils/sleep.js'
+import { whichSync } from '../../utils/which.js'
 import type { createLSPClient as createLSPClientType } from './LSPClient.js'
 import type { LspServerState, ScopedLspServerConfig } from './types.js'
 
@@ -26,6 +29,37 @@ const MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3
  * Actual delays: 500ms, 1000ms, 2000ms
  */
 const RETRY_BASE_DELAY_MS = 500
+
+const requireFromLspServerInstance = createRequire(import.meta.url)
+
+function resolveLspCommand(
+  command: string,
+  args: string[],
+): { command: string; args: string[] } {
+  if (command !== 'bash-language-server') {
+    return { command, args }
+  }
+
+  try {
+    const packageJsonPath = requireFromLspServerInstance.resolve(
+      'bash-language-server/package.json',
+    )
+    const cliPath = path.join(path.dirname(packageJsonPath), 'out', 'cli.js')
+    if (existsSync(cliPath)) {
+      return { command: process.execPath, args: [cliPath, ...args] }
+    }
+  } catch {
+    // Fall through to the configured command so the normal spawn error is logged.
+  }
+
+  const pathCommand = whichSync(command)
+  if (pathCommand && process.platform !== 'win32') {
+    return { command: pathCommand, args }
+  }
+
+  return { command, args }
+}
+
 /**
  * LSP server instance interface returned by createLSPServerInstance.
  * Manages the lifecycle of a single LSP server with state tracking and health monitoring.
@@ -155,7 +189,11 @@ export function createLSPServerInstance(
       logForDebugging(`Starting LSP server instance: ${name}`)
 
       // Start the client
-      await client.start(config.command, config.args || [], {
+      const resolvedCommand = resolveLspCommand(
+        config.command,
+        config.args || [],
+      )
+      await client.start(resolvedCommand.command, resolvedCommand.args, {
         env: config.env,
         cwd: config.workspaceFolder,
       })

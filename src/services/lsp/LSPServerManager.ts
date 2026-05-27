@@ -9,6 +9,31 @@ import {
   type LSPServerInstance,
 } from './LSPServerInstance.js'
 import type { ScopedLspServerConfig } from './types.js'
+
+function getFileLookupKeys(filePath: string): string[] {
+  const ext = path.extname(filePath).toLowerCase()
+  const baseName = path.basename(filePath).toLowerCase()
+  const keys = ext ? [ext] : []
+
+  if (baseName.startsWith('.') && !keys.includes(baseName)) {
+    keys.push(baseName)
+  }
+
+  return keys
+}
+
+function getLanguageIdForFile(
+  config: ScopedLspServerConfig,
+  filePath: string,
+): string {
+  for (const key of getFileLookupKeys(filePath)) {
+    const languageId = config.extensionToLanguage[key]
+    if (languageId) return languageId
+  }
+
+  return 'plaintext'
+}
+
 /**
  * LSP Server Manager interface returned by createLSPServerManager.
  * Manages multiple LSP server instances and routes requests based on file extensions.
@@ -103,10 +128,10 @@ export function createLSPServerManager(): LSPServerManager {
           )
         }
 
-        // Map file extensions to this server (derive from extensionToLanguage)
-        const fileExtensions = Object.keys(config.extensionToLanguage)
-        for (const ext of fileExtensions) {
-          const normalized = ext.toLowerCase()
+        // Map file suffixes and supported dotfile names to this server.
+        const fileKeys = Object.keys(config.extensionToLanguage)
+        for (const key of fileKeys) {
+          const normalized = key.toLowerCase()
           if (!extensionMap.has(normalized)) {
             extensionMap.set(normalized, [])
           }
@@ -133,6 +158,16 @@ export function createLSPServerManager(): LSPServerManager {
             return params.items.map(() => null)
           },
         )
+
+        if (config.alwaysOn) {
+          void instance.start().catch(error => {
+            const err = new Error(
+              `Failed to start always-on LSP server ${serverName}: ${errorMessage(error)}`,
+            )
+            logError(err)
+            logForDebugging(err.message, { level: 'error' })
+          })
+        }
       } catch (error) {
         const err = error as Error
         logError(
@@ -190,20 +225,20 @@ export function createLSPServerManager(): LSPServerManager {
    * Returns undefined if no server handles this file type.
    */
   function getServerForFile(filePath: string): LSPServerInstance | undefined {
-    const ext = path.extname(filePath).toLowerCase()
-    const serverNames = extensionMap.get(ext)
+    for (const key of getFileLookupKeys(filePath)) {
+      const serverNames = extensionMap.get(key)
+      if (!serverNames || serverNames.length === 0) {
+        continue
+      }
 
-    if (!serverNames || serverNames.length === 0) {
-      return undefined
+      // Use first server (can add priority later)
+      const serverName = serverNames[0]
+      if (serverName) {
+        return servers.get(serverName)
+      }
     }
 
-    // Use first server (can add priority later)
-    const serverName = serverNames[0]
-    if (!serverName) {
-      return undefined
-    }
-
-    return servers.get(serverName)
+    return undefined
   }
 
   /**
@@ -282,8 +317,7 @@ export function createLSPServerManager(): LSPServerManager {
     }
 
     // Get language ID from server's extensionToLanguage mapping
-    const ext = path.extname(filePath).toLowerCase()
-    const languageId = server.config.extensionToLanguage[ext] || 'plaintext'
+    const languageId = getLanguageIdForFile(server.config, filePath)
 
     try {
       await server.sendNotification('textDocument/didOpen', {

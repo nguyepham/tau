@@ -28,6 +28,8 @@ export type BuiltinPluginDefinition = {
   hooks?: HooksSettings
   /** MCP servers provided by this plugin */
   mcpServers?: Record<string, McpServerConfig>
+  /** LSP servers provided by this plugin */
+  lspServers?: Record<string, LspServerConfig>
   /** Whether this plugin is available (e.g. based on system capabilities). Unavailable plugins are hidden entirely. */
   isAvailable?: () => boolean
   /** Default enabled state before the user sets a preference (defaults to true) */

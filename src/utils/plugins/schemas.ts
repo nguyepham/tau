@@ -784,6 +784,10 @@ export const LspServerConfigSchema = lazySchema(() =>
       .nonnegative()
       .optional()
       .describe('Maximum number of restart attempts before giving up'),
+    alwaysOn: z
+      .boolean()
+      .optional()
+      .describe('Whether to start the server as soon as LSP initializes'),
   }),
 )
 
