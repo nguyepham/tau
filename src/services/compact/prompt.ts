@@ -58,6 +58,28 @@ const DETAILED_ANALYSIS_INSTRUCTION_PARTIAL = `Before providing your final summa
    - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
 2. Double-check for technical accuracy and completeness, addressing each required element thoroughly.`
 
+const STATUS_OVERVIEW_SPEC = `0. Status Overview: A short structured progress block, written FIRST so a reader resuming work can grasp the situation in seconds. Use the exact markdown sub-structure below. If a sub-section has no content, write "(none)" — never omit a sub-section. Keep each bullet to one sentence. This block does NOT replace the detailed sections that follow; it summarizes them.
+
+   ## Goal
+   - [single-sentence statement of what the user is currently trying to accomplish]
+
+   ## Constraints & Preferences
+   - [explicit user constraints, preferences, conventions, "(none)" if none]
+
+   ## Progress
+   ### Done
+   - [items completed in this session, each one sentence]
+
+   ### In Progress
+   - [what was actively being worked on at compaction time]
+
+   ### Blocked
+   - [open blockers, unresolved errors, or unanswered questions; "(none)" if none]
+
+   ## Key Decisions
+   - [non-obvious choices made and the reason; "(none)" if none]
+`
+
 const BASE_COMPACT_PROMPT = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.
 This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing development work without losing context.
 
@@ -65,6 +87,7 @@ ${DETAILED_ANALYSIS_INSTRUCTION_BASE}
 
 Your summary should include the following sections:
 
+${STATUS_OVERVIEW_SPEC}
 1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
 2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
 3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include full code snippets where applicable and include a summary of why this file read or edit is important.
@@ -84,6 +107,27 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
+0. Status Overview:
+
+## Goal
+- [single-sentence task]
+
+## Constraints & Preferences
+- [constraint or "(none)"]
+
+## Progress
+### Done
+- [completed item]
+
+### In Progress
+- [active item]
+
+### Blocked
+- [blocker or "(none)"]
+
+## Key Decisions
+- [decision or "(none)"]
+
 1. Primary Request and Intent:
    [Detailed description]
 
@@ -110,7 +154,7 @@ Here's an example of how your output should be structured:
 5. Problem Solving:
    [Description of solved problems and ongoing troubleshooting]
 
-6. All user messages: 
+6. All user messages:
     - [Detailed non tool use user message]
     - [...]
 
@@ -148,6 +192,7 @@ ${DETAILED_ANALYSIS_INSTRUCTION_PARTIAL}
 
 Your summary should include the following sections:
 
+${STATUS_OVERVIEW_SPEC}
 1. Primary Request and Intent: Capture the user's explicit requests and intents from the recent messages
 2. Key Technical Concepts: List important technical concepts, technologies, and frameworks discussed recently.
 3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Include full code snippets where applicable and include a summary of why this file read or edit is important.
@@ -166,6 +211,27 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
+0. Status Overview:
+
+## Goal
+- [single-sentence task]
+
+## Constraints & Preferences
+- [constraint or "(none)"]
+
+## Progress
+### Done
+- [completed item]
+
+### In Progress
+- [active item]
+
+### Blocked
+- [blocker or "(none)"]
+
+## Key Decisions
+- [decision or "(none)"]
+
 1. Primary Request and Intent:
    [Detailed description]
 
@@ -211,6 +277,7 @@ ${DETAILED_ANALYSIS_INSTRUCTION_BASE}
 
 Your summary should include the following sections:
 
+${STATUS_OVERVIEW_SPEC}
 1. Primary Request and Intent: Capture the user's explicit requests and intents in detail
 2. Key Technical Concepts: List important technical concepts, technologies, and frameworks discussed.
 3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Include full code snippets where applicable and include a summary of why this file read or edit is important.
@@ -229,6 +296,27 @@ Here's an example of how your output should be structured:
 </analysis>
 
 <summary>
+0. Status Overview:
+
+## Goal
+- [single-sentence task]
+
+## Constraints & Preferences
+- [constraint or "(none)"]
+
+## Progress
+### Done
+- [completed item]
+
+### In Progress
+- [active item]
+
+### Blocked
+- [blocker or "(none)"]
+
+## Key Decisions
+- [decision or "(none)"]
+
 1. Primary Request and Intent:
    [Detailed description]
 

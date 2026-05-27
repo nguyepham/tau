@@ -127,7 +127,7 @@ test('Cursor run_shell_command input adapts to shared Bash schema', () => {
 
 test('Cursor list_dir emits Bash syntax for the Bash implementation', () => {
   const resolved = resolveCursorToolCall('list_dir', {
-    dir_path: 'C:\\Users\\ok\\Desktop\\claudex',
+    dir_path: 'C:\\Projects\\example',
   })
   assert(resolved?.implId === 'Bash', 'wrong impl')
   assert(String(resolved.input.command).startsWith('ls -la -- '), 'list_dir must use ls for Bash')

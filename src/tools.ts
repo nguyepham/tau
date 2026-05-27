@@ -73,6 +73,8 @@ const getSendMessageTool = () =>
 import { AskUserQuestionTool } from './tools/AskUserQuestionTool/AskUserQuestionTool.js'
 import { AFT_READ_ONLY_TOOLS } from './tools/AFTTool/AFTTools.js'
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
+import { SnapshotTool } from './tools/SnapshotTool/SnapshotTool.js'
+import { PtyTool } from './tools/PtyTool/PtyTool.js'
 import { ListMcpResourcesTool } from './tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from './tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { ToolSearchTool } from './tools/ToolSearchTool/ToolSearchTool.js'
@@ -223,6 +225,13 @@ export function getAllBaseTools(): Tools {
     ...(CtxInspectTool ? [CtxInspectTool] : []),
     ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
     ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
+    // SnapshotTool defaults ON. Opt out: TAU_SNAPSHOT_DISABLE=1.
+    ...(isEnvTruthy(process.env.TAU_SNAPSHOT_DISABLE) ? [] : [SnapshotTool]),
+    // PtyTool defaults OFF — interactive TTY rendering is still rough.
+    // Opt in: TAU_PTY_ENABLE=1. The tool also self-checks node-pty
+    // availability in isEnabled() so it stays hidden where the optional
+    // native module didn't install.
+    ...(isEnvTruthy(process.env.TAU_PTY_ENABLE) ? [PtyTool] : []),
     ...AFT_READ_ONLY_TOOLS,
     ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
     getSendMessageTool(),

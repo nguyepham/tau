@@ -85,6 +85,7 @@ Before executing the command, please follow these steps:
 
 1. Directory Verification:
    - If the command will create new directories or files, first use \`Get-ChildItem\` (or \`ls\`) to verify the parent directory exists and is the correct location
+   - Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run \`Get-Location\` plus a directory listing or manifest search first; do not assume folders like \`frontend\` exist under the current session cwd.
 
 2. Command Execution:
    - Always quote file paths that contain spaces with double quotes

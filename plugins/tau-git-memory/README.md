@@ -9,13 +9,13 @@ It stores memories as Markdown files in a small Git repository and keeps the mem
 Use it for one Tau session:
 
 ```bash
-tau --plugin-dir C:/Users/ok/Desktop/claudex/plugins/tau-git-memory
+tau --plugin-dir /path/to/claudex/plugins/tau-git-memory
 ```
 
 Or register the local marketplace:
 
 ```bash
-tau plugin marketplace add C:/Users/ok/Desktop/claudex/plugins
+tau plugin marketplace add /path/to/claudex/plugins
 tau plugin install tau-git-memory@claude-code-git-memory
 ```
 
@@ -30,7 +30,7 @@ Default store:
 Override it when testing:
 
 ```bash
-TAU_GIT_MEMORY_STORE=/tmp/tau-memory-test tau --plugin-dir C:/Users/ok/Desktop/claudex/plugins/tau-git-memory
+TAU_GIT_MEMORY_STORE=/tmp/tau-memory-test tau --plugin-dir /path/to/claudex/plugins/tau-git-memory
 ```
 
 ## Commands

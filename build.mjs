@@ -34,6 +34,7 @@ const optionalExternalPackages = new Set([
   '@opentelemetry/exporter-trace-otlp-http',
   '@opentelemetry/exporter-trace-otlp-proto',
   'modifiers-napi',
+  'node-pty',
   'yaml',
 ])
 const runtimeDependencies = Object.keys(pkg.dependencies ?? {})

@@ -30,6 +30,10 @@ import type {
   NormalizedUsage,
 } from '../types.js'
 import { OPENAI_COMPAT_TOOL_REGISTRY, selectEditToolSet } from './tools.js'
+import { getCompatShellDescription } from './shell_descriptions.js'
+import { filterToSingleShell } from './single_shell.js'
+import { getPlatform } from '../../utils/platform.js'
+import { getPowerShellEdition } from '../../utils/shell/powershellDetection.js'
 import {
   appendStrictParamsHint,
   OPENAI_COMPAT_TOOL_USAGE_RULES,
@@ -356,13 +360,32 @@ export class OpenAICompatLane implements Lane {
     // Per-model tool filter: small-tier models (e.g. Groq Llama on free
     // TPM) get a curated subset so the request fits the budget.
     const transformerForTools = getTransformer(provider as ProviderId)
-    const filteredTools = transformerForTools.filterTools?.(model, tools) ?? tools
+    const perModelFilteredTools = transformerForTools.filterTools?.(model, tools) ?? tools
+
+    // Drop the non-preferred shell when BOTH Bash and PowerShell are
+    // exposed (Windows + ant-default or CLAUDE_CODE_USE_POWERSHELL_TOOL=1
+    // + git-bash). Frontier lanes handle two shells fine; weak compat
+    // models routinely pick the wrong one and emit cross-shell syntax,
+    // so the lane picks for them. See single_shell.ts for selection.
+    const filteredTools = filterToSingleShell(perModelFilteredTools)
+
+    // Resolve the PowerShell edition once per request (memoized in
+    // powershellDetection.ts; subsequent requests hit the cache). We
+    // need it sync for shell-description rendering — `await` here, NOT
+    // inside buildOpenAITools.
+    const psEdition = await getPowerShellEdition()
 
     // Tool conversion → OpenAI function tools with per-provider schema
     // cleanup (strip $schema / $id / additionalProperties / strict etc.).
     // Every function tool gets the STRICT PARAMETERS description hint,
-    // plus function.strict: true when the provider honors it.
-    const openaiTools = buildOpenAITools(filteredTools, provider)
+    // plus function.strict: true when the provider honors it. Bash /
+    // PowerShell tool descriptions may be replaced with compact
+    // example-driven versions for weak compat-lane models — see
+    // shell_descriptions.ts.
+    const openaiTools = buildOpenAITools(filteredTools, provider, model, {
+      platform: getPlatform() === 'windows' ? 'win32' : (process.platform),
+      psEdition,
+    })
 
     // Prepend OPENAI_COMPAT_TOOL_USAGE_RULES to the system message when
     // tools are present — in-context reminder of schema authority for
@@ -1589,6 +1612,31 @@ function applyProviderRequestQuirks(
     sessionId,
   })
 
+  // Per-model default generation params (Qwen 0.55, Kimi-k2 0.6,
+  // MiniMax 1.0, Gemini-via-OR 1.0/0.95/64, …). Mirrors opencode's
+  // temperature/topP/topK helpers in provider/transform.ts. ONLY
+  // applied when the caller passed undefined — explicit values from
+  // claude.ts / frontier defaults always win.
+  const defaults = transformer.defaultGenerationParams?.(body.model)
+  if (defaults) {
+    if (body.temperature === undefined && defaults.temperature !== undefined) {
+      body.temperature = defaults.temperature
+    }
+    if (body.top_p === undefined && defaults.top_p !== undefined) {
+      body.top_p = defaults.top_p
+    }
+    if (defaults.top_k !== undefined) {
+      // top_k isn't part of the OpenAI Chat Completions shape; ride
+      // along via extra_body so DashScope / OpenRouter / Vercel
+      // gateways that accept it forward it to the upstream. Providers
+      // that don't recognize it ignore the field. Skip the override if
+      // the caller already populated extra_body.top_k.
+      const bag = body as unknown as Record<string, any>
+      bag.extra_body = bag.extra_body ?? {}
+      if (bag.extra_body.top_k === undefined) bag.extra_body.top_k = defaults.top_k
+    }
+  }
+
   // Groq rejects null-valued `function_call` on assistant messages;
   // always strip null tool_calls regardless of provider (the cost of
   // doing it uniformly is < 1ms, the risk of missing it per-provider
@@ -2016,9 +2064,16 @@ function applyProviderResponseQuirks(chunk: any, provider: ProviderType): any {
 
 // ─── Tool Schema Sanitization ────────────────────────────────────
 
+interface BuildToolsCtx {
+  platform: NodeJS.Platform
+  psEdition: 'desktop' | 'core' | null
+}
+
 function buildOpenAITools(
   tools: ProviderTool[],
   provider: ProviderType,
+  model: string,
+  ctx: BuildToolsCtx,
 ): Array<{
   type: 'function'
   function: {
@@ -2037,7 +2092,22 @@ function buildOpenAITools(
     const parameters = sanitizeToolSchema(
       t.input_schema ?? { type: 'object', properties: {} },
       provider,
+      model,
     )
+
+    // Shell-description override path: replaces caller's verbose
+    // frontier-tier description with a compact, example-driven version
+    // for Bash / PowerShell so weak compat-lane models stop emitting
+    // cross-shell syntax. The transformer can opt in/out per model;
+    // the default (used when the transformer doesn't override) is the
+    // shared OpenCode-style description from shell_descriptions.ts.
+    const isShellTool = t.name === 'Bash' || t.name === 'PowerShell'
+    const customShellDesc = isShellTool
+      ? transformer.overrideShellToolDescription?.(t.name as 'Bash' | 'PowerShell', model, ctx)
+        ?? getCompatShellDescription(t.name, ctx)
+      : undefined
+    const baseDescription = customShellDesc ?? t.description ?? ''
+
     return {
       type: 'function' as const,
       function: {
@@ -2046,7 +2116,7 @@ function buildOpenAITools(
         // appended — plain-text in-context reminder of required fields
         // + types. Backstops `strict: true` on providers that honor it
         // and does the whole job on providers that don't.
-        description: appendStrictParamsHint(t.description ?? '', parameters),
+        description: appendStrictParamsHint(baseDescription, parameters),
         parameters,
         ...(useStrict && { strict: true }),
       },
@@ -2056,9 +2126,17 @@ function buildOpenAITools(
 
 // Strip JSON Schema fields that various providers reject. Drop lists
 // are owned by each transformer (schemaDropList()); this wrapper just
-// runs the walk.
-function sanitizeToolSchema(schema: Record<string, unknown>, provider: ProviderType): Record<string, unknown> {
-  const drop = getTransformer(provider as ProviderId).schemaDropList()
+// runs the walk. After the walk, `sanitizeToolSchemaExtra()` (when the
+// transformer implements it) gets one more pass — used for shapes the
+// flat drop list can't express (Moonshot's "$ref must have no
+// siblings", tuple-form `items`, Gemini integer→string enums, …).
+function sanitizeToolSchema(
+  schema: Record<string, unknown>,
+  provider: ProviderType,
+  model: string,
+): Record<string, unknown> {
+  const transformer = getTransformer(provider as ProviderId)
+  const drop = transformer.schemaDropList()
 
   function walk(v: unknown): unknown {
     if (Array.isArray(v)) return v.map(walk)
@@ -2077,7 +2155,11 @@ function sanitizeToolSchema(schema: Record<string, unknown>, provider: ProviderT
     }
     return v
   }
-  return walk(schema) as Record<string, unknown>
+  const dropped = walk(schema) as Record<string, unknown>
+  if (transformer.sanitizeToolSchemaExtra) {
+    return transformer.sanitizeToolSchemaExtra(dropped, model)
+  }
+  return dropped
 }
 
 // ─── History Conversion ──────────────────────────────────────────

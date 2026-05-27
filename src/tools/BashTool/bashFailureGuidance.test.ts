@@ -116,14 +116,44 @@ function main(): void {
 
   test('adds Windows Bash path guidance', () => {
     const guidance = buildBashFailureGuidance(
-      'cd "C:\\Users\\ok\\Desktop\\Hadoop"',
+      'cd "C:\\Projects\\Hadoop"',
       1,
-      'bash: cd: C:UsersokDesktopHadoop: No such file or directory',
+      'bash: cd: C:ProjectsHadoop: No such file or directory',
     )
 
     assert(
       guidance.includes('prefer C:/path or /c/path'),
       `expected Windows Bash path guidance, got: ${guidance}`,
+    )
+  })
+
+  test('adds project-root diagnostics for cd plus npm commands', () => {
+    const guidance = buildBashFailureGuidance(
+      'cd frontend && npm run build',
+      1,
+      'bash: cd: frontend: No such file or directory',
+    )
+
+    assert(
+      guidance.includes('verify the active cwd and target'),
+      `expected cwd target guidance, got: ${guidance}`,
+    )
+    assert(
+      guidance.includes('find .. -maxdepth 4 -name package.json'),
+      `expected project manifest search guidance, got: ${guidance}`,
+    )
+  })
+
+  test('adds project-root diagnostics even without command output', () => {
+    const guidance = buildBashFailureGuidance(
+      'cd frontend && npm run build',
+      1,
+      '',
+    )
+
+    assert(
+      guidance.includes('Resolve the project root'),
+      `expected project-root guidance, got: ${guidance}`,
     )
   })
 

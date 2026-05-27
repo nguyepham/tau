@@ -100,6 +100,18 @@ export const glmTransformer: Transformer = {
   cacheControlMode(): 'none' | 'passthrough' | 'last-only' {
     return 'none'
   },
+
+  // GLM-4.6/4.7 emit syntax-clean tool calls at temperature 1.0;
+  // BigModel's docs and opencode's `temperature()` matrix both use
+  // 1.0 for those. Lower values made code generation deterministic
+  // but tool-call argument quality regressed.
+  defaultGenerationParams(model: string) {
+    const id = model.toLowerCase()
+    if (id.includes('glm-4.6') || id.includes('glm-4.7')) {
+      return { temperature: 1.0 }
+    }
+    return undefined
+  },
 }
 
 function normalizeGlmModelId(model: string): string {

@@ -185,4 +185,65 @@ export interface Transformer {
    * sends the caller's system text verbatim without the preamble.
    */
   skipToolUsagePreamble?(model: string): boolean
+
+  /**
+   * Optional extra JSON-Schema sanitizer that runs AFTER the drop-list
+   * walk in sanitizeToolSchema(). Use for provider-specific schema
+   * shapes that the drop list can't express (e.g. Moonshot's "$ref must
+   * have no siblings", tuple-form `items` arrays, Gemini's integer enum
+   * → string enum, missing `items` on array nodes).
+   *
+   * Receives the schema AFTER unknown-key/$x stripping; must return a
+   * new object (don't mutate). `modelId` is the caller-supplied model
+   * id, useful for sub-provider gating (e.g. Gemini-via-OpenRouter).
+   */
+  sanitizeToolSchemaExtra?(
+    schema: Record<string, unknown>,
+    modelId: string,
+  ): Record<string, unknown>
+
+  /**
+   * Optional per-model default generation parameters (temperature,
+   * top_p, top_k). Applied by the lane ONLY when the caller did not
+   * pass an explicit value — frontier overrides from claude.ts always
+   * win. Use this for known-quirky models (Qwen 0.55, Kimi-k2 0.6,
+   * MiniMax 1.0/0.95/20-40, Gemini 1.0/0.95/64).
+   *
+   * Mirrors opencode's per-model temperature/topP/topK helpers in
+   * `provider/transform.ts`.
+   */
+  defaultGenerationParams?(model: string): {
+    temperature?: number
+    top_p?: number
+    top_k?: number
+  } | undefined
+
+  /**
+   * Optional per-model shell-tool description override. The compat lane
+   * forwards the caller's BashTool / PowerShellTool description verbatim
+   * by default (which is frontier-tier verbose), so weak models drown
+   * in detail and emit wrong-shell syntax. When this hook returns a
+   * non-empty string, it REPLACES the caller's description for the
+   * named shell tool BEFORE the STRICT PARAMETERS hint is appended.
+   *
+   * - `toolName` is "Bash" or "PowerShell" (the only names the compat
+   *   lane swaps; pass-through otherwise).
+   * - `ctx.platform` is the host platform (`process.platform`) so the
+   *   override can pick POSIX vs Windows paths and shells.
+   * - `ctx.psEdition` is `"desktop"` (5.1), `"core"` (7+), or `null`
+   *   when not yet resolved or not applicable.
+   *
+   * Must be deterministic given (toolName, model, ctx) so the cached
+   * description stays byte-stable across turns. Don't return per-call
+   * data (homedir, tmpdir, session id) or you'll churn the prompt
+   * cache.
+   */
+  overrideShellToolDescription?(
+    toolName: 'Bash' | 'PowerShell',
+    model: string,
+    ctx: {
+      platform: NodeJS.Platform
+      psEdition: 'desktop' | 'core' | null
+    },
+  ): string | undefined
 }

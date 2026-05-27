@@ -116,6 +116,35 @@ function hasPipeline(command: string): boolean {
   return /(^|[^|])\|(?!\|)/.test(command)
 }
 
+function unquoteShellToken(token: string): string {
+  const trimmed = token.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+function shellQuoteForHint(value: string): string {
+  if (/^[A-Za-z0-9_./:\\-]+$/.test(value)) return value
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function extractCdTarget(command: string): string | undefined {
+  const match = /(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/i.exec(
+    command,
+  )
+  return match?.[1] ? unquoteShellToken(match[1]) : undefined
+}
+
+function looksLikeProjectTaskCommand(command: string): boolean {
+  return /\b(npm|yarn|pnpm|bun|npx|vite|tsc|eslint|pytest|cargo|mvn|gradle|make)\b|\bpackage\.json\b|\bfrontend\b|\bsrc[\\/]/i.test(
+    command,
+  )
+}
+
 function commandContextGuidance(command: string): string[] {
   const hints: string[] = []
 
@@ -134,6 +163,20 @@ function commandContextGuidance(command: string): string[] {
   if (/[A-Za-z]:\\/.test(command)) {
     hints.push(
       'In Bash on Windows, prefer C:/path or /c/path over backslash paths unless every backslash is intentionally escaped.',
+    )
+  }
+
+  const cdTarget = extractCdTarget(command)
+  if (cdTarget) {
+    const quotedTarget = shellQuoteForHint(cdTarget)
+    hints.push(
+      `This command depends on changing directories into ${quotedTarget}; before retrying, verify the active cwd and target with pwd && ls -la && test -d ${quotedTarget} && ls -la ${quotedTarget}. If the target is missing, locate the real project directory first.`,
+    )
+  }
+
+  if (looksLikeProjectTaskCommand(command)) {
+    hints.push(
+      "Resolve the project root before running build/test/package commands: use pwd && find .. -maxdepth 4 -name package.json -not -path '*/node_modules/*', then run the command from the directory containing the relevant manifest.",
     )
   }
 

@@ -67,6 +67,48 @@ export const openrouterTransformer: Transformer = {
     return new Set(['$schema', '$id', '$ref', '$comment'])
   },
 
+  // Gemini routed via OpenRouter passes through the Gemini schema
+  // validator on the upstream side, which has stricter rules than the
+  // base OpenAI Chat shape:
+  //   - integer/number enum values must be STRINGS.
+  //   - `array` nodes must have an `items` schema.
+  //   - non-object types must not have `properties` / `required`.
+  //   - `required` must only list fields that exist in `properties`.
+  // Mirrors opencode's `sanitizeGemini` in provider/transform.ts:1329.
+  // Other upstreams on OR (Anthropic, OpenAI, Llama, …) accept the
+  // base shape, so the sanitizer is gated on the model id.
+  sanitizeToolSchemaExtra(schema: Record<string, unknown>, modelId: string): Record<string, unknown> {
+    if (!isGeminiOnOR(modelId)) return schema
+    return sanitizeGeminiSchema(schema) as Record<string, unknown>
+  },
+
+  // Per-model default generation params. OpenRouter hosts many
+  // upstreams; defaults follow opencode's model-id matrix:
+  //   - Gemini family → temperature 1.0, top_p 0.95, top_k 64.
+  //   - Qwen family → temperature 0.55, top_p 1.0.
+  //   - MiniMax-M2 → temperature 1.0, top_p 0.95, top_k 20–40.
+  //   - Kimi K2 family → 0.6 / 1.0 depending on variant.
+  defaultGenerationParams(model: string) {
+    const id = model.toLowerCase()
+    if (id.includes('google/gemini') || id.includes('gemini')) {
+      return { temperature: 1.0, top_p: 0.95, top_k: 64 }
+    }
+    if (id.includes('qwen')) {
+      return { temperature: 0.55, top_p: 1.0 }
+    }
+    if (id.includes('minimax-m2') || id.includes('minimax/m2')) {
+      const k = ['m2.', 'm25', 'm21'].some(s => id.includes(s)) ? 40 : 20
+      return { temperature: 1.0, top_p: 0.95, top_k: k }
+    }
+    if (id.includes('kimi-k2') || id.includes('moonshot/kimi-k2')) {
+      const isThinking = ['thinking', 'k2.', 'k2p', 'k2-5'].some(s => id.includes(s))
+      return isThinking
+        ? { temperature: 1.0, top_p: 0.95 }
+        : { temperature: 0.6 }
+    }
+    return undefined
+  },
+
   contextExceededMarkers(): string[] {
     return ['context length', 'context_length_exceeded', 'prompt is too long', 'maximum context']
   },
@@ -121,6 +163,80 @@ function resolveOpenRouterCacheRetention(): OpenRouterCacheRetention {
     return 'long'
   }
   return 'short'
+}
+
+function isGeminiOnOR(model: string): boolean {
+  const m = model.toLowerCase()
+  return m.startsWith('google/gemini') || m.includes('gemini-')
+}
+
+/**
+ * Gemini upstream sanitizer. Mirrors opencode's `sanitizeGemini` in
+ * provider/transform.ts. Returns a fresh object — never mutates input.
+ */
+function sanitizeGeminiSchema(node: unknown): unknown {
+  if (node === null || typeof node !== 'object') return node
+  if (Array.isArray(node)) return node.map(sanitizeGeminiSchema)
+
+  const obj = node as Record<string, unknown>
+  const result: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'enum' && Array.isArray(v)) {
+      result[k] = v.map(item => String(item))
+      // Integer/number enums become string enums; the type field must
+      // follow suit or Gemini 400s with "type mismatch in enum".
+      if (result.type === 'integer' || result.type === 'number') {
+        result.type = 'string'
+      }
+    } else if (v !== null && typeof v === 'object') {
+      result[k] = sanitizeGeminiSchema(v)
+    } else {
+      result[k] = v
+    }
+  }
+
+  // `required` must only list fields that exist in `properties`. MCP
+  // tools occasionally list required fields that aren't declared
+  // (validator quirk) — Gemini rejects those.
+  if (result.type === 'object' && result.properties && Array.isArray(result.required)) {
+    const props = result.properties as Record<string, unknown>
+    result.required = (result.required as unknown[]).filter(
+      (f): f is string => typeof f === 'string' && f in props,
+    )
+  }
+
+  // Array nodes must carry an `items` schema. Default to `string`
+  // when the original schema was loose (e.g. JSON `{ type: "array" }`).
+  if (result.type === 'array' && !hasCombiner(result)) {
+    if (result.items == null) result.items = { type: 'string' }
+    else if (
+      typeof result.items === 'object' &&
+      !Array.isArray(result.items) &&
+      !hasSchemaIntent(result.items as Record<string, unknown>)
+    ) {
+      ;(result.items as Record<string, unknown>).type = 'string'
+    }
+  }
+
+  // Non-object nodes must not declare `properties` / `required`.
+  if (result.type && result.type !== 'object' && !hasCombiner(result)) {
+    delete result.properties
+    delete result.required
+  }
+  return result
+}
+
+function hasCombiner(node: Record<string, unknown>): boolean {
+  return Array.isArray(node.anyOf) || Array.isArray(node.oneOf) || Array.isArray(node.allOf)
+}
+
+function hasSchemaIntent(node: Record<string, unknown>): boolean {
+  if (hasCombiner(node)) return true
+  return [
+    'type', 'properties', 'items', 'prefixItems', 'enum', 'const', '$ref',
+    'additionalProperties', 'patternProperties', 'required', 'not', 'if',
+    'then', 'else',
+  ].some(k => k in node)
 }
 
 function openrouterModelSupportsReasoning(model: string): boolean {

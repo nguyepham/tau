@@ -32,24 +32,45 @@ const RETRY_BASE_DELAY_MS = 500
 
 const requireFromLspServerInstance = createRequire(import.meta.url)
 
+const NODE_PACKAGE_LSP_COMMANDS: Record<
+  string,
+  { packageName: string; relativeBinPath: string }
+> = {
+  'bash-language-server': {
+    packageName: 'bash-language-server',
+    relativeBinPath: path.join('out', 'cli.js'),
+  },
+  vtsls: {
+    packageName: '@vtsls/language-server',
+    relativeBinPath: path.join('bin', 'vtsls.js'),
+  },
+  'yaml-language-server': {
+    packageName: 'yaml-language-server',
+    relativeBinPath: path.join('bin', 'yaml-language-server'),
+  },
+}
+
 function resolveLspCommand(
   command: string,
   args: string[],
 ): { command: string; args: string[] } {
-  if (command !== 'bash-language-server') {
-    return { command, args }
-  }
+  const packageBackedCommand = NODE_PACKAGE_LSP_COMMANDS[command]
 
-  try {
-    const packageJsonPath = requireFromLspServerInstance.resolve(
-      'bash-language-server/package.json',
-    )
-    const cliPath = path.join(path.dirname(packageJsonPath), 'out', 'cli.js')
-    if (existsSync(cliPath)) {
-      return { command: process.execPath, args: [cliPath, ...args] }
+  if (packageBackedCommand) {
+    try {
+      const packageJsonPath = requireFromLspServerInstance.resolve(
+        `${packageBackedCommand.packageName}/package.json`,
+      )
+      const cliPath = path.join(
+        path.dirname(packageJsonPath),
+        packageBackedCommand.relativeBinPath,
+      )
+      if (existsSync(cliPath)) {
+        return { command: process.execPath, args: [cliPath, ...args] }
+      }
+    } catch {
+      // Fall through to the configured command so the normal spawn error is logged.
     }
-  } catch {
-    // Fall through to the configured command so the normal spawn error is logged.
   }
 
   const pathCommand = whichSync(command)

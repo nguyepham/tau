@@ -154,6 +154,17 @@ export const minimaxTransformer: Transformer = {
   cacheControlMode(): 'none' | 'passthrough' | 'last-only' {
     return 'none'
   },
+
+  // MiniMax docs: temperature 1.0, top_p 0.95 are the recommended
+  // sampling settings; top_k 20 for M2 and 40 for M2.1+ (per opencode's
+  // matrix in provider/transform.ts:508). Only applied when caller
+  // didn't pass an explicit value.
+  defaultGenerationParams(model: string) {
+    const id = model.toLowerCase()
+    if (!id.startsWith('minimax-')) return undefined
+    const k = ['m2.', 'm25', 'm21'].some(s => id.includes(s)) ? 40 : 20
+    return { temperature: 1.0, top_p: 0.95, top_k: k }
+  },
 }
 
 function isMiniMaxTextModel(id: string): boolean {
