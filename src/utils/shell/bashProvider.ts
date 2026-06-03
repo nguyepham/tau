@@ -188,11 +188,14 @@ export async function createBashShellProvider(
     },
 
     getSpawnArgs(commandString: string): string[] {
-      const skipLoginShell = lastSnapshotFilePath !== undefined
-      if (skipLoginShell) {
+      if (lastSnapshotFilePath === undefined) {
+        logForDebugging(
+          'Spawning shell without login because shell snapshot is unavailable',
+        )
+      } else {
         logForDebugging('Spawning shell without login (-l flag skipped)')
       }
-      return [...(skipLoginShell ? [] : ['-l']), '-c', commandString]
+      return ['-c', commandString]
     },
 
     async getEnvironmentOverrides(

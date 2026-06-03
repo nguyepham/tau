@@ -266,14 +266,17 @@ function getUserSnapshotContent(configFile: string): string {
  * Generates Tau specific snapshot content
  * This content is always included regardless of user configuration
  */
-async function getClaudeCodeSnapshotContent(): Promise<string> {
+async function getClaudeCodeSnapshotContent(shellPath: string): Promise<string> {
   // Get the appropriate PATH based on platform
   let pathValue = process.env.PATH
   if (getPlatform() === 'windows') {
-    // On Windows with git-bash, read the Cygwin PATH
-    const cygwinResult = await execa('echo $PATH', {
-      shell: true,
+    // On Windows with Git Bash, read the MSYS PATH through bash itself.
+    // Do not use shell:true here: that goes through cmd.exe and can trigger
+    // Command Processor AutoRun hooks such as Clink before Tau even starts a
+    // user command.
+    const cygwinResult = await execa(shellPath, ['-c', 'printf %s "$PATH"'], {
       reject: false,
+      stderr: 'ignore',
     })
     if (cygwinResult.exitCode === 0 && cygwinResult.stdout) {
       pathValue = cygwinResult.stdout.trim()
@@ -357,10 +360,10 @@ async function getSnapshotScript(
       ? // we need to manually force alias expansion in bash - normally `getUserSnapshotContent` takes care of this
         'echo "shopt -s expand_aliases" >> "$SNAPSHOT_FILE"'
       : ''
-  const claudeCodeContent = await getClaudeCodeSnapshotContent()
+  const claudeCodeContent = await getClaudeCodeSnapshotContent(shellPath)
 
   const script = `SNAPSHOT_FILE=${quote([snapshotFilePath])}
-      ${configFileExists ? `source "${configFile}" < /dev/null` : '# No user config file to source'}
+      ${configFileExists ? `source "${configFile}" < /dev/null >/dev/null 2>&1 || true` : '# No user config file to source'}
 
       # First, create/clear the snapshot file
       echo "# Snapshot file" >| "$SNAPSHOT_FILE"

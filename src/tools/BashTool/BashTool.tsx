@@ -45,6 +45,7 @@ import { validateBashCommandPartsMatch } from './bashCommandParts.js';
 import { renderBashCommandPlan } from './bashCommandPlanner.js';
 import { appendBashFailureGuidance } from './bashFailureGuidance.js';
 import { validateBashExecutionPreflight } from './bashPreflightValidation.js';
+import { validateBashSyntax } from './bashSyntaxValidation.js';
 import { maybeAppendCommandHelp } from './commandHelp.js';
 import { checkBashRetryGuard, recordBashFailure, recordBashSuccess } from './bashRetryGuard.js';
 import { getPlatform } from '../../utils/platform.js';
@@ -631,6 +632,14 @@ export const BashTool = buildTool({
         result: false,
         message: preflightValidation.message,
         errorCode: 13
+      };
+    }
+    const syntaxValidation = await validateBashSyntax(input.command);
+    if (!syntaxValidation.ok) {
+      return {
+        result: false,
+        message: syntaxValidation.message,
+        errorCode: 15
       };
     }
     return {

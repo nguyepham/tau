@@ -9,6 +9,7 @@ import {
   normalizeSmartQuotesOutsideQuotes,
   normalizeUnicodeSpacesOutsideQuotes,
   rewritePowerShellNullRedirect,
+  rewriteWindowsCmdAutoRun,
   rewriteUnsafeGlobalNodeTaskkill,
   rewriteWindowsReservedRedirects,
   stripCommandGarbage,
@@ -181,6 +182,40 @@ function main(): void {
       rewriteWindowsReservedRedirects('cat con'),
       'cat con',
       'con not in redirect must be left alone',
+    )
+  })
+
+  console.log('\nrewriteWindowsCmdAutoRun:')
+
+  test('adds /d before cmd /c to disable AutoRun', () => {
+    assertEqual(
+      rewriteWindowsCmdAutoRun('cmd /c python test_model.py'),
+      'cmd /d /c python test_model.py',
+      'cmd /c must become cmd /d /c',
+    )
+  })
+
+  test('adds /d before cmd.exe /s /c', () => {
+    assertEqual(
+      rewriteWindowsCmdAutoRun('cmd.exe /s /c echo hi'),
+      'cmd.exe /d /s /c echo hi',
+      'cmd.exe /s /c must gain /d',
+    )
+  })
+
+  test('does NOT duplicate existing /d', () => {
+    assertEqual(
+      rewriteWindowsCmdAutoRun('cmd /d /c echo hi'),
+      'cmd /d /c echo hi',
+      'existing /d must be preserved',
+    )
+  })
+
+  test('rewrites cmd after a command separator', () => {
+    assertEqual(
+      rewriteWindowsCmdAutoRun('echo before && cmd /c echo after'),
+      'echo before && cmd /d /c echo after',
+      'cmd segment after && must be rewritten',
     )
   })
 
@@ -372,6 +407,14 @@ function main(): void {
     const once = applyBashDefensiveRewrites(input)
     const twice = applyBashDefensiveRewrites(once)
     assertEqual(once, twice, 'second pass must be a no-op')
+  })
+
+  test('adds cmd /d in the full pipeline', () => {
+    assertEqual(
+      applyBashDefensiveRewrites('cmd /c python test_model.py'),
+      'cmd /d /c python test_model.py',
+      'pipeline must disable Command Processor AutoRun',
+    )
   })
 
   test('normalizes typography artifacts in the full pipeline', () => {

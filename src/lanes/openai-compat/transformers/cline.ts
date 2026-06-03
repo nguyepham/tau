@@ -13,6 +13,11 @@
 
 import type { Transformer, TransformContext } from './base.js'
 import type { OpenAIChatRequest } from './shared_types.js'
+import {
+  applyClineReasoningToRequest,
+  getClineRequestEffort,
+  isClineThinkingModel,
+} from '../../../utils/model/clineThinking.js'
 
 export const clineTransformer: Transformer = {
   id: 'cline',
@@ -37,6 +42,12 @@ export const clineTransformer: Transformer = {
   },
 
   transformRequest(body: OpenAIChatRequest, _ctx: TransformContext): OpenAIChatRequest {
+    if (isClineThinkingModel(body.model)) {
+      applyClineReasoningToRequest(
+        body as unknown as Record<string, unknown>,
+        getClineRequestEffort(body.model),
+      )
+    }
     return body
   },
 

@@ -43,6 +43,11 @@ import {
   OPENAI_COMPAT_TOOL_USAGE_RULES,
   appendStrictParamsHint,
 } from '../shared/mcp_bridge.js'
+import {
+  applyClineReasoningToRequest,
+  getClineRequestEffort,
+  isClineThinkingModel,
+} from '../../utils/model/clineThinking.js'
 
 interface StoredClineOAuthBlob {
   accessToken?: string
@@ -57,15 +62,36 @@ interface ClineAuthSession {
 interface RawClineModelInfo {
   id?: string
   name?: string
+  description?: string | null
+  supportsReasoning?: boolean | null
+  supportsThinking?: boolean | null
+  supports_reasoning?: boolean | null
+  supports_thinking?: boolean | null
+  capabilities?: string[] | null
+  model_info?: {
+    supports_reasoning?: boolean | null
+    supportsThinking?: boolean | null
+    supportsReasoning?: boolean | null
+    capabilities?: string[] | null
+  } | null
   context_length?: number | null
   top_provider?: {
     context_length?: number | null
+    max_completion_tokens?: number | null
+  } | null
+  architecture?: {
+    modality?: string | string[] | null
+    input_modalities?: string[] | null
+    output_modalities?: string[] | null
   } | null
   supported_parameters?: string[] | null
 }
 
 interface RecommendedModelEntry {
   id?: string
+  name?: string
+  tags?: string[]
+  description?: string
 }
 
 interface RecommendedModelResponse {
@@ -75,9 +101,9 @@ interface RecommendedModelResponse {
 
 interface ClineModelsResponse {
   data?: RawClineModelInfo[]
+  models?: RawClineModelInfo[]
 }
 
-const CLINE_MODEL_LIST_LIMIT = 20
 const CLINE_MODELS_CACHE_TTL_MS = 5 * 60_000
 const CLINE_REFRESH_BUFFER_MS = 5 * 60_000
 const CLINE_CONTEXT_EXCEEDED_MARKERS = [
@@ -93,6 +119,9 @@ const CLINE_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'minimax/minimax-m2.5', name: 'MiniMax M2.5' },
   { id: 'arcee-ai/trinity-large-preview:free', name: 'Arcee Trinity Large Preview' },
   { id: 'z-ai/glm-5', name: 'GLM-5' },
+  { id: 'anthropic/claude-opus-4.8', name: 'Claude Opus 4.8' },
+  { id: 'openai/gpt-5.5', name: 'GPT-5.5' },
+  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
   { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
   { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7' },
   { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6' },
@@ -124,6 +153,9 @@ const CLINE_FALLBACK_RECOMMENDED_MODEL_IDS = new Set([
   'minimax/minimax-m2.7',
   'google/gemini-3.1-pro-preview',
   'anthropic/claude-sonnet-4.6',
+  'anthropic/claude-opus-4.8',
+  'openai/gpt-5.5',
+  'deepseek/deepseek-v4-pro',
   'anthropic/claude-opus-4.6',
   'openai/gpt-5.3-codex',
   'anthropic/claude-opus-4.7',
@@ -136,8 +168,10 @@ const CLINE_LATEST_MODEL_IDS = new Set([
   'google/gemini-3.1-pro-preview',
   'google/gemini-3.1-flash-lite-preview',
   'anthropic/claude-sonnet-4.6',
+  'anthropic/claude-opus-4.8',
   'anthropic/claude-opus-4.6',
   'anthropic/claude-opus-4.7',
+  'openai/gpt-5.5',
   'openai/gpt-5.4',
   'openai/gpt-5.3-codex',
   'openai/gpt-5-codex',
@@ -163,16 +197,13 @@ const CLINE_VALUE_MODEL_IDS = new Set([
   'minimax/minimax-m2.5',
 ].map(normalizeClineModelId))
 
-const CLINE_CURATED_MODEL_RANK = new Map(
-  CLINE_FALLBACK_MODELS.map((model, index) => [normalizeClineModelId(model.id), index]),
-)
-
 export class ClineLane implements Lane {
   readonly name = 'cline'
   readonly displayName = 'Cline'
 
   private oauthTokenHint: string | null = null
   private modelCache: { models: ModelInfo[]; at: number } | null = null
+  private reasoningModelIds = new Set<string>()
   private refreshInFlight: Promise<string | null> | null = null
 
   configure(opts: { oauthToken?: string | null }): void {
@@ -226,15 +257,24 @@ export class ClineLane implements Lane {
 
     const recommendedIds = new Set<string>()
     const freeIds = new Set<string>()
+    const recommendedModels: ModelInfo[] = []
 
     if (recommendedResult.status === 'fulfilled' && recommendedResult.value.ok) {
       try {
         const payload = await recommendedResult.value.json() as RecommendedModelResponse
         for (const entry of payload.recommended ?? []) {
-          if (typeof entry.id === 'string' && entry.id.length > 0) recommendedIds.add(entry.id)
+          const model = recommendedEntryToModel(entry)
+          if (model) {
+            recommendedIds.add(model.id)
+            recommendedModels.push(model)
+          }
         }
         for (const entry of payload.free ?? []) {
-          if (typeof entry.id === 'string' && entry.id.length > 0) freeIds.add(entry.id)
+          const model = recommendedEntryToModel(entry)
+          if (model) {
+            freeIds.add(model.id)
+            recommendedModels.push(model)
+          }
         }
       } catch {
         // Ignore recommended-model parse failures and keep the base catalog.
@@ -245,7 +285,7 @@ export class ClineLane implements Lane {
     if (modelsResult.status === 'fulfilled' && modelsResult.value.ok) {
       try {
         const payload = await modelsResult.value.json() as ClineModelsResponse
-        models = (payload.data ?? [])
+        models = extractClineModelData(payload)
           .filter((model): model is RawClineModelInfo & { id: string } =>
             typeof model.id === 'string' && model.id.length > 0,
           )
@@ -258,17 +298,25 @@ export class ClineLane implements Lane {
               ? model.supported_parameters.includes('tools') || model.supported_parameters.includes('tool_choice')
               : true
             ),
+            tags: rawClineModelSupportsReasoning(model) ? ['thinking'] : undefined,
           }))
       } catch {
         models = []
       }
     }
 
+    models.push(...recommendedModels)
+
     if (models.length === 0) {
       models = [...CLINE_FALLBACK_MODELS]
     }
 
     models = this._curateModels(models, recommendedIds, freeIds)
+    this.reasoningModelIds = new Set(
+      models
+        .filter(model => model.tags?.some(tag => tag === 'thinking' || tag === 'reasoning'))
+        .map(model => normalizeClineModelId(model.id)),
+    )
 
     this.modelCache = { models, at: Date.now() }
     return models
@@ -285,21 +333,26 @@ export class ClineLane implements Lane {
     const normalizedFree = new Set(
       [...freeIds].map((id) => normalizeClineModelId(id)),
     )
+    const useFallbackSignals = normalizedRecommended.size === 0 && normalizedFree.size === 0
 
-    const uniqueModels = Array.from(
-      new Map(
-        models.map((model) => [normalizeClineModelId(model.id), model]),
-      ).values(),
-    )
+    const originalRank = new Map<string, number>()
+    const byId = new Map<string, ModelInfo>()
+    models.forEach((model, index) => {
+      const normalizedId = normalizeClineModelId(model.id)
+      if (!originalRank.has(normalizedId)) originalRank.set(normalizedId, index)
+      const previous = byId.get(normalizedId)
+      byId.set(normalizedId, previous ? mergeClineModelInfo(previous, model) : model)
+    })
+    const uniqueModels = Array.from(byId.values())
 
     uniqueModels.sort((left, right) => {
       const scoreDiff =
-        scoreClineModel(right, normalizedRecommended, normalizedFree)
-        - scoreClineModel(left, normalizedRecommended, normalizedFree)
+        scoreClineModel(right, normalizedRecommended, normalizedFree, useFallbackSignals)
+        - scoreClineModel(left, normalizedRecommended, normalizedFree, useFallbackSignals)
       if (scoreDiff !== 0) return scoreDiff
 
-      const leftRank = CLINE_CURATED_MODEL_RANK.get(normalizeClineModelId(left.id)) ?? Number.MAX_SAFE_INTEGER
-      const rightRank = CLINE_CURATED_MODEL_RANK.get(normalizeClineModelId(right.id)) ?? Number.MAX_SAFE_INTEGER
+      const leftRank = originalRank.get(normalizeClineModelId(left.id)) ?? Number.MAX_SAFE_INTEGER
+      const rightRank = originalRank.get(normalizeClineModelId(right.id)) ?? Number.MAX_SAFE_INTEGER
       if (leftRank !== rightRank) return leftRank - rightRank
 
       const leftContext = left.contextWindow ?? 0
@@ -313,10 +366,13 @@ export class ClineLane implements Lane {
     })
 
     return uniqueModels
-      .slice(0, CLINE_MODEL_LIST_LIMIT)
       .map((model) => {
-        const tags = getClineModelTags(model.id, normalizedFree)
-        return tags ? { ...model, tags } : model
+        const tags = mergeClineTags(
+          model.tags,
+          getClineModelTags(model.id, normalizedRecommended, normalizedFree, useFallbackSignals),
+          clineModelSupportsReasoning(model.id) ? ['thinking'] : undefined,
+        )
+        return tags.length > 0 ? { ...model, tags } : model
       })
   }
 
@@ -416,7 +472,6 @@ export class ClineLane implements Lane {
     stopSequences?: string[]
     thinking?: LaneProviderCallParams['thinking']
   }): Record<string, unknown> {
-    const effort = resolveReasoningEffort(opts.thinking)
     const body: Record<string, unknown> = {
       model: opts.model,
       messages: opts.messages,
@@ -431,11 +486,18 @@ export class ClineLane implements Lane {
       ...(opts.stopSequences && opts.stopSequences.length > 0 && { stop: opts.stopSequences }),
     }
 
-    if (effort && clineModelSupportsReasoning(opts.model)) {
-      body.reasoning = { effort }
+    if (this._modelSupportsReasoning(opts.model)) {
+      applyClineReasoningToRequest(body, getClineRequestEffort(opts.model))
     }
 
     return body
+  }
+
+  private _modelSupportsReasoning(model: string): boolean {
+    return (
+      this.reasoningModelIds.has(normalizeClineModelId(model))
+      || clineModelSupportsReasoning(model)
+    )
   }
 
   private _prependToolUsageRules(
@@ -469,7 +531,7 @@ export class ClineLane implements Lane {
       'X-Title': 'Tau',
     }
 
-    const workosToken = `workos:${auth.token}`
+    const workosToken = clineBearerToken(auth.token)
     headers.Authorization = `Bearer ${workosToken}`
     headers.workos = workosToken
     return headers
@@ -483,7 +545,7 @@ export class ClineLane implements Lane {
     }
     if (!auth) return headers
 
-    const workosToken = `workos:${auth.token}`
+    const workosToken = clineBearerToken(auth.token)
     headers.Authorization = `Bearer ${workosToken}`
     headers.workos = workosToken
     return headers
@@ -565,8 +627,10 @@ export class ClineLane implements Lane {
   }
 
   private _apiBase(): string {
-    const baseUrl = getProviderBaseUrl('cline')
-    return baseUrl.replace(/\/v1$/i, '').replace(/\/+$/, '')
+    const baseUrl = getProviderBaseUrl('cline').replace(/\/+$/, '')
+    return baseUrl
+      .replace(/\/api\/v1$/i, '')
+      .replace(/\/v1$/i, '')
   }
 
   private async *_parseSSE(
@@ -635,27 +699,87 @@ export class ClineLane implements Lane {
   }
 }
 
-function resolveReasoningEffort(
-  thinking: LaneProviderCallParams['thinking'] | undefined,
-): 'low' | 'medium' | 'high' | undefined {
-  if (!thinking || thinking.type === 'disabled') return undefined
-  if (thinking.type === 'adaptive') return 'medium'
-  const budget = (thinking as { budget_tokens?: number }).budget_tokens
-  if (budget == null) return 'medium'
-  if (budget < 2_000) return 'low'
-  if (budget < 8_000) return 'medium'
-  return 'high'
-}
-
 function normalizeClineModelId(id: string): string {
   return id.toLowerCase().replace(/[._]/g, '-')
+}
+
+function extractClineModelData(payload: unknown): RawClineModelInfo[] {
+  if (Array.isArray(payload)) return payload as RawClineModelInfo[]
+  if (!payload || typeof payload !== 'object') return []
+  const record = payload as ClineModelsResponse
+  if (Array.isArray(record.data)) return record.data
+  if (Array.isArray(record.models)) return record.models
+  return []
+}
+
+function rawClineModelSupportsReasoning(model: RawClineModelInfo): boolean {
+  if (
+    model.supportsReasoning === true
+    || model.supportsThinking === true
+    || model.supports_reasoning === true
+    || model.supports_thinking === true
+    || model.model_info?.supportsReasoning === true
+    || model.model_info?.supportsThinking === true
+    || model.model_info?.supports_reasoning === true
+  ) {
+    return true
+  }
+
+  const capabilities = [
+    ...(model.capabilities ?? []),
+    ...(model.model_info?.capabilities ?? []),
+  ].map(capability => capability.toLowerCase())
+
+  return capabilities.includes('reasoning') || capabilities.includes('thinking')
+}
+
+function recommendedEntryToModel(entry: RecommendedModelEntry): ModelInfo | null {
+  if (typeof entry.id !== 'string' || entry.id.length === 0) return null
+  const tags = Array.isArray(entry.tags)
+    ? entry.tags.filter(tag => tag === 'thinking' || tag === 'reasoning')
+    : []
+  return {
+    id: entry.id,
+    name: typeof entry.name === 'string' && entry.name.length > 0 ? entry.name : entry.id,
+    ...(tags.length > 0 && { tags }),
+  }
+}
+
+function mergeClineTags(
+  ...tagGroups: Array<readonly string[] | undefined>
+): string[] {
+  const merged = new Set<string>()
+  for (const group of tagGroups) {
+    if (!group) continue
+    for (const tag of group) {
+      merged.add(tag)
+    }
+  }
+  return Array.from(merged)
+}
+
+function mergeClineModelInfo(left: ModelInfo, right: ModelInfo): ModelInfo {
+  const tags = new Set<string>([
+    ...(left.tags ?? []),
+    ...(right.tags ?? []),
+  ])
+  return {
+    ...left,
+    ...right,
+    name: right.name && right.name !== right.id ? right.name : left.name,
+    contextWindow: right.contextWindow ?? left.contextWindow,
+    supportsToolCalling: right.supportsToolCalling ?? left.supportsToolCalling,
+    tags: tags.size > 0 ? [...tags] : undefined,
+  }
 }
 
 function isLikelyLatestClineModel(normalizedId: string): boolean {
   return (
     normalizedId.includes('gpt-5-4')
+    || normalizedId.includes('gpt-5-5')
     || normalizedId.includes('gpt-5-3')
     || normalizedId.includes('gpt-5-codex')
+    || normalizedId.includes('claude-opus-4-8')
     || normalizedId.includes('claude-sonnet-4-6')
     || normalizedId.includes('claude-opus-4-7')
     || normalizedId.includes('claude-opus-4-6')
@@ -692,11 +816,21 @@ function scoreClineModel(
   model: ModelInfo,
   recommendedIds: Set<string>,
   freeIds: Set<string>,
+  useFallbackSignals: boolean,
 ): number {
   const normalizedId = normalizeClineModelId(model.id)
   let score = 0
 
-  if (freeIds.has(normalizedId) || CLINE_FALLBACK_FREE_MODEL_IDS.has(normalizedId)) {
+  if (
+    recommendedIds.has(normalizedId)
+    || (useFallbackSignals && CLINE_FALLBACK_RECOMMENDED_MODEL_IDS.has(normalizedId))
+  ) {
+    score += 20_000
+  }
+  if (
+    freeIds.has(normalizedId)
+    || (useFallbackSignals && CLINE_FALLBACK_FREE_MODEL_IDS.has(normalizedId))
+  ) {
     score += 10_000
   }
   if (CLINE_LATEST_MODEL_IDS.has(normalizedId) || isLikelyLatestClineModel(normalizedId)) {
@@ -704,9 +838,6 @@ function scoreClineModel(
   }
   if (CLINE_VALUE_MODEL_IDS.has(normalizedId) || isLikelyValueClineModel(normalizedId)) {
     score += 3_000
-  }
-  if (recommendedIds.has(normalizedId) || CLINE_FALLBACK_RECOMMENDED_MODEL_IDS.has(normalizedId)) {
-    score += 2_000
   }
   if (model.supportsToolCalling) {
     score += 200
@@ -721,38 +852,34 @@ function scoreClineModel(
 
 function getClineModelTags(
   modelId: string,
+  recommendedIds: Set<string>,
   freeIds: Set<string>,
+  useFallbackSignals: boolean,
 ): string[] | undefined {
   const normalizedId = normalizeClineModelId(modelId)
+  const tags: string[] = []
   if (
-    normalizedId === normalizeClineModelId('moonshotai/kimi-k2.6')
-    && (
-      freeIds.has(normalizedId)
-      || CLINE_FALLBACK_FREE_MODEL_IDS.has(normalizedId)
-    )
+    recommendedIds.has(normalizedId)
+    || (useFallbackSignals && CLINE_FALLBACK_RECOMMENDED_MODEL_IDS.has(normalizedId))
   ) {
-    return ['free']
+    tags.push('recommended')
+  }
+  if (
+    freeIds.has(normalizedId)
+    || (useFallbackSignals && CLINE_FALLBACK_FREE_MODEL_IDS.has(normalizedId))
+  ) {
+    tags.push('free')
   }
 
-  return undefined
+  return tags.length > 0 ? tags : undefined
+}
+
+function clineBearerToken(token: string): string {
+  return token.toLowerCase().startsWith('workos:') ? token : `workos:${token}`
 }
 
 function clineModelSupportsReasoning(model: string): boolean {
-  const normalized = model.toLowerCase()
-  return (
-    normalized.includes('deepseek-r1')
-    || normalized.includes('qwq')
-    || normalized.includes('thinking')
-    || normalized.includes('reasoning')
-    || normalized.includes('gpt-5')
-    || normalized.includes('/o1')
-    || normalized.includes('/o3')
-    || normalized.includes('/o4')
-    || normalized.includes('claude-sonnet-4')
-    || normalized.includes('claude-opus-4')
-    || normalized.includes('gemini-2.5')
-    || normalized.includes('gemini-3')
-  )
+  return isClineThinkingModel(model)
 }
 
 function blankUsage(): NormalizedUsage {

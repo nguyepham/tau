@@ -23,6 +23,9 @@
  * Run:  bun run src/lanes/openai-compat/transformers.test.ts
  */
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { TRANSFORMERS, getTransformer } from './transformers/index.js'
 import type { Transformer, TransformContext } from './transformers/base.js'
 import type { OpenAIChatMessage, OpenAIChatRequest } from './transformers/shared_types.js'
@@ -30,6 +33,11 @@ import { selectEditToolSet, OPENAI_COMPAT_TOOL_REGISTRY } from './tools.js'
 import { resolveEditFormat, resolveCapabilities } from './capabilities.js'
 import { setDeepSeekV4Thinking } from '../../utils/model/deepseekThinking.js'
 import { setGlmThinking } from '../../utils/model/glmThinking.js'
+import {
+  _resetClineThinkingForTests,
+  setClineEffort,
+  supportsClineThinkingSelection,
+} from '../../utils/model/clineThinking.js'
 
 let passed = 0
 let failed = 0
@@ -69,6 +77,21 @@ function mkToolCall(id: string, name = 'Read'): NonNullable<OpenAIChatMessage['t
     id,
     type: 'function',
     function: { name, arguments: '{}' },
+  }
+}
+
+function withTempClineThinkingStore(fn: () => void): void {
+  const dir = mkdtempSync(join(tmpdir(), 'tau-cline-thinking-'))
+  const oldStore = process.env.TAU_CLINE_THINKING_STORE
+  process.env.TAU_CLINE_THINKING_STORE = join(dir, 'store.json')
+  _resetClineThinkingForTests()
+  try {
+    fn()
+  } finally {
+    if (oldStore === undefined) delete process.env.TAU_CLINE_THINKING_STORE
+    else process.env.TAU_CLINE_THINKING_STORE = oldStore
+    _resetClineThinkingForTests()
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 
@@ -125,6 +148,34 @@ function main(): void {
     } finally {
       setGlmThinking(false)
     }
+  })
+
+  test('cline exposes picker thinking control for DeepSeek V4 free rows', () => {
+    assert(
+      supportsClineThinkingSelection('deepseek/deepseek-v4-flash-free'),
+      'expected DeepSeek V4 free to expose Cline thinking effort',
+    )
+  })
+  test('cline disables reasoning when picker effort is Off', () => {
+    withTempClineThinkingStore(() => {
+      const model = 'deepseek/deepseek-v4-flash-free'
+      setClineEffort(model, 'none')
+      const body = mkBody(model)
+      TRANSFORMERS.cline.transformRequest(body, mkCtx(model, true))
+      assert((body.reasoning as any)?.enabled === false, `reasoning=${JSON.stringify(body.reasoning)}`)
+      assert(body.reasoning_effort === undefined, `reasoning_effort=${body.reasoning_effort}`)
+    })
+  })
+  test('cline sends selected per-model thinking effort', () => {
+    withTempClineThinkingStore(() => {
+      const model = 'deepseek/deepseek-v4-flash-free'
+      setClineEffort(model, 'high')
+      const body = mkBody(model)
+      TRANSFORMERS.cline.transformRequest(body, mkCtx(model, false))
+      assert((body.reasoning as any)?.enabled === true, `reasoning=${JSON.stringify(body.reasoning)}`)
+      assert((body.reasoning as any)?.effort === 'high', `reasoning=${JSON.stringify(body.reasoning)}`)
+      assert(body.reasoning_effort === 'high', `reasoning_effort=${body.reasoning_effort}`)
+    })
   })
 
   test('deepseek clamps max_tokens at 8192', () => {

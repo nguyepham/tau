@@ -18,6 +18,7 @@ import {
 import { startProviderOAuth, startGeminiOAuthFlow } from '../services/api/auth/provider_auth.js'
 import {
   initiateCopilotOAuth, completeCopilotOAuth, type CopilotDeviceHandles,
+  initiateClineOAuth, completeClineOAuth, type ClineDeviceHandles,
   initiateKiroOAuth, completeKiroOAuth, type KiroDeviceHandles,
   initiateKiroSocialOAuth, completeKiroSocialOAuth,
 } from '../services/api/auth/oauth_services.js'
@@ -388,7 +389,7 @@ export function ProviderLoginFlow({ provider, onDone }: Props) {
   const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 12)
 
   function runOAuthFlow(method: AuthMethod) {
-    // GitHub Copilot + Kiro use device-code flows that need the user_code
+    // Cline, GitHub Copilot, and Kiro use device-code flows that need the user_code
     // visible in the terminal (the verification_uri does NOT pre-fill
     // the code for Copilot, and Kiro's completeUri isn't always honored).
     if (provider === 'copilot') {
@@ -409,6 +410,32 @@ export function ProviderLoginFlow({ provider, onDone }: Props) {
         })
         .catch((err) => {
           setState({ step: 'error', message: err?.message ?? 'Copilot OAuth failed' })
+        })
+      return
+    }
+
+    if (provider === 'cline') {
+      setState({ step: 'oauth_pending' })
+      initiateClineOAuth()
+        .then(async (handles: ClineDeviceHandles) => {
+          const verificationUri = handles.verificationUriComplete || handles.verificationUri
+          setState({
+            step: 'device_code',
+            userCode: handles.userCode,
+            verificationUri,
+          })
+          void openBrowser(verificationUri).catch(() => {})
+          const tokens = await completeClineOAuth(handles)
+          deleteProviderKey(provider)
+          void import('../services/api/providers/providerShim.js')
+            .then(({ reloadClineLaneAuth }) => reloadClineLaneAuth())
+            .catch(() => {})
+          setState({ step: 'success' })
+          setTimeout(() => onDone(true), 1000)
+          return tokens
+        })
+        .catch((err) => {
+          setState({ step: 'error', message: err?.message ?? 'Cline OAuth failed' })
         })
       return
     }
@@ -472,11 +499,6 @@ export function ProviderLoginFlow({ provider, onDone }: Props) {
         // Activating OAuth deactivates API key for this provider.
         deleteProviderKey(provider)
         await reloadSavedGoogleOAuthInRuntime(provider, method)
-        if (provider === 'cline') {
-          void import('../services/api/providers/providerShim.js')
-            .then(({ reloadClineLaneAuth }) => reloadClineLaneAuth())
-            .catch(() => {})
-        }
         setState({ step: 'success' })
         setTimeout(() => onDone(true), 1000)
       })
@@ -672,6 +694,8 @@ export function ProviderLoginFlow({ provider, onDone }: Props) {
           <Text dimColor>
             {provider === 'cursor'
               ? 'Complete the login in your browser. Waiting for Cursor to confirm the sign-in...'
+              : provider === 'cline' || provider === 'copilot' || provider === 'kiro'
+                ? 'Waiting for the device code...'
               : 'Complete the login in your browser. Waiting for callback...'}
           </Text>
         </Box>

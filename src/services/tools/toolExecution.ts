@@ -597,6 +597,36 @@ export function buildSchemaNotSentHint(
   )
 }
 
+function appendToolInputValidationRecoveryHint(
+  toolName: string,
+  input: unknown,
+  errorContent: string,
+): string {
+  if (
+    toolName !== BASH_TOOL_NAME ||
+    !isPlainEmptyObject(input) ||
+    errorContent.includes('Bash retry guidance:')
+  ) {
+    return errorContent
+  }
+
+  return (
+    `${errorContent}\n\n` +
+    'Bash retry guidance: retry by calling Bash with an object that includes a non-empty string command, ' +
+    'for example {"command":"pwd"}. Never call Bash with {}. If the intended command uses PowerShell syntax ' +
+    '(Get-ChildItem, Select-String, $env:...), use the PowerShell tool instead of Bash.'
+  )
+}
+
+function isPlainEmptyObject(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length === 0
+  )
+}
+
 async function checkPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
@@ -642,6 +672,11 @@ async function checkPermissionsAndCallTool(
       parsedInput.error,
       tool.inputSchema,
       input,
+    )
+    errorContent = appendToolInputValidationRecoveryHint(
+      tool.name,
+      input,
+      errorContent,
     )
 
     const schemaHint = buildSchemaNotSentHint(
@@ -689,6 +724,23 @@ async function checkPermissionsAndCallTool(
       }),
       ...mcpToolDetailsForAnalytics(tool.name, mcpServerType, mcpServerBaseUrl),
     })
+    const hookMessages: MessageUpdateLazy<
+      AttachmentMessage | ProgressMessage<HookProgress>
+    >[] = []
+    for await (const hookResult of runPostToolUseFailureHooks(
+      toolUseContext,
+      tool,
+      toolUseID,
+      messageId,
+      input,
+      `InputValidationError: ${errorContent}`,
+      false,
+      requestId,
+      mcpServerType,
+      mcpServerBaseUrl,
+    )) {
+      hookMessages.push(hookResult)
+    }
     return [
       {
         message: createUserMessage({
@@ -704,6 +756,7 @@ async function checkPermissionsAndCallTool(
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       },
+      ...hookMessages,
     ]
   }
 

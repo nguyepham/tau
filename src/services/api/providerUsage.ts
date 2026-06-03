@@ -5,6 +5,7 @@ import {
   getValidCopilotOAuthToken,
   getValidCursorOAuthToken,
   getValidKiroOAuthToken,
+  refreshClineOAuth,
 } from './auth/oauth_services.js'
 import { getGeminiOAuthToken } from './auth/google_oauth.js'
 import { loadProviderKey } from './auth/api_key_manager.js'
@@ -45,6 +46,8 @@ import {
 } from '../../utils/model/providers.js'
 
 const TIMEOUT_MS = 8_000
+const CLINE_OAUTH_STORAGE = 'cline_oauth'
+const CLINE_REFRESH_BUFFER_MS = 5 * 60_000
 const ANTIGRAVITY_APP_DAILY_ENDPOINT = 'https://daily-cloudcode-pa.googleapis.com'
 const DOCS = {
   anthropic: 'https://platform.claude.com/docs/en/build-with-claude/usage-cost-api',
@@ -115,6 +118,25 @@ type StoredOAuthBlob = {
   refreshToken?: string
   expiresAt?: number
   meta?: Record<string, unknown>
+}
+
+type ClineAccountOrganization = {
+  active: boolean
+  memberId: string | null
+  name: string | null
+  organizationId: string | null
+}
+
+type ClineAccountSnapshot = {
+  userId: string
+  email: string | null
+  displayName: string | null
+  createdAt: string | null
+  personalBalance: number | null
+  organizationBalance: number | null
+  displayedBalance: number | null
+  organizations: ClineAccountOrganization[]
+  activeOrganization: ClineAccountOrganization | null
 }
 
 type Reporter = () => Promise<ProviderUsageReport>
@@ -1158,22 +1180,167 @@ async function reportOllama(): Promise<ProviderUsageReport> {
 }
 
 async function reportCline(): Promise<ProviderUsageReport> {
-  const token = getClineOAuthToken()
-  return {
-    ...baseReport(
-      'cline',
-      token ? 'connected' : 'not_configured',
-      token ? 'oauth' : 'none',
-      'Cline account',
-      token
-        ? 'Cline OAuth is connected; usage is available in the Cline dashboard.'
-        : 'No Cline OAuth token is configured.',
-    ),
-    links: [{
-      label: 'Cline dashboard',
-      url: 'https://app.cline.bot/dashboard',
-    }],
+  const links = [{
+    label: 'Cline dashboard',
+    url: 'https://app.cline.bot/dashboard',
+  }]
+
+  const token = await getValidClineUsageOAuthToken()
+  if (!token) {
+    return {
+      ...baseReport(
+        'cline',
+        'not_configured',
+        'none',
+        'Cline account API',
+        'No Cline OAuth token is configured.',
+      ),
+      links,
+    }
   }
+
+  try {
+    const account = await fetchClineAccountSnapshot(token)
+    const accountLabel = account.activeOrganization?.name ?? 'Personal account'
+    const balanceSummary = account.displayedBalance !== null
+      ? `${formatCurrency(account.displayedBalance, 'USD')} credits`
+      : 'credits unavailable'
+    const identity = account.email ?? account.displayName ?? account.userId
+    const detail = [
+      account.createdAt ? `Member since ${formatDateOnly(account.createdAt) ?? account.createdAt}` : null,
+      `Active account: ${accountLabel}`,
+      `Organizations: ${formatNumber(account.organizations.length)}`,
+    ].filter((part): part is string => Boolean(part)).join(' · ')
+    const metrics: UsageMetric[] = [{
+      label: 'Credits',
+      summary: balanceSummary,
+      detail: account.activeOrganization
+        ? [
+          account.organizationBalance !== null
+            ? `${accountLabel}: ${formatCurrency(account.organizationBalance, 'USD')}`
+            : null,
+          account.personalBalance !== null
+            ? `Personal: ${formatCurrency(account.personalBalance, 'USD')}`
+            : null,
+        ].filter((part): part is string => Boolean(part)).join(' · ') || undefined
+        : undefined,
+    }]
+
+    return {
+      ...baseReport(
+        'cline',
+        'ok',
+        'oauth',
+        'Cline account API',
+        `${identity} · ${accountLabel} · ${balanceSummary}`,
+      ),
+      detail,
+      metrics,
+      links,
+    }
+  } catch (error) {
+    return {
+      ...baseReport(
+        'cline',
+        'connected',
+        'oauth',
+        'Cline account API',
+        `Cline OAuth is connected, but live account usage could not be fetched: ${messageFromError(error)}`,
+      ),
+      links,
+    }
+  }
+}
+
+async function getValidClineUsageOAuthToken(): Promise<string | null> {
+  const stored = readStoredOAuth(CLINE_OAUTH_STORAGE)
+  const token = getClineOAuthToken() ?? stored?.accessToken ?? null
+  if (!token) return null
+
+  const expiresAt = typeof stored?.expiresAt === 'number' ? stored.expiresAt : null
+  const needsRefresh = expiresAt !== null && Date.now() > expiresAt - CLINE_REFRESH_BUFFER_MS
+  if (!needsRefresh) return token
+  if (!stored?.refreshToken) return token
+
+  try {
+    return await refreshClineOAuth(stored.refreshToken)
+  } catch (error) {
+    if (expiresAt !== null && Date.now() > expiresAt) throw error
+    return token
+  }
+}
+
+async function fetchClineAccountSnapshot(token: string): Promise<ClineAccountSnapshot> {
+  const user = asRecord(await fetchClineAccountEndpoint('/api/v1/users/me', token))
+  const userId = readString(user?.id) ?? readString(user?.userId)
+  if (!user || !userId) throw new Error('Cline account response did not include a user id')
+
+  const organizations = parseClineOrganizations(user.organizations)
+  const activeOrganization = organizations.find(organization => organization.active) ?? null
+  const [balanceData, organizationBalanceData] = await Promise.all([
+    fetchClineAccountEndpoint(`/api/v1/users/${encodeURIComponent(userId)}/balance`, token),
+    activeOrganization?.organizationId
+      ? fetchClineAccountEndpoint(
+        `/api/v1/organizations/${encodeURIComponent(activeOrganization.organizationId)}/balance`,
+        token,
+      ).catch(() => null)
+      : Promise.resolve(null),
+  ])
+
+  const personalBalance = readNumber(asRecord(balanceData)?.balance)
+  const organizationBalance = readNumber(asRecord(organizationBalanceData)?.balance)
+
+  return {
+    userId,
+    email: readString(user.email),
+    displayName: readString(user.displayName) ?? readString(user.display_name),
+    createdAt: readString(user.createdAt) ?? readString(user.created_at),
+    personalBalance,
+    organizationBalance,
+    displayedBalance: activeOrganization ? organizationBalance ?? personalBalance : personalBalance,
+    organizations,
+    activeOrganization,
+  }
+}
+
+async function fetchClineAccountEndpoint(endpoint: string, token: string): Promise<unknown> {
+  const data = await fetchJson(new URL(endpoint, getProviderBaseUrl('cline')).toString(), {
+    headers: {
+      Authorization: `Bearer ${clineBearerToken(token)}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+  })
+  return unwrapClineEnvelope(data)
+}
+
+function unwrapClineEnvelope(payload: unknown): unknown {
+  const envelope = asRecord(payload)
+  if (!envelope || typeof envelope.success !== 'boolean') return payload
+  if (!envelope.success) {
+    throw new Error(readString(envelope.error) ?? 'Cline account request failed')
+  }
+  return 'data' in envelope ? envelope.data : payload
+}
+
+function parseClineOrganizations(value: unknown): ClineAccountOrganization[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      const record = asRecord(item)
+      if (!record) return null
+      return {
+        active: record.active === true,
+        memberId: readString(record.memberId) ?? readString(record.member_id),
+        name: readString(record.name),
+        organizationId: readString(record.organizationId) ?? readString(record.organization_id),
+      }
+    })
+    .filter((organization): organization is ClineAccountOrganization => organization !== null)
+}
+
+function clineBearerToken(token: string): string {
+  return token.toLowerCase().startsWith('workos:') ? token : `workos:${token}`
 }
 
 async function reportCopilot(): Promise<ProviderUsageReport> {
@@ -2384,6 +2551,16 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+function formatDateOnly(value: string): string | null {
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return null
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(time))
 }
 
 function summarizeSet(values: Set<string>, limit = 4): string | null {

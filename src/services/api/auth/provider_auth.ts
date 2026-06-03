@@ -23,7 +23,7 @@
  *   │ GLM        │ ✓       │ ✗     │ API key only                    │
  *   │ Moonshot   │ ✓       │ ✗     │ API key only                    │
  *   │ KiloCode   │ ✗       │ ✓     │ Custom device auth              │
- *   │ Cline      │ ✗       │ ✓     │ Authorization-code flow         │
+ *   │ Cline      │ ✗       │ ✓     │ WorkOS device-code flow         │
  *   │ iFlow      │ ✗       │ ✓     │ OAuth2 code + Basic Auth        │
  *   │ Copilot    │ ✗       │ ✓     │ GitHub device-code + token mint │
  *   │ Kiro       │ ✗       │ ✓     │ AWS SSO OIDC device-code        │

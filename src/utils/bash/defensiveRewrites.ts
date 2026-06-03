@@ -260,6 +260,23 @@ export function rewriteWindowsReservedRedirects(command: string): string {
   return command.replace(RESERVED_REDIRECT_REGEX, '$1/dev/null')
 }
 
+const CMD_AUTORUN_SEGMENT_REGEX =
+  /(^|(?:;|&&|\|\||\||\n|\()\s*)(cmd(?:\.exe)?)(?=\s+(?:(?:\/[a-z])\s+)*\/[cs]\b)(?![^\n;&|()]*\s\/d\b)/gi
+
+/**
+ * Add `cmd.exe /d` when a Bash command explicitly shells out through
+ * Windows Command Processor. `/d` disables Command Processor AutoRun hooks
+ * (Clink, Visual Studio probes, banners, etc.) so startup noise cannot appear
+ * before the command's real output.
+ */
+export function rewriteWindowsCmdAutoRun(command: string): string {
+  return command.replace(
+    CMD_AUTORUN_SEGMENT_REGEX,
+    (_match: string, prefix: string, executable: string) =>
+      `${prefix}${executable} /d`,
+  )
+}
+
 const UNSAFE_NODE_TASKKILL_SEGMENT_REGEX =
   /(^|(?:;|&&|\|\||\n)[ \t]*)([ \t]*taskkill(?:\.exe)?\b(?:(?!(?:;|&&|\|\||\n)).)*)/gi
 
@@ -301,6 +318,7 @@ export function applyBashDefensiveRewrites(command: string): string {
   out = rewriteWindowsNullRedirect(out)
   out = rewritePowerShellNullRedirect(out)
   out = rewriteWindowsReservedRedirects(out)
+  out = rewriteWindowsCmdAutoRun(out)
   out = rewriteUnsafeGlobalNodeTaskkill(out)
   return out
 }

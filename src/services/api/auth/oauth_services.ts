@@ -2,7 +2,7 @@
  * OAuth flows for the Phase 4 providers (v0.4.0):
  *
  *   - KiloCode       Custom device-auth flow (POST /api/device-auth/codes)
- *   - Cline          Authorization-code → base64 payload decode
+ *   - Cline          WorkOS device-code → Cline token register
  *   - iFlow          OAuth2 authorization-code + Basic Auth exchange
  *   - GitHub Copilot OAuth2 device-code flow
  *   - Kiro           AWS SSO OIDC device-code (Builder ID path)
@@ -316,106 +316,172 @@ export function getKiloCodeOrgId(): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Cline — authorization-code with base64-encoded token payload
+// Cline — WorkOS device-code flow registered with Cline's account API
 // ═══════════════════════════════════════════════════════════════════
 
 const CLINE_API_BASE = 'https://api.cline.bot'
 const CLINE_STORAGE = 'cline_oauth'
+const CLINE_WORKOS_API_BASE = 'https://api.workos.com'
+const CLINE_WORKOS_CLIENT_ID = 'client_01K3A541FN8TA3EPPHTD2325AR'
+const CLINE_DEVICE_AUTH_TIMEOUT_MS = 30_000
+
+export interface ClineDeviceHandles {
+  userCode: string
+  verificationUri: string
+  verificationUriComplete?: string
+  deviceCode: string
+  interval: number
+  expiresIn: number
+}
+
+interface ClineTokenResponseData {
+  accessToken?: string
+  refreshToken?: string
+  tokenType?: string
+  expiresAt?: string | number
+  userInfo?: {
+    email?: string
+    clineUserId?: string | null
+    subject?: string | null
+  }
+}
+
+function _expiresInFromClineExpiresAt(raw: unknown): number {
+  const expiresAtMs = typeof raw === 'string'
+    ? new Date(raw).getTime()
+    : typeof raw === 'number' ? raw : undefined
+  return expiresAtMs && Number.isFinite(expiresAtMs)
+    ? Math.max(60, Math.floor((expiresAtMs - Date.now()) / 1000))
+    : 3600
+}
+
+function _unwrapClineTokenResponse(data: unknown): ClineTokenResponseData {
+  const root = data && typeof data === 'object' ? data as Record<string, unknown> : {}
+  const envelopeData = root.data && typeof root.data === 'object'
+    ? root.data as Record<string, unknown>
+    : root
+  return envelopeData as ClineTokenResponseData
+}
+
+export async function initiateClineOAuth(): Promise<ClineDeviceHandles> {
+  const res = await fetch(`${CLINE_WORKOS_API_BASE}/user_management/authorize/device`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: CLINE_WORKOS_CLIENT_ID }),
+    signal: AbortSignal.timeout(CLINE_DEVICE_AUTH_TIMEOUT_MS),
+  })
+  const data = await res.json().catch(() => ({})) as {
+    device_code?: string
+    user_code?: string
+    verification_uri?: string
+    verification_uri_complete?: string
+    expires_in?: number
+    interval?: number
+    error?: string
+    error_description?: string
+  }
+  if (!res.ok) {
+    throw new Error(`Cline device authorization failed: ${data.error_description ?? data.error ?? res.status}`)
+  }
+  if (!data.device_code || !data.user_code || !data.verification_uri) {
+    throw new Error('Invalid Cline device authorization response')
+  }
+  return {
+    deviceCode: data.device_code,
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    verificationUriComplete: data.verification_uri_complete,
+    expiresIn: data.expires_in ?? 300,
+    interval: data.interval ?? 5,
+  }
+}
+
+export async function completeClineOAuth(handles: ClineDeviceHandles): Promise<{
+  accessToken: string
+  refreshToken: string
+}> {
+  let interval = Math.max(1, handles.interval) * 1000
+  const deadline = Date.now() + handles.expiresIn * 1000
+  let workosAccessToken = ''
+  let workosRefreshToken = ''
+
+  while (Date.now() < deadline) {
+    await _sleep(interval)
+    const res = await fetch(`${CLINE_WORKOS_API_BASE}/user_management/authenticate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        device_code: handles.deviceCode,
+        client_id: CLINE_WORKOS_CLIENT_ID,
+      }),
+      signal: AbortSignal.timeout(CLINE_DEVICE_AUTH_TIMEOUT_MS),
+    })
+    const data = await res.json().catch(() => ({})) as {
+      access_token?: string
+      refresh_token?: string
+      error?: string
+      error_description?: string
+    }
+    if (res.ok && data.access_token && data.refresh_token) {
+      workosAccessToken = data.access_token
+      workosRefreshToken = data.refresh_token
+      break
+    }
+    if (data.error === 'authorization_pending') continue
+    if (data.error === 'slow_down') { interval += 1000; continue }
+    if (data.error === 'expired_token') throw new Error('Cline device code expired')
+    if (data.error === 'access_denied') throw new Error('Cline authorization denied')
+    if (data.error) throw new Error(`Cline OAuth error: ${data.error_description ?? data.error}`)
+    if (!res.ok) throw new Error(`Cline OAuth polling failed: ${res.status}`)
+  }
+
+  if (!workosAccessToken || !workosRefreshToken) {
+    throw new Error('Cline authorization timed out')
+  }
+
+  const registerRes = await fetch(`${CLINE_API_BASE}/api/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      accessToken: workosAccessToken,
+      refreshToken: workosRefreshToken,
+    }),
+    signal: AbortSignal.timeout(CLINE_DEVICE_AUTH_TIMEOUT_MS),
+  })
+  const registerData = await registerRes.json().catch(() => ({}))
+  if (!registerRes.ok) {
+    throw new Error(`Cline token registration failed: ${registerRes.status}`)
+  }
+
+  const tokenData = _unwrapClineTokenResponse(registerData)
+  const accessToken = tokenData.accessToken ?? ''
+  const refreshToken = tokenData.refreshToken ?? ''
+  if (!accessToken || !refreshToken) {
+    throw new Error('Cline token registration did not return Cline tokens')
+  }
+
+  _saveTokens(CLINE_STORAGE, {
+    accessToken,
+    refreshToken,
+    expiresIn: _expiresInFromClineExpiresAt(tokenData.expiresAt),
+    meta: {
+      email: tokenData.userInfo?.email,
+      accountId: tokenData.userInfo?.clineUserId ?? tokenData.userInfo?.subject ?? undefined,
+      tokenType: tokenData.tokenType,
+    },
+  })
+  await _reloadClineLaneAuth()
+  return { accessToken, refreshToken }
+}
 
 export async function startClineOAuth(): Promise<{
   accessToken: string
   refreshToken: string
 }> {
-  const { port, params: paramsPromise } = await _startCallbackServer(3000, '/callback')
-  const redirectUri = `http://localhost:${port}/callback`
-
-  const authUrl = new URL(`${CLINE_API_BASE}/api/v1/auth/authorize`)
-  authUrl.searchParams.set('client_type', 'extension')
-  authUrl.searchParams.set('callback_url', redirectUri)
-  authUrl.searchParams.set('redirect_uri', redirectUri)
-
-  await openBrowser(authUrl.toString())
-
-  const params = await paramsPromise
-  const code = params.get('code')
-  if (!code) throw new Error('Cline: no authorization code returned')
-
-  // Cline encodes token data as base64 in the code param; try that first
-  // and fall back to POST /api/v1/auth/token exchange.
-  let accessToken = ''
-  let refreshToken = ''
-  let email = ''
-  let expiresAtMs: number | undefined
-
-  try {
-    let base64 = code
-    const padding = 4 - (base64.length % 4)
-    if (padding !== 4) base64 += '='.repeat(padding)
-    const decoded = Buffer.from(base64, 'base64').toString('utf-8')
-    const lastBrace = decoded.lastIndexOf('}')
-    if (lastBrace === -1) throw new Error('no JSON')
-    const tokenData = JSON.parse(decoded.slice(0, lastBrace + 1)) as {
-      accessToken?: string
-      refreshToken?: string
-      email?: string
-      expiresAt?: string | number
-    }
-    if (!tokenData.accessToken) throw new Error('no accessToken')
-    accessToken = tokenData.accessToken
-    refreshToken = tokenData.refreshToken ?? ''
-    email = tokenData.email ?? ''
-    if (tokenData.expiresAt) {
-      expiresAtMs = typeof tokenData.expiresAt === 'string'
-        ? new Date(tokenData.expiresAt).getTime()
-        : tokenData.expiresAt
-    }
-  } catch {
-    const res = await fetch(`${CLINE_API_BASE}/api/v1/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        code,
-        client_type: 'extension',
-        redirect_uri: redirectUri,
-      }),
-    })
-    if (!res.ok) throw new Error(`Cline token exchange failed: ${await res.text()}`)
-    const data = await res.json() as {
-      data?: {
-        accessToken?: string
-        refreshToken?: string
-        userInfo?: { email?: string }
-        expiresAt?: string | number
-      }
-      accessToken?: string
-      refreshToken?: string
-      expiresAt?: string | number
-    }
-    accessToken = data.data?.accessToken ?? data.accessToken ?? ''
-    refreshToken = data.data?.refreshToken ?? data.refreshToken ?? ''
-    email = data.data?.userInfo?.email ?? ''
-    const rawExpires = data.data?.expiresAt ?? data.expiresAt
-    if (rawExpires) {
-      expiresAtMs = typeof rawExpires === 'string'
-        ? new Date(rawExpires).getTime()
-        : rawExpires
-    }
-  }
-
-  if (!accessToken) throw new Error('Cline: no access token received')
-
-  const expiresIn = expiresAtMs
-    ? Math.max(60, Math.floor((expiresAtMs - Date.now()) / 1000))
-    : 3600
-  _saveTokens(CLINE_STORAGE, {
-    accessToken,
-    refreshToken: refreshToken || undefined,
-    expiresIn,
-    meta: { email },
-  })
-  await _reloadClineLaneAuth()
-  return { accessToken, refreshToken }
+  const handles = await initiateClineOAuth()
+  await openBrowser(handles.verificationUriComplete || handles.verificationUri)
+  return completeClineOAuth(handles)
 }
 
 export function getClineOAuthToken(): string | null {
@@ -435,24 +501,18 @@ export async function refreshClineOAuth(refreshToken: string): Promise<string> {
     }),
   })
   if (!res.ok) throw new Error(`Cline refresh failed: ${await res.text()}`)
-  const data = await res.json() as {
-    data?: { accessToken?: string; refreshToken?: string; expiresAt?: string | number }
-    accessToken?: string
-  }
-  const accessToken = data.data?.accessToken ?? data.accessToken ?? ''
+  const data = _unwrapClineTokenResponse(await res.json().catch(() => ({})))
+  const accessToken = data.accessToken ?? ''
   if (!accessToken) throw new Error('Cline refresh: no access token in response')
-  const newRefresh = data.data?.refreshToken ?? refreshToken
-  const expiresAtRaw = data.data?.expiresAt
-  const expiresAtMs = typeof expiresAtRaw === 'string'
-    ? new Date(expiresAtRaw).getTime()
-    : typeof expiresAtRaw === 'number' ? expiresAtRaw : undefined
-  const expiresIn = expiresAtMs
-    ? Math.max(60, Math.floor((expiresAtMs - Date.now()) / 1000))
-    : 3600
   _saveTokens(CLINE_STORAGE, {
     accessToken,
-    refreshToken: newRefresh,
-    expiresIn,
+    refreshToken: data.refreshToken ?? refreshToken,
+    expiresIn: _expiresInFromClineExpiresAt(data.expiresAt),
+    meta: {
+      email: data.userInfo?.email,
+      accountId: data.userInfo?.clineUserId ?? data.userInfo?.subject ?? undefined,
+      tokenType: data.tokenType,
+    },
   })
   await _reloadClineLaneAuth()
   return accessToken

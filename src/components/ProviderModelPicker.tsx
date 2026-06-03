@@ -34,6 +34,12 @@ import {
   toggleGlmThinking,
 } from '../utils/model/glmThinking.js'
 import {
+  cycleClineEffort,
+  getClineEffort,
+  getClineEffortLabel,
+  supportsClineThinkingSelection,
+} from '../utils/model/clineThinking.js'
+import {
   cycleOpencodeEffort,
   getOpencodeEffort,
   getOpencodeEffortLabel,
@@ -234,9 +240,9 @@ export function ProviderModelPicker({
   const [reasoningLevel, setReasoningLevel] = useState(getOpenAIReasoningLevel)
   const [deepseekV4Thinking, setDeepseekV4Thinking] = useState(getDeepSeekV4Thinking)
   const [glmThinking, setGlmThinking] = useState(getGlmThinking)
-  // Bumped to force a re-render after toggling per-model opencode effort.
-  // The actual effort state lives in opencodeThinking.ts (persisted to disk),
-  // we only need a render trigger here.
+  // Bumped to force a re-render after toggling provider-owned per-model effort.
+  // The actual effort state lives in the provider utility modules.
+  const [, setClineEffortTick] = useState(0)
   const [, setOpencodeEffortTick] = useState(0)
   const [variantSelections, setVariantSelections] = useState<Record<string, number>>({})
 
@@ -453,6 +459,16 @@ export function ProviderModelPicker({
 
       if (
         row?.kind === 'model'
+        && selectedProvider === 'cline'
+        && supportsClineThinkingSelection(row.model.id, row.model.tags)
+      ) {
+        cycleClineEffort(row.model.id, key.leftArrow ? 'left' : 'right')
+        setClineEffortTick(tick => tick + 1)
+        return
+      }
+
+      if (
+        row?.kind === 'model'
         && selectedProvider === 'opencode'
         && isOpencodeThinkingModel(row.model.id)
       ) {
@@ -595,6 +611,8 @@ export function ProviderModelPicker({
               const isReasoning = selectedProvider === 'openai' && modelSupportsReasoning(model.id)
               const isDeepseekV4 = selectedProvider === 'deepseek' && isDeepSeekV4ThinkingModel(model.id)
               const isGlmThinking = selectedProvider === 'glm' && isGlmThinkingModel(model.id)
+              const isClineThinking = selectedProvider === 'cline' && supportsClineThinkingSelection(model.id, model.tags)
+              const clineEffort = isClineThinking ? getClineEffort(model.id) : undefined
               const isOpencodeThinking = selectedProvider === 'opencode' && isOpencodeThinkingModel(model.id)
               const opencodeEffort = isOpencodeThinking ? getOpencodeEffort(model.id) : undefined
               const selectedVariant = getSelectedVariant(
@@ -634,6 +652,11 @@ export function ProviderModelPicker({
                   {isGlmThinking && (
                     <Text color={isSelected ? 'cyan' : 'blue'} bold={isSelected}>
                       {' '}◀ Thinking {glmThinking ? 'ON' : 'OFF'} ▶
+                    </Text>
+                  )}
+                  {isClineThinking && clineEffort && (
+                    <Text color={isSelected ? 'cyan' : 'blue'} bold={isSelected}>
+                      {' '}◀ Thinking {getClineEffortLabel(clineEffort)} ▶
                     </Text>
                   )}
                   {isOpencodeThinking && opencodeEffort && (

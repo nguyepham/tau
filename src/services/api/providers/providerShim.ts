@@ -344,7 +344,7 @@ function createProvider(provider: APIProvider): BaseProvider {
     // message instead of "Unknown provider".
     case 'cline':
       throw new Error(
-        'Cline chat requires the cline lane to be healthy. Run `/login cline` to complete the browser login.',
+        'Cline chat requires the cline lane to be healthy. Run `/login cline` to complete the device login.',
       )
     case 'iflow':
     case 'copilot':
