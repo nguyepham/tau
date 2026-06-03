@@ -104,11 +104,16 @@ async function main(): Promise<void> {
       ANTIGRAVITY_MODELS.some(model => model.id === 'gemini-3.5-flash-medium'),
       'missing Gemini 3.5 Flash Medium from Antigravity catalog',
     )
+    assert(
+      ANTIGRAVITY_MODELS.some(model => model.id === 'gemini-3.5-flash-low'),
+      'missing Gemini 3.5 Flash Low from Antigravity catalog',
+    )
     assert(executorForModel('gemini-3.5-flash-high') === 'antigravity', 'high variant must use Antigravity')
     assert(executorForModel('gemini-3.5-flash-medium') === 'antigravity', 'medium variant must use Antigravity')
+    assert(executorForModel('gemini-3.5-flash-low') === 'antigravity', 'low variant must use Antigravity')
     assert(executorForModel('gemini-3-flash') === 'antigravity', 'Gemini 3 Flash must use Antigravity')
     assert(executorForModel('gemini-3-flash-agent') === 'cli', 'backend wire key must not be exposed as a public model id')
-    assert(executorForModel('gemini-3.5-flash-low') === 'cli', 'backend wire key must not be exposed as a public model id')
+    assert(executorForModel('gemini-3.5-flash-extra-low') === 'cli', 'backend wire key must not be exposed as a public model id')
     assert(
       getAntigravityModelDisplayName('claude-opus-4-6-thinking') === 'Claude Opus 4.6',
       'Claude Opus label should not include thinking/via suffix',
@@ -123,6 +128,14 @@ async function main(): Promise<void> {
     assert(
       resolveAntigravityWireModel('gemini-3.5-flash-high') === 'gemini-3-flash-agent',
       'high variant must resolve to the Antigravity backend Flash model',
+    )
+    assert(
+      resolveAntigravityWireModel('gemini-3.5-flash-low') === 'gemini-3.5-flash-extra-low',
+      'low variant must resolve to the Antigravity backend Flash model',
+    )
+    assert(
+      resolveAntigravityWireModel('gemini-3.1-pro-high') === 'gemini-pro-agent',
+      '3.1 Pro High must resolve to the Antigravity backend Pro model',
     )
 
     const wrapped = wrapForCodeAssist('gemini-3.5-flash-medium', 'project-id', {
@@ -144,6 +157,15 @@ async function main(): Promise<void> {
     assert(request.generationConfig?.thinkingConfig?.thinkingLevel === 'medium', 'thinking level was not preserved')
     assert(!('safetySettings' in request), 'safety settings should be stripped')
     assert(request.generationConfig?.maxOutputTokens === undefined, 'maxOutputTokens should be stripped for Gemini')
+
+    const wrappedPro = wrapForCodeAssist('gemini-3.1-pro-high', 'project-id', {
+      generationConfig: {
+        thinkingConfig: { thinkingLevel: 'high', includeThoughts: true },
+      },
+      contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+    })
+
+    assert(wrappedPro.model === 'gemini-pro-agent', `pro wire model=${wrappedPro.model}`)
   })
 
   await test('keeps Antigravity generation endpoint fallbacks scoped to Antigravity', async () => {
