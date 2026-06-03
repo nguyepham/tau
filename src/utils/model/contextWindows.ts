@@ -91,6 +91,7 @@ const KNOWN_MODEL_CONTEXT_WINDOWS: ContextWindowMap = {
   'gemini-3.1-pro-preview-customtools': GEMINI_LONG_CONTEXT_WINDOW,
   'gemini-3.5-flash-high': GEMINI_LONG_CONTEXT_WINDOW,
   'gemini-3.5-flash-medium': GEMINI_LONG_CONTEXT_WINDOW,
+  'gemini-3.5-flash-low': GEMINI_LONG_CONTEXT_WINDOW,
   'gemini-3.1-flash-lite-preview': GEMINI_LONG_CONTEXT_WINDOW,
   'gemini-3-flash': GEMINI_LONG_CONTEXT_WINDOW,
   'gemini-3-flash-preview': GEMINI_LONG_CONTEXT_WINDOW,

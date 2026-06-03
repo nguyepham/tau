@@ -58,6 +58,10 @@ function main(): void {
       '3.5 medium should mirror the shared Antigravity Gemini quota',
     )
     assert(
+      metricSummary(metrics, 'Gemini 3.5 Flash (Low)') === '20% remaining',
+      '3.5 low should mirror the shared Antigravity Gemini quota',
+    )
+    assert(
       metricSummary(metrics, 'Gemini 3.1 Pro (High)') === '20% remaining',
       '3.1 high should use the shared Antigravity Gemini quota',
     )
@@ -86,6 +90,10 @@ function main(): void {
           displayName: 'Gemini 3.5 Flash (Medium)',
           quotaInfo: { remainingFraction: 0.2 },
         },
+        'gemini-3.5-flash-extra-low': {
+          displayName: 'Gemini 3.5 Flash (Low)',
+          quotaInfo: { remainingFraction: 0.2 },
+        },
         'claude-sonnet-4-6': {
           displayName: 'Claude Sonnet 4.6 · thinking (via Antigravity)',
           quotaInfo: { remainingFraction: 0.7 },
@@ -100,6 +108,10 @@ function main(): void {
     assert(
       metricSummary(metrics, 'Gemini 3.5 Flash (Medium)') === '20% remaining',
       '3.5 medium should use the Antigravity app wire key gemini-3.5-flash-low',
+    )
+    assert(
+      metricSummary(metrics, 'Gemini 3.5 Flash (Low)') === '20% remaining',
+      '3.5 low should use the Antigravity app wire key gemini-3.5-flash-extra-low',
     )
     assert(
       metricSummary(metrics, 'Gemini 3 Flash') === '20% remaining',
@@ -135,6 +147,10 @@ function main(): void {
     assert(
       metricSummary(metrics, 'Gemini 3.5 Flash (Medium)') === '20% remaining',
       '3.5 medium should mirror the live shared Gemini bucket',
+    )
+    assert(
+      metricSummary(metrics, 'Gemini 3.5 Flash (Low)') === '20% remaining',
+      '3.5 low should mirror the live shared Gemini bucket',
     )
     assert(
       metricSummary(metrics, 'Gemini 3.1 Pro (High)') === '20% remaining',

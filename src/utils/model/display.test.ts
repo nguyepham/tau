@@ -51,6 +51,10 @@ function main(): void {
       'expected Gemini 3.5 Flash High label',
     )
     assert(
+      getProviderModelDisplayName('antigravity', 'gemini-3.5-flash-low') === 'Gemini 3.5 Flash (Low)',
+      'expected Gemini 3.5 Flash Low label',
+    )
+    assert(
       getProviderModelDisplayName('antigravity', 'claude-opus-4-6-thinking') === 'Claude Opus 4.6',
       'expected Claude Opus Antigravity label without thinking suffix',
     )

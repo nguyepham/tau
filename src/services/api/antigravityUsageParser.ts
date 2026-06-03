@@ -15,6 +15,7 @@ const ANTIGRAVITY_USAGE_MODEL_KEYS = [
   ...ANTIGRAVITY_MODELS.map(model => model.id),
   'gemini-3.5-flash',
   'gemini-3.5-flash-low',
+  'gemini-3.5-flash-extra-low',
   'gemini-3-flash-agent',
   'gemini-3-flash-high',
   'gemini-3-flash-medium',
@@ -25,6 +26,7 @@ const ANTIGRAVITY_USAGE_MODEL_KEYS = [
 const ANTIGRAVITY_SHARED_GEMINI_QUOTA_MODELS = [
   'gemini-3.5-flash-high',
   'gemini-3.5-flash-medium',
+  'gemini-3.5-flash-low',
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
   'gemini-3-flash',
@@ -97,8 +99,8 @@ function parseAntigravityUsageRow(modelKey: string, value: unknown): Antigravity
   if (!quota) return null
   const remaining = readNumber(quota.remainingFraction)
   if (remaining === null || remaining < 0 || remaining > 1) return null
-  const display = getAntigravityModelDisplayName(modelKey)
-    ?? sanitizeAntigravityUsageLabel(readString(info.displayName))
+  const display = sanitizeAntigravityUsageLabel(readString(info.displayName))
+    ?? getAntigravityModelDisplayName(modelKey)
     ?? modelKey
   const reset = validFutureIso(readString(quota.resetTime))
   return {
@@ -166,6 +168,7 @@ function isSharedAntigravityGeminiQuotaModel(modelKey: string, label: string): b
     || normalized === 'gemini-3.5-flash-high'
     || normalized === 'gemini-3.5-flash-medium'
     || normalized === 'gemini-3.5-flash-low'
+    || normalized === 'gemini-3.5-flash-extra-low'
     || normalized === 'gemini-3-flash-agent'
     || normalized === 'gemini-3-flash'
   ) {
@@ -222,13 +225,15 @@ export function extractAntigravityModels(data: unknown): Record<string, unknown>
 export function hasAntigravity35FlashUsagePair(models: Record<string, unknown>): boolean {
   let hasHigh = false
   let hasMedium = false
+  let hasLow = false
   for (const [modelKey, value] of Object.entries(models)) {
     if (!isAntigravity35FlashUsageModel(modelKey, value)) continue
     const display = readString(asRecord(value)?.displayName)?.toLowerCase() ?? ''
     hasHigh ||= /\bhigh\b/.test(display) || modelKey === 'gemini-3-flash-agent'
     hasMedium ||= /\bmedium\b/.test(display) || modelKey === 'gemini-3.5-flash-low'
+    hasLow ||= /\blow\b/.test(display) || modelKey === 'gemini-3.5-flash-extra-low'
   }
-  return hasHigh && hasMedium
+  return hasHigh && hasMedium && hasLow
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

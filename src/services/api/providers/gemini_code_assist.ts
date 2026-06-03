@@ -83,6 +83,7 @@ export function codeAssistGenerationBases(executor: GeminiExecutor): readonly st
 export const ANTIGRAVITY_MODELS: readonly ModelInfo[] = [
   { id: 'gemini-3.5-flash-high', name: 'Gemini 3.5 Flash (High)', contextWindow: 1048576 },
   { id: 'gemini-3.5-flash-medium', name: 'Gemini 3.5 Flash (Medium)', contextWindow: 1048576 },
+  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)', contextWindow: 1048576 },
   { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', contextWindow: 1048576 },
   { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)', contextWindow: 1048576 },
   { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 1048576 },
@@ -93,7 +94,9 @@ export const ANTIGRAVITY_MODELS: readonly ModelInfo[] = [
 const ANTIGRAVITY_WIRE_MODEL_DISPLAY_NAMES = new Map<string, string>([
   ['gemini-3.5-flash', 'Gemini 3.5 Flash'],
   ['gemini-3.5-flash-low', 'Gemini 3.5 Flash (Medium)'],
+  ['gemini-3.5-flash-extra-low', 'Gemini 3.5 Flash (Low)'],
   ['gemini-3-flash-agent', 'Gemini 3.5 Flash (High)'],
+  ['gemini-pro-agent', 'Gemini 3.1 Pro (High)'],
   ['gemini-3-flash-high', 'Gemini 3 Flash (High)'],
   ['gemini-3-flash-medium', 'Gemini 3 Flash (Medium)'],
   ['gemini-3-flash-low', 'Gemini 3 Flash (Low)'],
@@ -112,11 +115,17 @@ export function getAntigravityModelDisplayName(model: string): string | null {
 
 export function resolveAntigravityWireModel(model: string): string {
   const normalized = model.toLowerCase()
+  if (normalized === 'gemini-3.1-pro-high') {
+    return 'gemini-pro-agent'
+  }
   if (normalized === 'gemini-3.5-flash-high') {
     return 'gemini-3-flash-agent'
   }
   if (normalized === 'gemini-3.5-flash-medium') {
     return 'gemini-3.5-flash-low'
+  }
+  if (normalized === 'gemini-3.5-flash-low') {
+    return 'gemini-3.5-flash-extra-low'
   }
   return model
 }
