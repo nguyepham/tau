@@ -225,10 +225,8 @@ function primeOllamaCloudModels() {
   console.log(`[tau] Ollama pre-pull: ${ok} ok, ${fail} skipped/failed (first launch will retry).`);
 }
 
-function buildOptionalNativeTools() {
-  if (process.env.TAU_SKIP_NATIVE_TOOLS_POSTINSTALL === '1') return;
-
-  const script = join(packageRoot, 'scripts', 'build-native-tools.mjs');
+function runOptionalNativeBuild(scriptName, requiredEnvName) {
+  const script = join(packageRoot, 'scripts', scriptName);
   if (!existsSync(script)) return;
 
   const result = spawnSync(process.execPath, [script], {
@@ -237,13 +235,20 @@ function buildOptionalNativeTools() {
     windowsHide: true,
     env: {
       ...process.env,
-      TAU_REQUIRE_NATIVE_TOOLS: process.env.TAU_REQUIRE_NATIVE_TOOLS ?? '0',
+      [requiredEnvName]: process.env[requiredEnvName] ?? '0',
     },
   });
 
-  if (result.status !== 0 && process.env.TAU_REQUIRE_NATIVE_TOOLS === '1') {
+  if (result.status !== 0 && process.env[requiredEnvName] === '1') {
     process.exit(result.status ?? 1);
   }
+}
+
+function buildOptionalNativeTools() {
+  if (process.env.TAU_SKIP_NATIVE_TOOLS_POSTINSTALL === '1') return;
+
+  runOptionalNativeBuild('build-native-shell-parser.mjs', 'TAU_REQUIRE_NATIVE_SHELL_PARSER');
+  runOptionalNativeBuild('build-native-tools.mjs', 'TAU_REQUIRE_NATIVE_TOOLS');
 }
 
 main()

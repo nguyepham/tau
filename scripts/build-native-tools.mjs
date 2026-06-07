@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { spawnSync } from 'child_process'
 
@@ -33,13 +33,17 @@ if (goProbe.status !== 0) {
 
 mkdirSync(outDir, { recursive: true })
 
-const build = spawnSync('go', ['build', '-C', sourceDir, '-o', outPath, '.'], {
+const build = spawnSync('go', ['-C', sourceDir, 'build', '-buildvcs=false', '-o', outPath, '.'], {
   stdio: 'inherit',
   windowsHide: true,
 })
 
 if (build.status !== 0) {
   finish(required ? build.status ?? 1 : 0, 'Native Tau tools build failed.')
+}
+
+if (process.platform !== 'win32') {
+  chmodSync(outPath, 0o755)
 }
 
 finish(0, `Built native Tau tools ${outPath}`)

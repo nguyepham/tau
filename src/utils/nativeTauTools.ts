@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { statSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -8,6 +8,17 @@ import { getCwd } from './cwd.js'
 const moduleDir = dirname(fileURLToPath(import.meta.url))
 const binaryName = process.platform === 'win32' ? 'tau-tools.exe' : 'tau-tools'
 let cachedNativeTauToolsPath: string | null | undefined
+
+function isExecutableFile(path: string): boolean {
+  try {
+    const stat = statSync(path)
+    if (!stat.isFile()) return false
+    if (process.platform === 'win32') return true
+    return (stat.mode & 0o111) !== 0
+  } catch {
+    return false
+  }
+}
 
 export function getNativeTauToolsPath(): string | null {
   if (cachedNativeTauToolsPath !== undefined) {
@@ -24,7 +35,7 @@ export function getNativeTauToolsPath(): string | null {
   ]
 
   cachedNativeTauToolsPath =
-    candidates.find(candidate => existsSync(candidate)) ?? null
+    candidates.find(candidate => isExecutableFile(candidate)) ?? null
   return cachedNativeTauToolsPath
 }
 

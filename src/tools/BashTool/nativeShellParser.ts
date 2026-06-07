@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { statSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -39,11 +39,22 @@ function nativeBinaryName(): string {
   return process.platform === 'win32' ? 'tau-shell-parse.exe' : 'tau-shell-parse'
 }
 
+function isExecutableFile(path: string): boolean {
+  try {
+    const stat = statSync(path)
+    if (!stat.isFile()) return false
+    if (process.platform === 'win32') return true
+    return (stat.mode & 0o111) !== 0
+  } catch {
+    return false
+  }
+}
+
 export function findNativeShellParserBinary(): string | null {
   if (process.env.TAU_DISABLE_NATIVE_SHELL_PARSER === '1') return null
 
   const explicit = process.env.TAU_SHELL_PARSE_BIN
-  if (explicit && existsSync(explicit)) return explicit
+  if (explicit && isExecutableFile(explicit)) return explicit
 
   const here = dirname(fileURLToPath(import.meta.url))
   const name = nativeBinaryName()
@@ -54,7 +65,7 @@ export function findNativeShellParserBinary(): string | null {
   ]
 
   for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate
+    if (isExecutableFile(candidate)) return candidate
   }
   return null
 }
