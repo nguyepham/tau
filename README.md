@@ -97,7 +97,7 @@ Built-in Language Server Protocol support. The agent gets real diagnostics, defi
 **Snapshot with time traveling**
 Per-turn working-tree snapshots stored in a shadow git repo separate from your project's `.git`. The agent can `save`, `list`, `diff`, and `restore` — instant undo for any change the agent made, large files (>2 MB) auto-excluded so the store stays small, weekly garbage collection. Travel back to any prior state without touching your branches.
 
-**Multi-provider orchestration**
+**Multi-provider orchestration(currenty in maintainace and not stable so its will back soon!!!!!!!!!! )**
 `/team-mode` runs an orchestrator that delegates to a team of worker agents — each one optionally on a different provider — with vertical (coordinator↔worker) and horizontal (worker↔worker) communication and automatic fallback when a worker fails.
 
 **`web_search` tool**
