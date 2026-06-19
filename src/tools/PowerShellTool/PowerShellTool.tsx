@@ -24,7 +24,8 @@ import { getPlatform } from '../../utils/platform.js';
 import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js';
 import { exec } from '../../utils/Shell.js';
 import { getCwd } from '../../utils/cwd.js';
-import { getOriginalCwd } from '../../bootstrap/state.js';
+import { getOriginalCwd, getVisitedDirs, recordVisitedDir } from '../../bootstrap/state.js';
+import { allWorkingDirectories } from '../../utils/permissions/filesystem.js';
 import type { ExecResult } from '../../utils/ShellCommand.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
@@ -35,7 +36,7 @@ import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { TaskOutput } from '../../utils/task/TaskOutput.js';
 import { isOutputLineTruncated } from '../../utils/terminal.js';
 import { buildLargeToolResultMessage, ensureToolResultsDir, generatePreview, getToolResultPath, PREVIEW_SIZE_BYTES } from '../../utils/toolResultStorage.js';
-import { validateCommandTargetExists } from '../BashTool/bashPreflightValidation.js';
+import { anchorCommandToDir, resolveTargetWorkdir, validateCommandTargetExists } from '../BashTool/bashPreflightValidation.js';
 import { isSameBashCwd, resolveBashPathFrom } from '../BashTool/bashWorkdir.js';
 import { shouldUseSandbox } from '../BashTool/shouldUseSandbox.js';
 import { BackgroundHint } from '../BashTool/UI.js';
@@ -474,7 +475,47 @@ export const PowerShellTool = buildTool({
     // run (workdir override or session cwd). Used for the cwd-transparency
     // note so the model always knows where a command ran (matches BashTool).
     const cwdBeforeExec = getCwd();
-    const executionDir = input.workdir ? resolveBashPathFrom(cwdBeforeExec, input.workdir) : cwdBeforeExec;
+    // File-location awareness (matches BashTool): when a command targets a file
+    // (script, package.json runner, Compose file) that isn't in the run dir but
+    // sits unambiguously in one subdirectory, run there automatically instead
+    // of failing/looping — only when the model gave no workdir of its own.
+    let autoWorkdir: string | undefined;
+    let autoWorkdirLabel: string | undefined;
+    // Absolute dir a target resolved to (when no explicit workdir). The command
+    // is rewritten to run there; tracked only for the cwd note + visited record.
+    let anchorDir: string | undefined;
+    if (!input.workdir) {
+      // Search the run dir + workspace dirs + dirs used this session, so a
+      // target that lives in a different (but known) tree still resolves.
+      const searchRoots = [
+        cwdBeforeExec,
+        ...allWorkingDirectories(toolUseContext.getAppState().toolPermissionContext),
+        ...getVisitedDirs(),
+      ];
+      const targetRes = await resolveTargetWorkdir(input.command, cwdBeforeExec, searchRoots);
+      if (targetRes.kind === 'auto') {
+        // Bake the absolute location INTO the command (survives provider lanes +
+        // run_in_background); do NOT rely on the fragile `workdir` field.
+        input.command = anchorCommandToDir(input.command, targetRes.workdir, 'powershell');
+        anchorDir = targetRes.workdir;
+        autoWorkdir = targetRes.relWorkdir;
+        autoWorkdirLabel = targetRes.label;
+      } else if (targetRes.kind === 'ambiguous') {
+        // Several known candidates → DON'T guess. List the absolute paths and
+        // run nothing; the model re-runs naming the one it means.
+        return {
+          data: {
+            stdout: '',
+            stderr: `${targetRes.label} exists in more than one known location:\n${targetRes.dirs.map(d => `  - ${d}`).join('\n')}\n\nRe-run naming the one you mean — use the absolute path (e.g. \`node C:\\abs\\dir\\server.js\`, or \`docker compose -f C:\\abs\\dir\\compose.yml up\`). Nothing was executed.`,
+            interrupted: false
+          }
+        };
+      }
+    }
+    // When we anchored to a resolved dir, the command runs there by absolute
+    // path even though the session cwd is unchanged — report that dir.
+    const executionDir = anchorDir ?? (input.workdir ? resolveBashPathFrom(cwdBeforeExec, input.workdir) : cwdBeforeExec);
+    recordVisitedDir(executionDir);
     try {
       const commandGenerator = runPowerShellCommand({
         input,
@@ -663,7 +704,9 @@ export const PowerShellTool = buildTool({
       let cwdNote: string | undefined;
       if (!stderrForShellReset) {
         const cwdAfter = getCwd();
-        if (!isSameBashCwd(executionDir, cwdAfter)) {
+        if (autoWorkdir) {
+          cwdNote = `Auto-located ${autoWorkdirLabel} in ${executionDir} and ran it by absolute path (${cwdBeforeExec} had none; session cwd unchanged).`;
+        } else if (!isSameBashCwd(executionDir, cwdAfter)) {
           cwdNote = `Ran in ${executionDir} (one-off workdir). The session cwd is still ${cwdAfter}; pass workdir again to run the next command there.`;
         } else if (!isSameBashCwd(cwdAfter, cwdBeforeExec)) {
           cwdNote = `Shell cwd is now ${cwdAfter}`;

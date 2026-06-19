@@ -14,6 +14,11 @@ import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { query } from '../../query.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import {
+  acquireAntigravityAgentTurn,
+  antigravityAgentGateBusy,
+  shouldSerializeAntigravityAgents,
+} from '../../services/api/antigravityAgentGate.js'
 import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js'
 import { cleanupAgentTracking } from '../../services/api/promptCacheBreakDetection.js'
 import {
@@ -808,6 +813,27 @@ export async function* runAgent({
   // Track the last recorded message UUID for parent chain continuity
   let lastRecordedUuid: UUID | null = initialMessages.at(-1)?.uuid ?? null
 
+  // Serialize Antigravity Gemini agents: the backend keeps ~one implicit
+  // cache slot per account, so concurrent agent streams evict each other
+  // on every request (measured 0% agent cache hits + repeated parent
+  // full-context re-ingests in parallel batches). Top-level spawns only —
+  // a nested spawn's parent agent already holds the gate and is blocked
+  // on this child, so re-acquiring here would deadlock.
+  let releaseAntigravityAgentTurn: (() => void) | undefined
+  if (
+    !toolUseContext.agentId &&
+    shouldSerializeAntigravityAgents(getAPIProvider(), resolvedAgentModel)
+  ) {
+    if (antigravityAgentGateBusy()) {
+      logForDebugging(
+        `[Agent: ${agentDefinition.agentType}] Queued behind another Antigravity agent (cache protection)`,
+      )
+    }
+    releaseAntigravityAgentTurn = await acquireAntigravityAgentTurn(
+      agentAbortController.signal,
+    )
+  }
+
   try {
     for await (const message of query({
       messages: initialMessages,
@@ -878,6 +904,9 @@ export async function* runAgent({
       agentDefinition.callback()
     }
   } finally {
+    // Free the Antigravity agent gate first so the next queued agent can
+    // start while this one's cleanup proceeds.
+    releaseAntigravityAgentTurn?.()
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
     await mcpCleanup()
     // Clean up agent's session hooks

@@ -74,7 +74,30 @@ async function main(): Promise<void> {
     assert(typeof a === 'string' && a.startsWith('tau-agent-'), `sessionId=${a}`)
   })
 
-  await test('does not add affinity keys for non-Antigravity providers', () => {
+  await test('forwards the root session for every cache-aware provider', () => {
+    const providers = [
+      'copilot',
+      'openrouter',
+      'agentrouter',
+      'opencode',
+      'opencodego',
+      'moonshot',
+      'mistral',
+      'fireworks',
+    ] as const
+
+    for (const provider of providers) {
+      const sessionId = resolveProviderRequestSessionId({
+        provider: provider as any,
+        rootSessionId: 'root-session',
+        agentId: 'agent-a' as AgentId,
+        querySource: 'agent:builtin:general-purpose' as QuerySource,
+      })
+      assert(sessionId === 'root-session', `${provider} sessionId=${sessionId}`)
+    }
+  })
+
+  await test('does not add affinity keys for providers that do not use them', () => {
     const sessionId = resolveProviderRequestSessionId({
       provider: 'gemini',
       rootSessionId: 'root-session',

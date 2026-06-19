@@ -110,6 +110,8 @@ const MANAGEABLE_PROVIDERS = [
   'vercel',
   'requesty',
   'opencode',
+  'opencodego',
+  'fireworks',
   'mistral',
   'nim',
   'deepseek',
@@ -361,7 +363,9 @@ function usesEmbeddedProviderLogin(provider: ManageableProvider): provider is Ke
     provider === 'vercel' ||
     provider === 'requesty' ||
     provider === 'opencode' ||
-    provider === 'commandcode'
+    provider === 'opencodego' ||
+    provider === 'commandcode' ||
+    provider === 'fireworks'
   )
 }
 

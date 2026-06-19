@@ -4,7 +4,10 @@
  * Run: bun run src/tools/BashTool/bashWorkdir.test.ts
  */
 
-import { posix as pathPosix } from 'path'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join, posix as pathPosix, relative } from 'path'
+import { getPlatform } from '../../utils/platform.js'
 import {
   extractLeadingCdCommand,
   isSameBashCwd,
@@ -150,6 +153,59 @@ async function main(): Promise<void> {
       result === 'C:\\Workspace\\todo-app\\backend',
       `got ${result}`,
     )
+  })
+
+  await test('collapses a repeated cwd suffix from a leading cd', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tau-workdir-overlap-'))
+    try {
+      const actual = join(root, 'sd', 'ef')
+      mkdirSync(actual, { recursive: true })
+      const repeated = relative(root, actual)
+      const result = normalizeBashExecutionInput(
+        { command: `cd ${repeated} && docker compose up -d` },
+        actual,
+        getPlatform(),
+      )
+      assert(result.command === 'docker compose up -d', 'expected cd to be stripped')
+      assert(result.workdir === actual, `expected ${actual}, got ${result.workdir}`)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  await test('collapses a repeated cwd suffix from an explicit workdir', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tau-workdir-explicit-'))
+    try {
+      const actual = join(root, 'project', 'nested')
+      mkdirSync(actual, { recursive: true })
+      const repeated = relative(root, actual)
+      const result = normalizeBashExecutionInput(
+        { command: 'npm test', workdir: repeated },
+        actual,
+        getPlatform(),
+      )
+      assert(result.workdir === actual, `expected ${actual}, got ${result.workdir}`)
+      assert(result._workdirFromCd === undefined, 'explicit workdir must stay one-off')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  await test('keeps a real nested directory even when its name repeats', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tau-workdir-real-nested-'))
+    try {
+      const current = join(root, 'app')
+      const realChild = join(current, 'app')
+      mkdirSync(realChild, { recursive: true })
+      const result = normalizeBashExecutionInput(
+        { command: 'cd app && pwd' },
+        current,
+        getPlatform(),
+      )
+      assert(result.workdir === realChild, `expected real child ${realChild}, got ${result.workdir}`)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   console.log(`\n${passed} passed, ${failed} failed`)

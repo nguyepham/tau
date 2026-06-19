@@ -5,6 +5,7 @@
  */
 
 import { OpenAICompatLane } from './loop.js'
+import { LaneBackedProvider } from '../provider-bridge.js'
 import type { AnthropicStreamEvent, ProviderMessage } from '../../services/api/providers/base_provider.js'
 
 let passed = 0
@@ -239,6 +240,80 @@ async function captureMoonshotRequest(sessionId?: string): Promise<{
   } finally {
     globalThis.fetch = oldFetch
     lane.unregisterProvider('moonshot')
+  }
+}
+
+async function captureFireworksRequest(
+  sessionId?: string,
+  throughBridge = false,
+): Promise<{
+  request: CapturedRequest
+  events: AnthropicStreamEvent[]
+}> {
+  const lane = new OpenAICompatLane()
+  lane.registerProvider('fireworks', 'fireworks-token', 'https://api.fireworks.ai/inference/v1')
+
+  const oldFetch = globalThis.fetch
+  let request: CapturedRequest | null = null
+
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    request = {
+      url: String(url),
+      headers: init?.headers as Record<string, string>,
+      body: JSON.parse(String(init?.body ?? '{}')) as Record<string, any>,
+    }
+    const sse = [
+      {
+        id: 'chatcmpl-fireworks',
+        object: 'chat.completion.chunk',
+        model: 'accounts/fireworks/models/minimax-m2p7',
+        choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: null }],
+      },
+      {
+        id: 'chatcmpl-fireworks',
+        object: 'chat.completion.chunk',
+        model: 'accounts/fireworks/models/minimax-m2p7',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 200, completion_tokens: 5, total_tokens: 205 },
+        // Fireworks reports cache hits only via perf_metrics for streaming.
+        perf_metrics: { 'cached-prompt-tokens': 160 },
+      },
+    ].map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n'
+
+    return new Response(sse, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  try {
+    const events: AnthropicStreamEvent[] = []
+    const stream = throughBridge
+      ? await new LaneBackedProvider(lane, 'fireworks').stream({
+          model: 'accounts/fireworks/models/minimax-m2p7',
+          messages: [{ role: 'user', content: 'hello' }],
+          system: 'stable system prompt',
+          tools: [],
+          max_tokens: 128,
+          ...(sessionId ? { sessionId } : {}),
+        } as any)
+      : lane.streamAsProvider({
+          model: 'accounts/fireworks/models/minimax-m2p7',
+          messages: [{ role: 'user', content: 'hello' }],
+          system: 'stable system prompt',
+          tools: [],
+          max_tokens: 128,
+          signal: new AbortController().signal,
+          sessionId,
+          providerHint: 'fireworks',
+        })
+
+    for await (const ev of stream) events.push(ev)
+    assert(request !== null, 'fetch was not called')
+    return { request, events }
+  } finally {
+    globalThis.fetch = oldFetch
+    lane.unregisterProvider('fireworks')
   }
 }
 
@@ -570,6 +645,50 @@ async function main(): Promise<void> {
     assert(toolMessages.length === 1, `tool_messages=${JSON.stringify(toolMessages)}`)
     assert(toolMessages[0].tool_call_id === 'toolu_compat_call_answered',
       `tool_call_id=${toolMessages[0].tool_call_id}`)
+  })
+
+  await test('fireworks pins replica via x-session-affinity header + user field', async () => {
+    const { request } = await captureFireworksRequest('session-fixed')
+    assert(request.url === 'https://api.fireworks.ai/inference/v1/chat/completions', `url=${request.url}`)
+    // The routing-affinity header is THE fix for unstable cache hits: it keeps
+    // every turn on the same warm replica (Fireworks' cache is per-replica).
+    assert(request.headers['x-session-affinity'] === 'session-fixed',
+      `x-session-affinity=${request.headers['x-session-affinity']}`)
+    // Body-level fallback for the same routing purpose.
+    assert(request.body.user === 'session-fixed', `user=${request.body.user}`)
+    // prompt_cache_key (prefix isolation) + perf_metrics flag still present.
+    assert(request.body.prompt_cache_key === 'session-fixed',
+      `prompt_cache_key=${request.body.prompt_cache_key}`)
+    assert(request.body.perf_metrics_in_response === true,
+      `perf_metrics_in_response=${request.body.perf_metrics_in_response}`)
+  })
+
+  await test('fireworks real provider bridge preserves affinity into the HTTP request', async () => {
+    const { request } = await captureFireworksRequest(undefined, true)
+    const affinity = request.headers['x-session-affinity']
+    assert(typeof affinity === 'string' && affinity.length > 0,
+      `x-session-affinity=${affinity}`)
+    assert(request.body.user === affinity, `user=${request.body.user}`)
+    assert(request.body.prompt_cache_key === affinity,
+      `prompt_cache_key=${request.body.prompt_cache_key}`)
+  })
+
+  await test('fireworks omits affinity hints when sessionId is absent', async () => {
+    const { request } = await captureFireworksRequest()
+    assert(request.headers['x-session-affinity'] === undefined,
+      `x-session-affinity=${request.headers['x-session-affinity']}`)
+    assert(request.body.user === undefined, `user=${request.body.user}`)
+    assert(request.body.prompt_cache_key === undefined,
+      `prompt_cache_key=${request.body.prompt_cache_key}`)
+  })
+
+  await test('fireworks folds perf_metrics cached-prompt-tokens into cache read', async () => {
+    const { events } = await captureFireworksRequest('session-fixed')
+    const finalDelta = events.findLast(ev => ev.type === 'message_delta')
+    // prompt=200, cached=160 → fresh input=40, read=160.
+    assert(finalDelta?.usage?.input_tokens === 40, `input_tokens=${finalDelta?.usage?.input_tokens}`)
+    assert(finalDelta?.usage?.cache_read_input_tokens === 160,
+      `cache_read_input_tokens=${finalDelta?.usage?.cache_read_input_tokens}`)
   })
 
   await test('sends OpenRouter cache key without Copilot affinity headers', async () => {

@@ -29,6 +29,14 @@ const FAILURE_PATTERNS: FailurePattern[] = [
         : 'Find the specific process holding it before retrying: lsof <path> or fuser <path>; for a busy port, lsof -i :<port> or fuser <port>/tcp. Then stop only that PID with kill <PID> — never kill every process of an image name (no broad killall/pkill). Prefer starting long-running processes with run_in_background so they stay tracked and stoppable by task ID.',
   },
   {
+    pattern: /\bNo FileSystem for scheme\s*["']?C["']?|(?:CreateFile|stat|open|access).*?\bC:[\\/]|invalid (?:path|volume specification).*?\bC:[\\/]/i,
+    reason: 'A POSIX path appears to have crossed a Windows/MSYS process boundary as a C: path.',
+    guidance: platform =>
+      platform === 'windows'
+        ? 'Treat this as Git Bash/MSYS argument conversion, not a syntax, workdir, or Compose-file error. Keep local host paths convertible, but exclude the remote argument from conversion or place the complete remote command in one quoted sh -c/bash -c string. For container, pod, SSH, WSL, ADB, or Hadoop paths, verify the target receives the original /path spelling.'
+        : 'Inspect the process boundary that supplied the path. A target expecting a POSIX or URI path received a Windows drive-qualified path instead.',
+  },
+  {
     pattern: /\b(no such file or directory|cannot access|not found)\b/i,
     reason: 'A referenced file, directory, resource, or name was not found.',
     guidance:
@@ -160,12 +168,23 @@ function looksLikeProjectTaskCommand(command: string): boolean {
   )
 }
 
+// Tools that resolve their project/config from the working directory rather
+// than from an argument (dvc → dvc.yaml, terraform → *.tf, docker compose →
+// compose.yaml, …). When they fail there's no file path in argv to hint at the
+// right place, and a wrong cwd (the model sitting in another project's root) is
+// the usual cause — so steer to an absolute workdir explicitly instead of
+// letting it loop on the bare command.
+const CONFIG_IN_CWD_TOOLS_REGEX =
+  /(^|[\s;&|(])(dvc|terraform|tofu|dbt|snakemake|ansible-playbook|pulumi|skaffold|vagrant|nox|tox)(\.exe)?(?=\s|$)|(^|[\s;&|(])docker[\s-]compose\b/i
+
 // Process/network tools that exist only on one OS family. Used to redirect
 // the model to the host's native equivalents instead of letting it retry a
 // tool that can never exist there.
 const WINDOWS_ONLY_TOOLS_REGEX =
   /(^|[\s;&|(])(tasklist|taskkill|ipconfig|findstr|robocopy|xcopy|schtasks|wmic|icacls|driverquery)(\.exe)?\b/i
 const POSIX_ONLY_TOOLS_REGEX = /(^|[\s;&|(])(lsof|fuser)\b/i
+const REMOTE_PATH_BOUNDARY_REGEX =
+  /(^|[\s;&|(])(?:docker(?:\s+compose)?|docker-compose|podman|nerdctl)\s+(?:exec|run|cp)\b|(^|[\s;&|(])(?:kubectl|oc)\b[^;&|\n]*\b(?:exec|cp)\b|(^|[\s;&|(])(?:ssh|scp|sftp|rsync|wsl|adb|hadoop|hdfs)\b/i
 
 function commandContextGuidance(command: string, platform: Platform): string[] {
   const hints: string[] = []
@@ -200,11 +219,45 @@ function commandContextGuidance(command: string, platform: Platform): string[] {
     )
   }
 
+  if (platform === 'windows' && REMOTE_PATH_BOUNDARY_REGEX.test(command)) {
+    hints.push(
+      'This command crosses a Windows-to-POSIX path boundary. A direct /remote/path can be rewritten by Git Bash/MSYS before the native client sees it. Keep host paths convertible, protect only remote arguments, and use one quoted sh -c/bash -c remote command for dynamic paths, globs, redirects, or compound remote shell syntax.',
+    )
+  }
+
+  if (
+    /(?:^|\s)(?:--eval|--evaluate|--execute|--expression|-c|-e)(?:=|\s)/.test(
+      command,
+    )
+  ) {
+    hints.push(
+      'This command passes source code through the shell. Verify the evaluator receives the program as one argument; nested JSON/BSON/code quotes should use a single-quoted payload, quoted heredoc, stdin, or a temporary file under $TMPDIR.',
+    )
+  }
+
+  if (/--(?:file|config|input|output|script|workdir)=\S*[\\/]/.test(command)) {
+    hints.push(
+      'For path-valued long options, prefer the portable space-separated form (`--file /path`) over `--file=/path` unless this exact CLI documents equals-only syntax.',
+    )
+  }
+
+  if (platform === 'windows' && /(?:^|\s)\/tmp(?:\/|\s|$)/.test(command)) {
+    hints.push(
+      'On Windows Git Bash, local /tmp and $TMPDIR refer to the native per-user host temp directory. A container/VM /tmp is a different filesystem; use docker/pod copy or stdin deliberately at that boundary.',
+    )
+  }
+
   const cdTarget = extractCdTarget(command)
   if (cdTarget) {
     const quotedTarget = shellQuoteForHint(cdTarget)
     hints.push(
       `This command depends on changing directories into ${quotedTarget}; before retrying, verify the active cwd and target with pwd && ls -la && test -d ${quotedTarget} && ls -la ${quotedTarget}. If the target is missing, locate the real project directory first. Once found, prefer the workdir parameter over cd.`,
+    )
+  }
+
+  if (CONFIG_IN_CWD_TOOLS_REGEX.test(command)) {
+    hints.push(
+      'This tool resolves its project/config from the working directory, not from an argument. If the project lives in a different directory than where this ran (above), retry with the workdir parameter set to that directory\'s ABSOLUTE path — the folder that contains its config (e.g. dvc.yaml, *.tf, compose.yaml). Do not cd, and do not repeat the bare command.',
     )
   }
 

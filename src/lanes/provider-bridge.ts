@@ -29,6 +29,7 @@ import type {
   ProviderStreamResult,
 } from '../services/api/providers/base_provider.js'
 import { buildProviderStreamResult } from '../services/api/providers/base_provider.js'
+import { providerUsesStableRequestSession } from '../services/api/cacheAffinity.js'
 import type { Lane } from './types.js'
 import { getSessionId } from '../bootstrap/state.js'
 
@@ -64,16 +65,9 @@ export class LaneBackedProvider implements BaseProvider {
       typeof params.sessionId === 'string' && params.sessionId.trim().length > 0
         ? params.sessionId
         : undefined
-    const sessionId =
-      providerHint === 'copilot'
-      || providerHint === 'openrouter'
-      || providerHint === 'agentrouter'
-      || providerHint === 'opencode'
-      || providerHint === 'moonshot'
-      || providerHint === 'mistral'
-      || providerHint === 'antigravity'
-        ? explicitSessionId ?? getSessionId()
-        : undefined
+    const sessionId = providerUsesStableRequestSession(providerHint ?? '')
+      ? explicitSessionId ?? getSessionId()
+      : undefined
 
     if (typeof lane.streamAsProvider !== 'function') {
       throw new Error(

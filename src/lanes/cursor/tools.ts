@@ -2,6 +2,7 @@ import type { ProviderTool } from '../../services/api/providers/base_provider.js
 import type { LaneToolRegistration } from '../types.js'
 import { windowsPathToPosixPath } from '../../utils/windowsPaths.js'
 import { GEMINI_TOOL_REGISTRY } from '../gemini/tools.js'
+import { applyShellWorkdir } from '../shared/shell_workdir.js'
 import { WEB_SEARCH_NATIVE_DESCRIPTION } from '../../tools/WebSearchTool/prompt.js'
 
 export const CURSOR_CLIENT_SIDE_TOOL_V2 = {
@@ -539,13 +540,11 @@ const CURSOR_EXTRA_TOOL_REGISTRY: LaneToolRegistration[] = [
       required: ['command'],
     },
     adaptInput(native) {
-      const command = native.command
-      const cwd = native.cwd
-      const input: Record<string, unknown> = { command }
+      const input: Record<string, unknown> = { command: native.command }
       if (native.description) input.description = native.description
       if (native.is_background) input.run_in_background = native.is_background
-      if (cwd) input.command = `cd ${JSON.stringify(cwd)} && ${command}`
-      return input
+      // cwd → shared Bash `workdir` (one-off, quoting-safe), never `cd …`.
+      return applyShellWorkdir(input, native, ['cwd', 'workdir', 'dir_path'])
     },
     adaptOutput: _stringifyToolOutput,
   },
@@ -700,12 +699,10 @@ const CURSOR_COMPAT_ALIAS_REGISTRY: LaneToolRegistration[] = [
       required: ['command'],
     },
     adaptInput(native) {
-      const command = native.command
-      const cwd = native.cwd ?? native.dir_path
-      const input: Record<string, unknown> = { command }
+      const input: Record<string, unknown> = { command: native.command }
       if (native.description) input.description = native.description
-      if (cwd) input.command = `cd ${JSON.stringify(cwd)} && ${command}`
-      return input
+      // cwd / dir_path → shared Bash `workdir` (one-off), never `cd …`.
+      return applyShellWorkdir(input, native, ['cwd', 'dir_path', 'workdir'])
     },
     adaptOutput: _stringifyToolOutput,
   },
@@ -1059,12 +1056,11 @@ export function resolveCursorToolCall(
   }
 
   if (normalizedName === 'run_shell_command') {
-    const command = nativeInput.command
-    const cwd = nativeInput.dir_path ?? nativeInput.cwd
-    const input: Record<string, unknown> = { command }
+    const input: Record<string, unknown> = { command: nativeInput.command }
     if (nativeInput.description) input.description = nativeInput.description
     if (nativeInput.is_background) input.run_in_background = nativeInput.is_background
-    if (cwd) input.command = `cd ${JSON.stringify(cwd)} && ${command}`
+    // dir_path / cwd → shared Bash `workdir` (one-off), never `cd …`.
+    applyShellWorkdir(input, nativeInput, ['dir_path', 'cwd', 'workdir'])
     return { implId: 'Bash', input }
   }
 

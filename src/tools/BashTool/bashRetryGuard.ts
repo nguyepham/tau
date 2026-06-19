@@ -5,9 +5,9 @@
  * retry failing commands in a loop — sometimes 30+ times with the same or
  * near-identical command — without ever diagnosing the root cause.
  *
- * This guard tracks recent Bash failures and blocks retry attempts that
- * match a previously-failed command pattern. The block message instructs
- * the model to diagnose first (ls, which, cat package.json, etc.).
+ * This module tracks recent Bash failures for diagnostics. Failure history
+ * never blocks execution; workdir normalization and target discovery handle
+ * recoverable mistakes before the command runs.
  *
  * The guard auto-resets when:
  *   - A diagnostic command runs (ls, cat, which, find, echo, etc.)
@@ -322,53 +322,13 @@ export function recordBashSuccess(command: string, workdir?: string): void {
   }
 }
 
-function truncateForList(s: string, max = 120): string {
-  return s.length > max ? `${s.slice(0, max).trimEnd()}…` : s
-}
-
 /**
- * Check if a command should be blocked due to repeated failures.
- * Returns null if allowed, or an error message if blocked.
+ * Compatibility seam for older callers. Repeated failures are diagnostic
+ * state only and never produce a user-visible execution block.
  */
-export function checkBashRetryGuard(command: string, workdir?: string): string | null {
+export function checkBashRetryGuard(_command: string, _workdir?: string): string | null {
   purgeStale()
   purgeStaleIntent()
-
-  // 1) Per-signature check (exact-command retries)
-  const sig = commandSignature(command, workdir)
-  const entry = _failures.get(sig)
-  if (entry && entry.attempts >= MAX_RETRIES_BEFORE_BLOCK) {
-    const diagnosticSuggestions = buildDiagnosticSuggestions(command)
-    return [
-      `Blocked: This command has failed ${entry.attempts} time(s) with exit code ${entry.exitCode}.`,
-      `Do NOT retry the same command. Instead, diagnose the root cause first:`,
-      ...diagnosticSuggestions,
-      ``,
-      `After running a diagnostic command, you may retry the original command.`,
-    ].join('\n')
-  }
-
-  // 2) Per-intent check (cosmetic-variant thrashing)
-  const ikey = intentKey(command)
-  const intent = ikey ? _intentFailures.get(ikey) : undefined
-  if (intent && intent.commands.length >= MAX_INTENT_FAILURES) {
-    const diagnosticSuggestions = buildDiagnosticSuggestions(command)
-    const recentVariants = intent.commands
-      .slice(-Math.min(5, intent.commands.length))
-      .map(c => `   • ${truncateForList(c)}`)
-    return [
-      `Blocked: ${intent.commands.length} distinct variations of this command intent have failed in the last ${Math.round(INTENT_TTL_MS / 1000)}s.`,
-      `Shared executables: ${intent.key.replace(/\+/g, ', ')}`,
-      `Recent variants:`,
-      ...recentVariants,
-      ``,
-      `You are thrashing — varying paths/flags/ports instead of diagnosing why the underlying tool keeps failing. Stop and investigate:`,
-      ...diagnosticSuggestions,
-      ``,
-      `After running a diagnostic that asks the system for actual state (not another variant of the same command), you may retry.`,
-    ].join('\n')
-  }
-
   return null
 }
 
@@ -379,6 +339,15 @@ function buildDiagnosticSuggestions(command: string): string[] {
   const base = baseCommand(command)
   const suggestions: string[] = []
   const cdTarget = extractCdTarget(command)
+
+  // Wrong directory is the most common cause of these retry loops — the model
+  // is usually sitting in another project's root. Lead with the concrete escape
+  // so it stops re-running the identical command: retry with an ABSOLUTE
+  // workdir. The guard keys on (workdir, command), so a new workdir is a
+  // genuinely different attempt and is NOT blocked.
+  suggestions.push(
+    '- If this must run in a different directory than the current one (e.g. another project/repo), retry it with the `workdir` parameter set to that directory\'s ABSOLUTE path — do NOT `cd`, and do NOT repeat the identical command.',
+  )
 
   if (cdTarget) {
     const quotedTarget = shellQuoteForHint(cdTarget)

@@ -1,4 +1,4 @@
-import { homedir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'path'
 import { getCwd } from './cwd.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -66,12 +66,23 @@ export function expandPath(path: string, baseDir?: string): string {
 
   // On Windows, convert POSIX-style paths (e.g., /c/Users/...) to Windows format
   let processedPath = trimmedPath
-  if (getPlatform() === 'windows' && trimmedPath.match(/^\/[a-z]\//i)) {
-    try {
-      processedPath = posixPathToWindowsPath(trimmedPath)
-    } catch {
-      // If conversion fails, use original path
-      processedPath = trimmedPath
+  if (getPlatform() === 'windows') {
+    // `/tmp` is the Git Bash spelling of Windows' per-user temp directory.
+    // Node's path.resolve/normalize would otherwise interpret it as `C:\tmp`,
+    // so FileRead/FileWrite/FileEdit and Bash would refer to different files.
+    // Map the POSIX temp alias to the same host directory Bash exposes.
+    const posixTmp = /^\/tmp(?:\/(.*))?$/.exec(trimmedPath)
+    if (posixTmp) {
+      processedPath = posixTmp[1]
+        ? join(tmpdir(), ...posixTmp[1].split('/'))
+        : tmpdir()
+    } else if (trimmedPath.match(/^\/[a-z]\//i)) {
+      try {
+        processedPath = posixPathToWindowsPath(trimmedPath)
+      } catch {
+        // If conversion fails, use original path
+        processedPath = trimmedPath
+      }
     }
   }
 

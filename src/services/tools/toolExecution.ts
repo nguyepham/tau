@@ -608,27 +608,47 @@ function appendToolInputValidationRecoveryHint(
 ): string {
   if (
     toolName !== BASH_TOOL_NAME ||
-    !isPlainEmptyObject(input) ||
+    !bashInputMissingCommand(input) ||
     errorContent.includes('Bash retry guidance:')
   ) {
     return errorContent
   }
 
+  // The classic slip is sending `description`/`timeout` but dropping the one
+  // required field. Naming the keys that *did* arrive makes the omission
+  // concrete so the model re-sends the same call with `command` filled in,
+  // instead of re-deriving the whole call from the schema dump.
+  const sentKeys = isPlainObject(input)
+    ? Object.keys(input).filter(key => key !== 'command')
+    : []
+  const sentNote =
+    sentKeys.length > 0
+      ? `You sent ${sentKeys.map(key => `\`${key}\``).join(', ')} but omitted the required \`command\`. `
+      : ''
+
   return (
     `${errorContent}\n\n` +
-    'Bash retry guidance: retry by calling Bash with an object that includes a non-empty string command, ' +
-    'for example {"command":"pwd"}. Never call Bash with {}. If the intended command uses PowerShell syntax ' +
-    '(Get-ChildItem, Select-String, $env:...), use the PowerShell tool instead of Bash.'
+    `Bash retry guidance: ${sentNote}` +
+    'Re-send the SAME call with a non-empty string `command` — that field holds the actual shell ' +
+    'command to run (for example {"command":"docker compose up -d"}). Never call Bash without `command`. ' +
+    'If the intended command uses PowerShell syntax (Get-ChildItem, Select-String, $env:...), use the ' +
+    'PowerShell tool instead of Bash.'
   )
 }
 
-function isPlainEmptyObject(value: unknown): boolean {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value as Record<string, unknown>).length === 0
-  )
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * True when a Bash call lacks a usable `command` — missing, the wrong type, or
+ * blank. Covers the bare `{}` case and the more common slip where the model
+ * sends other fields (description/timeout/workdir) but forgets `command`.
+ */
+function bashInputMissingCommand(value: unknown): boolean {
+  if (!isPlainObject(value)) return true
+  const command = value.command
+  return typeof command !== 'string' || command.trim().length === 0
 }
 
 async function checkPermissionsAndCallTool(

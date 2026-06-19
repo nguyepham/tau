@@ -60,13 +60,11 @@ function main(): void {
     assert(set.length === 5, `expected 5 distinct execs, got ${JSON.stringify(set)}`)
   })
 
-  test('per-signature: blocks after 2 exact retries', () => {
+  test('per-signature: repeated failures never block execution', () => {
     recordBashFailure('false', 1, '')
     assert(checkBashRetryGuard('false') === null, 'first retry allowed')
     recordBashFailure('false', 1, '')
-    const block = checkBashRetryGuard('false')
-    assert(block !== null, 'second retry should block')
-    assert(block!.includes('failed 2 time(s)'), `expected attempts count, got: ${block}`)
+    assert(checkBashRetryGuard('false') === null, 'second retry must also be allowed')
   })
 
   test('per-signature: distinguishes same command in different cwd', () => {
@@ -78,11 +76,13 @@ function main(): void {
       'same command in a different cwd should be allowed',
     )
 
-    const block = checkBashRetryGuard('npm test', '/repo')
-    assert(block !== null, 'same command in the same cwd should block')
+    assert(
+      checkBashRetryGuard('npm test', '/repo') === null,
+      'same command in the same cwd must remain runnable',
+    )
   })
 
-  test('per-intent: blocks 3 distinct variants sharing executables', () => {
+  test('per-intent: variants remain diagnostic-only', () => {
     // Simulate the transcript: same source+uvicorn chain, different paths.
     recordBashFailure('source /c/Users/a/.venv/Scripts/activate && uvicorn app:app', 1, 'err1')
     recordBashFailure('source .venv/Scripts/activate && uvicorn app.main:app --port 8000', 1, 'err2')
@@ -91,19 +91,9 @@ function main(): void {
       'third distinct variant should not yet be blocked (we check BEFORE record)',
     )
     recordBashFailure('source other/.venv/Scripts/activate && uvicorn app:app --reload', 1, 'err3')
-    const block = checkBashRetryGuard('source /tmp/.venv/Scripts/activate && uvicorn server:app')
-    assert(block !== null, 'fourth attempt with same intent should block')
     assert(
-      block!.includes('source, uvicorn'),
-      `expected shared-executables list, got: ${block}`,
-    )
-    assert(
-      block!.includes('thrashing'),
-      'expected thrashing language',
-    )
-    assert(
-      block!.includes('Recent variants:'),
-      'expected recent variants listing',
+      checkBashRetryGuard('source /tmp/.venv/Scripts/activate && uvicorn server:app') === null,
+      'fourth attempt must remain runnable',
     )
   })
 
@@ -122,13 +112,14 @@ function main(): void {
     assert(block === null, `npm install bar should be allowed, got: ${block}`)
   })
 
-  test('per-intent: three distinct npm-family failures triggers intent block', () => {
+  test('per-intent: three distinct npm-family failures do not block', () => {
     recordBashFailure('npm install foo', 1, 'e')
     recordBashFailure('npm install bar', 1, 'e')
     recordBashFailure('npm install baz', 1, 'e')
-    const block = checkBashRetryGuard('npm install qux')
-    assert(block !== null, 'fourth npm install variant should block via intent')
-    assert(block!.includes('thrashing'), 'expected thrashing language')
+    assert(
+      checkBashRetryGuard('npm install qux') === null,
+      'fourth npm install variant must remain runnable',
+    )
   })
 
   test('intent tracker cleared by overlapping-exe success', () => {
@@ -155,6 +146,32 @@ function main(): void {
     recordBashFailure('false', 1, '')
     resetBashRetryGuard()
     assert(checkBashRetryGuard('false') === null, 'reset should clear failures')
+  })
+
+  // ── wrong-directory loop escape ────────────────────────────────
+  // The transcript bug: `dvc repro` run in the wrong root fails twice, gets
+  // blocked, and the model loops because nothing tells it to add a workdir.
+  test('repeated project-tool failures do not expose a block message', () => {
+    recordBashFailure('dvc repro', 253, "ERROR: 'dvc.yaml' does not exist")
+    recordBashFailure('dvc repro', 253, "ERROR: 'dvc.yaml' does not exist")
+    assert(checkBashRetryGuard('dvc repro') === null, 'repeated bare command must run')
+  })
+
+  test('same command with an absolute workdir escapes the block', () => {
+    recordBashFailure('dvc repro', 253, 'err')
+    recordBashFailure('dvc repro', 253, 'err')
+    assert(checkBashRetryGuard('dvc repro') === null, 'bare repeat remains runnable')
+    assert(
+      checkBashRetryGuard('dvc repro', '/c/Users/ok/Desktop/real-dvc-project') === null,
+      'adding an absolute workdir is a new attempt and must be allowed',
+    )
+  })
+
+  test('a failure under one workdir does not block a different workdir', () => {
+    recordBashFailure('dvc repro', 253, 'err', '/c/wrong')
+    recordBashFailure('dvc repro', 253, 'err', '/c/wrong')
+    assert(checkBashRetryGuard('dvc repro', '/c/wrong') === null, 'same workdir remains runnable')
+    assert(checkBashRetryGuard('dvc repro', '/c/right') === null, 'different workdir → allowed')
   })
 
   console.log(`\n${passed} passed, ${failed} failed`)

@@ -247,6 +247,29 @@ async function main(): Promise<void> {
       `missing Moonshot sessionId: ${captured?.sessionId}`)
   })
 
+  for (const providerHint of ['fireworks', 'opencodego'] as const) {
+    await test(`${providerHint} bridge forwards session id for prompt cache affinity`, async () => {
+      let captured: LaneProviderCallParams | null = null
+      const lane: Lane = {
+        ...mockLane([]),
+        async *streamAsProvider(params: LaneProviderCallParams) {
+          captured = params
+          return {
+            input_tokens: 0, output_tokens: 0,
+            cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 0,
+          }
+        },
+      }
+      const prov = new LaneBackedProvider(lane, providerHint)
+      const stream = await prov.stream({ model: 'cache-model', messages: [], max_tokens: 100 } as any)
+      for await (const _ of stream) {}
+      assert(captured?.providerHint === providerHint,
+        `providerHint=${captured?.providerHint}`)
+      assert(typeof captured?.sessionId === 'string' && captured.sessionId.length > 0,
+        `missing ${providerHint} sessionId: ${captured?.sessionId}`)
+    })
+  }
+
   await test('Antigravity bridge preserves explicit request session id', async () => {
     let captured: LaneProviderCallParams | null = null
     const lane: Lane = {

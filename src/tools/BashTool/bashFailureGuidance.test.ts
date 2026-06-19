@@ -314,6 +314,90 @@ function main(): void {
     )
   })
 
+  test('adds inline-code quoting guidance even when the evaluator is silent', () => {
+    const guidance = buildBashFailureGuidance(
+      'runtime --eval "fn({_id:"value"})"',
+      1,
+      '',
+      undefined,
+      'windows',
+    )
+    assert(
+      guidance.includes('receives the program as one argument'),
+      `expected inline evaluator guidance, got: ${guidance}`,
+    )
+  })
+
+  test('distinguishes host and remote temp files on Windows', () => {
+    const guidance = buildBashFailureGuidance(
+      'docker cp /tmp/init.js app:/tmp/init.js',
+      1,
+      'The system cannot find the file specified',
+      undefined,
+      'windows',
+    )
+    assert(
+      guidance.includes('native per-user host temp directory'),
+      `expected local temp guidance, got: ${guidance}`,
+    )
+    assert(
+      guidance.includes('container/VM /tmp is a different filesystem'),
+      `expected boundary distinction, got: ${guidance}`,
+    )
+  })
+
+  test('classifies Windows MSYS remote-path conversion failures', () => {
+    const guidance = buildBashFailureGuidance(
+      'docker exec namenode hadoop fs -cat /bigdata/hello.txt',
+      1,
+      'cat: No FileSystem for scheme "C"',
+      undefined,
+      'windows',
+    )
+
+    assert(
+      guidance.includes('Windows/MSYS process boundary'),
+      `expected MSYS path-conversion reason, got: ${guidance}`,
+    )
+    assert(
+      guidance.includes('not a syntax, workdir, or Compose-file error'),
+      `expected root-cause correction, got: ${guidance}`,
+    )
+    assert(
+      guidance.includes('quoted sh -c/bash -c'),
+      `expected protected remote command guidance, got: ${guidance}`,
+    )
+  })
+
+  test('steers config-in-cwd tools (dvc) to an absolute workdir', () => {
+    const guidance = buildBashFailureGuidance(
+      'dvc repro',
+      253,
+      "ERROR: failed to reproduce 'dvc.yaml': '/wrong/dir/dvc.yaml' does not exist",
+      '/c/Users/ok/Desktop/Devoir_Big_Data',
+    )
+    assert(
+      guidance.includes('resolves its project/config from the working directory'),
+      `expected config-in-cwd hint, got: ${guidance}`,
+    )
+    assert(
+      guidance.includes('workdir parameter') && guidance.includes('ABSOLUTE path'),
+      'expected absolute-workdir steering for dvc',
+    )
+  })
+
+  test('does not add the config-in-cwd hint for unrelated docker subcommands', () => {
+    const guidance = buildBashFailureGuidance(
+      'docker exec namenode hdfs dfs -ls /',
+      1,
+      'Error response from daemon: No such container: namenode',
+    )
+    assert(
+      !guidance.includes('resolves its project/config from the working directory'),
+      'docker exec must not trigger the compose/config-in-cwd hint',
+    )
+  })
+
   test('appends guidance once', () => {
     const once = appendBashFailureGuidance('false', 1, '')
     const twice = appendBashFailureGuidance('false', 1, once)

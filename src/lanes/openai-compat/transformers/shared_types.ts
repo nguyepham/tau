@@ -45,6 +45,11 @@ export interface OpenAIChatRequest {
   route?: string
   prompt_cache_key?: string
   prompt_cache_retention?: '24h'
+  /** End-user / session identifier. Used by Fireworks as a replica
+   *  routing-affinity hint (body-level fallback for x-session-affinity). */
+  user?: string
+  /** Fireworks: include perf_metrics (incl. cached-prompt-tokens) in the response body. */
+  perf_metrics_in_response?: boolean
   providerOptions?: {
     gateway?: {
       caching?: 'auto'

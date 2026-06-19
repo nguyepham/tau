@@ -1755,7 +1755,9 @@ export const PROVIDER_AUTH_SUPPORT: Record<string, ProviderAuthMethod[]> = {
   vercel:      ['api_key'],
   requesty:    ['api_key'],
   opencode:    ['api_key'],
+  opencodego:  ['api_key'],
   commandcode: ['api_key'],
+  fireworks:   ['api_key'],
   groq:        ['api_key'],
   mistral:     ['api_key'],
   nim:         ['api_key'],
@@ -1827,7 +1829,7 @@ export function getProviderApiKey(provider: APIProvider): string | null {
  * for anonymous allow-listed models; paid rows still require a real account key.
  */
 export function getProviderRuntimeApiKey(provider: APIProvider): string | null {
-  if (provider === 'opencode') return _getApiKeyDirect(provider) ?? 'public'
+  if (provider === 'opencode' || provider === 'opencodego') return _getApiKeyDirect(provider) ?? 'public'
   return _getApiKeyDirect(provider)
 }
 
@@ -1841,7 +1843,12 @@ function _getApiKeyDirect(provider: APIProvider): string | null {
     case 'vercel':      return process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN ?? _loadStoredKey('vercel')
     case 'requesty':    return process.env.REQUESTY_API_KEY ?? _loadStoredKey('requesty')
     case 'opencode':    return process.env.OPENCODE_API_KEY ?? process.env.OPENCODE_ZEN_API_KEY ?? _loadStoredKey('opencode') ?? loadOpenCodeApiKeyFromAuthFile()
+    // Go shares the OpenCode credential with Zen — read the dedicated Go env
+    // first, then fall back to the shared OpenCode key sources so one login
+    // powers both tiers.
+    case 'opencodego':  return process.env.OPENCODE_GO_API_KEY ?? process.env.OPENCODE_API_KEY ?? process.env.OPENCODE_ZEN_API_KEY ?? _loadStoredKey('opencodego') ?? _loadStoredKey('opencode') ?? loadOpenCodeApiKeyFromAuthFile()
     case 'commandcode': return process.env.CMD_API_KEY ?? process.env.COMMANDCODE_API_KEY ?? process.env.COMMAND_CODE_API_KEY ?? _loadStoredKey('commandcode') ?? loadCommandCodeApiKeyFromAuthFile()
+    case 'fireworks':   return process.env.FIREWORKS_API_KEY ?? _loadStoredKey('fireworks')
     case 'groq':        return process.env.GROQ_API_KEY ?? _loadStoredKey('groq')
     case 'mistral':     return process.env.MISTRAL_API_KEY ?? _loadStoredKey('mistral')
     case 'nim':         return process.env.NIM_API_KEY ?? _loadStoredKey('nim')
@@ -1963,7 +1970,9 @@ export function getProviderBaseUrl(provider: APIProvider): string {
     case 'vercel':      return process.env.VERCEL_AI_GATEWAY_BASE_URL ?? process.env.AI_GATEWAY_BASE_URL ?? 'https://ai-gateway.vercel.sh/v1'
     case 'requesty':    return process.env.REQUESTY_BASE_URL ?? 'https://router.requesty.ai/v1'
     case 'opencode':    return process.env.OPENCODE_BASE_URL ?? process.env.OPENCODE_ZEN_BASE_URL ?? 'https://opencode.ai/zen/v1'
+    case 'opencodego':  return process.env.OPENCODE_GO_BASE_URL ?? 'https://opencode.ai/zen/go/v1'
     case 'commandcode': return normalizeCommandCodeBaseUrl(process.env.COMMANDCODE_BASE_URL ?? process.env.COMMAND_CODE_BASE_URL ?? process.env.CMD_BASE_URL ?? 'https://api.commandcode.ai/provider/v1')
+    case 'fireworks':   return process.env.FIREWORKS_BASE_URL ?? 'https://api.fireworks.ai/inference/v1'
     case 'groq':        return 'https://api.groq.com/openai/v1'
     case 'mistral':     return process.env.MISTRAL_BASE_URL ?? process.env.MISTRAL_API_BASE_URL ?? 'https://api.mistral.ai/v1'
     case 'nim':         return process.env.NIM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1'
@@ -2075,7 +2084,9 @@ function _getApiKeyEnvName(provider: APIProvider): string {
     case 'modelrouter': return 'MODEL_ROUTER_API_KEY or LXG2IT_API_KEY'
     case 'vercel':      return 'AI_GATEWAY_API_KEY or VERCEL_AI_GATEWAY_API_KEY'
     case 'requesty':    return 'REQUESTY_API_KEY'
+    case 'opencodego':  return 'OPENCODE_API_KEY'
     case 'commandcode': return 'CMD_API_KEY'
+    case 'fireworks':   return 'FIREWORKS_API_KEY'
     case 'groq':        return 'GROQ_API_KEY'
     case 'mistral':     return 'MISTRAL_API_KEY'
     case 'nim':         return 'NIM_API_KEY'

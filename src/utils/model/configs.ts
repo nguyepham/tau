@@ -64,6 +64,21 @@ const OPENCODE_BASE_URL = process.env.OPENCODE_BASE_URL
   ?? process.env.OPENCODE_ZEN_BASE_URL
   ?? 'https://opencode.ai/zen/v1'
 
+const OPENCODE_GO_BASE_URL = process.env.OPENCODE_GO_BASE_URL
+  ?? 'https://opencode.ai/zen/go/v1'
+
+// Default opus/sonnet/haiku mapping for OpenCode Go (real Go models, override
+// via OPENCODE_GO_MODEL_*). Used only for subagent/tier resolution — the live
+// roster is fetched from /zen/go/v1/models.
+const GO_DEFAULT_MODELS = {
+  opus:   process.env.OPENCODE_GO_MODEL_OPUS   ?? 'glm-5.1',
+  sonnet: process.env.OPENCODE_GO_MODEL_SONNET ?? 'kimi-k2.6',
+  haiku:  process.env.OPENCODE_GO_MODEL_HAIKU  ?? 'deepseek-v4-flash',
+}
+
+const FIREWORKS_BASE_URL = process.env.FIREWORKS_BASE_URL
+  ?? 'https://api.fireworks.ai/inference/v1'
+
 const COMMANDCODE_BASE_URL = normalizeCommandCodeBaseUrl(
   process.env.COMMANDCODE_BASE_URL
   ?? process.env.COMMAND_CODE_BASE_URL
@@ -478,6 +493,24 @@ export const PROVIDER_CONFIGS: Record<string, ProviderModelConfig> = {
     },
   },
 
+  // OpenCode Go — same gateway + shared OPENCODE_API_KEY as Zen, only the base
+  // path differs. Defaults map the opus/sonnet/haiku tiers to real Go models
+  // for subagent spawns; the actual roster is live-fetched by `/models`.
+  opencodego: {
+    displayName: 'OpenCode Go',
+    baseUrl: OPENCODE_GO_BASE_URL,
+    authType: 'bearer',
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    supportsStreaming: true,
+    supportsToolCalling: true,
+    defaultTier: 'pro',
+    tiers: {
+      free: GO_DEFAULT_MODELS,
+      pro: GO_DEFAULT_MODELS,
+      plus: GO_DEFAULT_MODELS,
+    },
+  },
+
   commandcode: {
     displayName: 'Command Code',
     baseUrl: COMMANDCODE_BASE_URL,
@@ -501,6 +534,38 @@ export const PROVIDER_CONFIGS: Record<string, ProviderModelConfig> = {
         opus:   process.env.COMMANDCODE_MODEL_OPUS   ?? process.env.COMMAND_CODE_MODEL_OPUS   ?? 'MiniMaxAI/MiniMax-M3',
         sonnet: process.env.COMMANDCODE_MODEL_SONNET ?? process.env.COMMAND_CODE_MODEL_SONNET ?? 'moonshotai/Kimi-K2.6',
         haiku:  process.env.COMMANDCODE_MODEL_HAIKU  ?? process.env.COMMAND_CODE_MODEL_HAIKU  ?? 'Qwen/Qwen3.7-Plus',
+      },
+    },
+  },
+
+  // Fireworks AI — OpenAI-compatible serverless inference for open-weight
+  // models. Model ids are fully-qualified (accounts/fireworks/models/<name>).
+  fireworks: {
+    displayName: 'Fireworks AI',
+    baseUrl: FIREWORKS_BASE_URL,
+    authType: 'bearer',
+    apiKeyEnv: 'FIREWORKS_API_KEY',
+    supportsStreaming: true,
+    supportsToolCalling: true,
+    defaultTier: 'pro',
+    tiers: {
+      // All ids verified against the live serverless roster (each returns 200)
+      // and tool-capable, so subagent/tier spawns don't 404. Override per-tier
+      // via FIREWORKS_MODEL_* env vars.
+      free: {
+        opus:   process.env.FIREWORKS_MODEL_OPUS_FREE   ?? 'accounts/fireworks/models/glm-5p1',
+        sonnet: process.env.FIREWORKS_MODEL_SONNET_FREE ?? 'accounts/fireworks/models/minimax-m2p5',
+        haiku:  process.env.FIREWORKS_MODEL_HAIKU_FREE  ?? 'accounts/fireworks/models/deepseek-v4-flash',
+      },
+      pro: {
+        opus:   process.env.FIREWORKS_MODEL_OPUS   ?? 'accounts/fireworks/models/deepseek-v4-pro',
+        sonnet: process.env.FIREWORKS_MODEL_SONNET ?? 'accounts/fireworks/models/kimi-k2p6',
+        haiku:  process.env.FIREWORKS_MODEL_HAIKU  ?? 'accounts/fireworks/models/deepseek-v4-flash',
+      },
+      plus: {
+        opus:   process.env.FIREWORKS_MODEL_OPUS   ?? 'accounts/fireworks/models/deepseek-v4-pro',
+        sonnet: process.env.FIREWORKS_MODEL_SONNET ?? 'accounts/fireworks/models/kimi-k2p6',
+        haiku:  process.env.FIREWORKS_MODEL_HAIKU  ?? 'accounts/fireworks/models/deepseek-v4-flash',
       },
     },
   },

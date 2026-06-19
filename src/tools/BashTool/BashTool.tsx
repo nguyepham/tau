@@ -1,11 +1,12 @@
 import { feature } from 'bun:bundle';
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
+import path from 'path';
 import * as React from 'react';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
 import type { AppState } from 'src/state/AppState.js';
 import { z } from 'zod/v4';
-import { getKairosActive, getOriginalCwd } from '../../bootstrap/state.js';
+import { clearSystemPromptSectionCacheEntry, getKairosActive, getOriginalCwd, getVisitedDirs, recordVisitedDir } from '../../bootstrap/state.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from '../../constants/toolLimits.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js';
@@ -30,7 +31,7 @@ import type { PermissionResult } from '../../utils/permissions/PermissionResult.
 import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js';
 import { exec, setCwd } from '../../utils/Shell.js';
 import { getCwd } from '../../utils/cwd.js';
-import { pathInAllowedWorkingPath } from '../../utils/permissions/filesystem.js';
+import { allWorkingDirectories, pathInAllowedWorkingPath } from '../../utils/permissions/filesystem.js';
 import type { ExecResult } from '../../utils/ShellCommand.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
@@ -45,9 +46,9 @@ import { trackGitOperations } from '../shared/gitOperationTracking.js';
 import { bashToolHasPermission, commandHasAnyCd, matchWildcardPattern, permissionRuleExtractPrefix } from './bashPermissions.js';
 import { validateBashCommandPartsMatch } from './bashCommandParts.js';
 import { renderBashCommandPlan } from './bashCommandPlanner.js';
-import { detectDetachedBackgroundPattern } from './backgroundDetachValidation.js';
+import { allowsAutomaticBackgrounding, detectDetachedBackgroundPattern } from './backgroundDetachValidation.js';
 import { appendBashFailureGuidance } from './bashFailureGuidance.js';
-import { validateBashExecutionPreflight } from './bashPreflightValidation.js';
+import { anchorCommandToDir, resolveTargetWorkdir, validateBashExecutionPreflight } from './bashPreflightValidation.js';
 import { validateBashSyntax } from './bashSyntaxValidation.js';
 import {
   isSameBashCwd,
@@ -56,7 +57,7 @@ import {
   resolveEffectiveBashCwd,
 } from './bashWorkdir.js';
 import { maybeAppendCommandHelp } from './commandHelp.js';
-import { checkBashRetryGuard, recordBashFailure, recordBashSuccess } from './bashRetryGuard.js';
+import { recordBashFailure, recordBashSuccess } from './bashRetryGuard.js';
 import { getPlatform } from '../../utils/platform.js';
 import { findGitBashPath } from '../../utils/windowsPaths.js';
 import { interpretCommandResult } from './commandSemantics.js';
@@ -234,10 +235,6 @@ function isSilentBashCommand(command: string): boolean {
   return hasNonFallbackCommand;
 }
 
-// Commands that should not be auto-backgrounded
-const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ['sleep' // Sleep should run in foreground unless explicitly backgrounded by user
-];
-
 // Check if background tasks are disabled at module load time
 const isBackgroundTasksDisabled =
 // eslint-disable-next-line custom-rules/no-process-env-top-level -- Intentional: schema must be defined at module load
@@ -354,21 +351,6 @@ export type Out = z.infer<OutputSchema>;
 // Re-export BashProgress from centralized types to break import cycles
 export type { BashProgress } from '../../types/tools.js';
 import type { BashProgress } from '../../types/tools.js';
-
-/**
- * Checks if a command is allowed to be automatically backgrounded
- * @param command The command to check
- * @returns false for commands that should not be auto-backgrounded (like sleep)
- */
-function isAutobackgroundingAllowed(command: string): boolean {
-  const parts = splitCommand_DEPRECATED(command);
-  if (parts.length === 0) return true;
-
-  // Get the first part which should be the base command
-  const baseCommand = parts[0]?.trim();
-  if (!baseCommand) return true;
-  return !DISALLOWED_AUTO_BACKGROUND_COMMANDS.includes(baseCommand);
-}
 
 /**
  * Detect standalone or leading `sleep N` patterns that should use Monitor
@@ -620,17 +602,9 @@ export const BashTool = buildTool({
         errorCode: 14
       };
     }
-    // Retry guard: block repeated identical failing commands to prevent
-    // infinite loops. Non-frontier models retry the same broken command
-    // 30+ times without diagnosing. This forces diagnostic-first behavior.
-    const retryBlock = checkBashRetryGuard(input.command, resolveEffectiveBashCwd(input));
-    if (retryBlock !== null) {
-      return {
-        result: false,
-        message: retryBlock,
-        errorCode: 12
-      };
-    }
+    // Failure history remains available for diagnostics, but never becomes a
+    // user-visible execution block. Path/command correction happens through
+    // normalization and target discovery; a repeat is allowed to execute.
     if (!isBackgroundTasksDisabled && !input.run_in_background) {
       const detachPattern = detectDetachedBackgroundPattern(input.command);
       if (detachPattern !== null) {
@@ -806,7 +780,88 @@ export const BashTool = buildTool({
     // run (workdir override or session cwd). Used for cwd-transparency notes
     // and failure guidance so the model always knows where a command ran.
     const cwdBeforeExec = getCwd();
-    const executionDir = resolveEffectiveBashCwd(input, cwdBeforeExec);
+    // File-location awareness: when a command targets a file (a script, a
+    // package.json runner, a Compose file) that isn't in the run directory but
+    // sits unambiguously in one subdirectory, run there automatically instead
+    // of failing — otherwise the model tends to loop on the identical command.
+    // Only when the model gave no workdir/cd of its own.
+    let autoWorkdir: string | undefined;
+    let autoWorkdirLabel: string | undefined;
+    // The absolute directory we resolved a target to (when no explicit workdir).
+    // The command is rewritten to run there by absolute path; this is tracked
+    // only for the cwd-transparency note + visited-dir record, NOT passed as a
+    // workdir (the whole point is to not depend on that fragile field).
+    let anchorDir: string | undefined;
+    // A stale/malformed workdir must not suppress the normal project search.
+    // Temporarily set it aside, resolve the command target from known absolute
+    // roots, and restore it only when no safe target can be found.
+    // BUT: if the model explicitly provided workdir (not extracted from cd),
+    // we should respect it and let it fail with a clear error rather than
+    // silently stripping it and auto-resolving to a different directory.
+    let unresolvedWorkdir: string | undefined;
+    if (input.workdir) {
+      try {
+        const resolvedWorkdir = resolveEffectiveBashCwd(input, cwdBeforeExec);
+        if (!(await fsStat(resolvedWorkdir)).isDirectory()) {
+          // Workdir doesn't exist - if model explicitly provided it (not from
+          // cd extraction), keep it so Shell.ts returns a clear error message.
+          // Only strip if it was synthesized from cd (model expects shell semantics).
+          if (input._workdirFromCd) {
+            unresolvedWorkdir = input.workdir;
+            input.workdir = undefined;
+          }
+          // else: keep input.workdir, let it fail with clear error in Shell.ts
+        }
+      } catch {
+        // Workdir path is invalid - same logic as above
+        if (input._workdirFromCd) {
+          unresolvedWorkdir = input.workdir;
+          input.workdir = undefined;
+        }
+        // else: keep input.workdir, let it fail with clear error in Shell.ts
+      }
+    }
+    if (!input.workdir) {
+      // Search the run dir + workspace dirs + dirs used this session, so a
+      // target that lives in a different (but known) tree still resolves — the
+      // jkk/jurk / TP1 / TP2 case. Broadening is safe because a multi-candidate
+      // result is SURFACED (below), not silently picked.
+      const searchRoots = [
+        cwdBeforeExec,
+        ...allWorkingDirectories(getAppState().toolPermissionContext),
+        ...getVisitedDirs(),
+      ];
+      const targetRes = await resolveTargetWorkdir(input.command, cwdBeforeExec, searchRoots);
+      if (targetRes.kind === 'auto') {
+        // Bake the absolute location INTO the command (survives provider lanes +
+        // run_in_background); do NOT rely on the fragile `workdir` field.
+        input.command = anchorCommandToDir(input.command, targetRes.workdir, 'bash');
+        anchorDir = targetRes.workdir;
+        autoWorkdir = targetRes.relWorkdir;
+        autoWorkdirLabel = targetRes.label;
+      } else if (targetRes.kind === 'ambiguous') {
+        // Several known candidates → DON'T guess. List the absolute paths and
+        // run nothing; the model re-runs naming the one it means.
+        return {
+          data: {
+            stdout: '',
+            stderr: `${targetRes.label} exists in more than one known location:\n${targetRes.dirs.map(d => `  - ${d}`).join('\n')}\n\nRe-run naming the one you mean — use the absolute path (e.g. \`node /abs/dir/server.js\`, or \`docker compose -f /abs/dir/compose.yml up\`). Nothing was executed.`,
+            interrupted: false,
+            isImage: false,
+            noOutputExpected: false
+          }
+        };
+      }
+    }
+    if (!input.workdir && unresolvedWorkdir) {
+      input.workdir = unresolvedWorkdir;
+    }
+    // When we anchored to a resolved dir, the command runs there by absolute
+    // path even though the session cwd is unchanged — report that dir.
+    const executionDir = anchorDir ?? resolveEffectiveBashCwd(input, cwdBeforeExec);
+    // Remember where this command actually ran so later commands can find files
+    // that live here, even from a different cwd.
+    recordVisitedDir(executionDir);
     try {
       // Use the new async generator version of runShellCommand
       const commandGenerator = runShellCommand({
@@ -880,6 +935,7 @@ export const BashTool = buildTool({
         if (input._workdirFromCd && input.workdir && !result.preSpawnError && !shouldMaintainProjectWorkingDir() && !isSameBashCwd(executionDir, getCwd()) && pathInAllowedWorkingPath(executionDir, appState.toolPermissionContext)) {
           try {
             setCwd(executionDir);
+            clearSystemPromptSectionCacheEntry('env_info_simple');
           } catch {
             // Target vanished mid-command — keep the current session cwd
           }
@@ -994,15 +1050,20 @@ export const BashTool = buildTool({
     // model anchored to the real directory in long sessions and after
     // compaction, instead of relying on its memory of earlier `cd` calls.
     let cwdNote: string | undefined;
+    const cwdAfter = getCwd();
     if (!stderrForShellReset) {
-      const cwdAfter = getCwd();
-      if (!isSameBashCwd(executionDir, cwdAfter)) {
+      if (autoWorkdir) {
+        cwdNote = `Auto-located ${autoWorkdirLabel} in ${executionDir} and ran it by absolute path (${cwdBeforeExec} had none; session cwd unchanged).`;
+      } else if (!isSameBashCwd(executionDir, cwdAfter)) {
         cwdNote = `Ran in ${executionDir} (one-off workdir). The session cwd is still ${cwdAfter}; pass workdir again to run the next command there.`;
       } else if (!isSameBashCwd(cwdAfter, cwdBeforeExec)) {
         cwdNote = `Shell cwd is now ${cwdAfter}`;
       } else if (isMainThread && !isSameBashCwd(cwdAfter, getOriginalCwd())) {
         cwdNote = `Shell cwd: ${cwdAfter}`;
       }
+    }
+    if (!cwdNote && isMainThread && !isSameBashCwd(cwdAfter, getOriginalCwd())) {
+      cwdNote = `Session cwd: ${cwdAfter}`;
     }
     const data: Out = {
       stdout: compressedStdout,
@@ -1085,7 +1146,7 @@ async function* runShellCommand({
   // Determine if auto-backgrounding should be enabled
   // Only enable for commands that are allowed to be auto-backgrounded
   // and when background tasks are not disabled
-  const shouldAutoBackground = !isBackgroundTasksDisabled && isAutobackgroundingAllowed(command);
+  const shouldAutoBackground = !isBackgroundTasksDisabled && allowsAutomaticBackgrounding(command);
   const shellCommand = await exec(command, abortController.signal, 'bash', {
     timeout: timeoutMs,
     onProgress(lastLines, allLines, totalLines, totalBytes, isIncomplete) {
@@ -1182,7 +1243,7 @@ async function* runShellCommand({
   // In assistant mode, the main agent should stay responsive. Auto-background
   // blocking commands after ASSISTANT_BLOCKING_BUDGET_MS so the agent can keep
   // coordinating instead of waiting. The command keeps running — no state loss.
-  if (feature('KAIROS') && getKairosActive() && isMainThread && !isBackgroundTasksDisabled && run_in_background !== true) {
+  if (feature('KAIROS') && getKairosActive() && isMainThread && shouldAutoBackground && run_in_background !== true) {
     setTimeout(() => {
       if (shellCommand.status === 'running' && backgroundShellId === undefined) {
         assistantAutoBackgrounded = true;

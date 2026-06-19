@@ -35,6 +35,8 @@ export function initOpenAICompatLane(providers?: {
   vercel?: { apiKey: string; baseUrl?: string }
   requesty?: { apiKey: string; baseUrl?: string }
   opencode?: { apiKey: string; baseUrl?: string }
+  opencodego?: { apiKey: string; baseUrl?: string }
+  fireworks?: { apiKey: string; baseUrl?: string }
   cline?: { apiKey: string; baseUrl?: string }
   iflow?: { apiKey: string; baseUrl?: string }
   kilocode?: { apiKey: string; baseUrl?: string }
@@ -203,6 +205,31 @@ export function initOpenAICompatLane(providers?: {
       ?? process.env.OPENCODE_ZEN_BASE_URL
       ?? 'https://opencode.ai/zen/v1',
   )
+
+  // OpenCode Go — same gateway + SAME credential as Zen, only the base path
+  // differs (/zen/go/v1). Falls back to the shared OpenCode key so a single
+  // login powers both tiers; no 'public' default since Go is subscription-only.
+  const opencodeGoKey = p.opencodego?.apiKey
+    ?? process.env.OPENCODE_GO_API_KEY
+    ?? process.env.OPENCODE_API_KEY
+    ?? process.env.OPENCODE_ZEN_API_KEY
+    ?? 'public'
+  openaiCompatLane.registerProvider(
+    'opencodego', opencodeGoKey,
+    p.opencodego?.baseUrl
+      ?? process.env.OPENCODE_GO_BASE_URL
+      ?? 'https://opencode.ai/zen/go/v1',
+  )
+
+  const fireworksKey = p.fireworks?.apiKey ?? process.env.FIREWORKS_API_KEY
+  if (fireworksKey) {
+    openaiCompatLane.registerProvider(
+      'fireworks', fireworksKey,
+      p.fireworks?.baseUrl
+        ?? process.env.FIREWORKS_BASE_URL
+        ?? 'https://api.fireworks.ai/inference/v1',
+    )
+  }
 
   // Phase 4 OAuth-backed compat providers. Caller (providerShim) passes
   // the OAuth access token as `apiKey`; the transformer turns that into

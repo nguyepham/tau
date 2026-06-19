@@ -14,6 +14,7 @@ import {
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
+import { recordVisitedDir } from '../../bootstrap/state.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -49,6 +50,7 @@ import {
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { validateInputForSettingsFileEdit } from '../../utils/settings/validateEditTool.js'
+import { validateEditSyntax } from '../../utils/treesitter/validateEdit.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
 import {
   FILE_EDIT_TOOL_NAME,
@@ -400,6 +402,8 @@ export const FileEditTool = buildTool({
     // 1. Get current state
     const fs = getFsImplementation()
     const absoluteFilePath = expandPath(file_path)
+    // Remember this dir so later commands can find files here from another cwd.
+    recordVisitedDir(dirname(absoluteFilePath))
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
@@ -557,6 +561,22 @@ export const FileEditTool = buildTool({
       })
     }
 
+    // Best-effort, non-blocking syntax check (warn-only). Runs AFTER the write
+    // above, so it is structurally incapable of blocking or reverting the edit —
+    // it only attaches an advisory note when the edit INTRODUCED new parse
+    // errors. Returns undefined for unsupported languages or unavailable
+    // parsing, and never throws.
+    const syntaxWarning = await validateEditSyntax(
+      absoluteFilePath,
+      originalFileContents,
+      updatedFile,
+    )
+    if (syntaxWarning) {
+      // Breadcrumb so the check is observable in a real session via --debug
+      // (writes to ~/.claude/debug/<session>.txt; use -d2e for stderr).
+      logForDebugging(`[tree-sitter] ${absoluteFilePath}: ${syntaxWarning}`)
+    }
+
     // 8. Yield result
     const data = {
       filePath: file_path,
@@ -567,29 +587,31 @@ export const FileEditTool = buildTool({
       userModified: userModified ?? false,
       replaceAll: replace_all,
       ...(gitDiff && { gitDiff }),
+      ...(syntaxWarning && { syntaxWarning }),
     }
     return {
       data,
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll } = data
+    const { filePath, userModified, replaceAll, syntaxWarning } = data
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''
+    const warningSuffix = syntaxWarning ? `\n\n${syntaxWarning}` : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`,
+        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${warningSuffix}`,
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.`,
+      content: `The file ${filePath} has been updated successfully${modifiedNote}.${warningSuffix}`,
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)

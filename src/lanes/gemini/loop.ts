@@ -41,6 +41,12 @@ import {
   buildGeminiFunctionDeclarations,
   GEMINI_TOOL_REGISTRY,
 } from './tools.js'
+import {
+  applyAntigravityPrefixPad,
+  paceAntigravityAgentRequest,
+  recordAntigravityCacheRead,
+  writeAntigravityCacheDebugEntry,
+} from './antigravity_cache.js'
 import { geminiApi, TAU_STABLE_SESSION_ID_FIELD } from './api.js'
 import { getOrCreateCacheWithUsage, invalidateCache } from '../../services/api/providers/gemini_cache.js'
 import {
@@ -110,7 +116,8 @@ export class GeminiLane implements Lane {
     // using cachedContents — so the cache key stays byte-identical
     // across turns. If the caller passed flat text without the marker,
     // we fall back to treating the whole thing as stable (no regression).
-    const { stableText, volatileText } = splitSystemAtBoundary(systemText)
+    const split = splitSystemAtBoundary(systemText)
+    const volatileText = split.volatileText
 
     // Build id→native-name map across the whole conversation so
     // tool_result blocks can find their original Gemini function name.
@@ -134,6 +141,26 @@ export class GeminiLane implements Lane {
     // registry for tools that match; pass through provider-shaped tools
     // for anything we don't recognize (MCP tools, custom tools).
     const functionDeclarations = buildLaneFunctionDeclarations(tools)
+
+    // Antigravity prompts below the backend's ~16,384-token implicit-cache
+    // minimum can never produce a cache entry — pad the stable system slot
+    // over it so the second call is a cache hit. Sized from turn-stable
+    // inputs (system + tools) so the pad is byte-identical across a
+    // conversation's turns.
+    //
+    // Applies to BOTH Gemini and Claude models on Antigravity: Claude is
+    // resold through the same cloudcode-pa Gemini wire protocol and shares
+    // the same per-account implicit cache, so it has the identical 16,384
+    // chunk minimum + async-commit instability. Google-path Gemini and
+    // every other provider are untouched. See antigravity_cache.ts for the
+    // measured cache semantics.
+    const isAntigravityModel = ANTIGRAVITY_MODEL_IDS.has(model.toLowerCase())
+    const stableText = isAntigravityModel
+      ? applyAntigravityPrefixPad(
+        split.stableText,
+        JSON.stringify(functionDeclarations).length,
+      )
+      : split.stableText
 
     // Map thinkingBudget from Anthropic-format thinking param.
     const thinkingBudget = resolveThinkingBudget(thinking)
@@ -185,8 +212,18 @@ export class GeminiLane implements Lane {
       thinkingBudget,
       cacheName,
     })
-    if (ANTIGRAVITY_MODEL_IDS.has(model.toLowerCase())) {
+    if (isAntigravityModel) {
       request[TAU_STABLE_SESSION_ID_FIELD] = stableAntigravitySessionId(sessionId, messages)
+      if (process.env.TAU_CACHE_DEBUG) {
+        writeAntigravityCacheDebugEntry(model, request, sessionId)
+      }
+      // Hold an agent's second request until its first cache write has had
+      // time to commit (~8-22s async) — without this, fast tool loops
+      // re-pay the full prompt cold on every turn. Agent sessions only
+      // (gated inside by the tau-agent- prefix); the main thread's human
+      // cadence already clears the commit window. Both Gemini and Claude
+      // on Antigravity hit the same async-commit backend.
+      await paceAntigravityAgentRequest(sessionId, signal)
     }
 
     // Track usage across the stream.
@@ -373,6 +410,9 @@ export class GeminiLane implements Lane {
           thinkingTokens = u.thoughtsTokenCount ?? thinkingTokens
           cacheReadTokens = u.cachedContentTokenCount ?? cacheReadTokens
           inputTokens = uncachedInputTokens(promptTokens, cacheReadTokens)
+          if (isAntigravityModel) {
+            recordAntigravityCacheRead(sessionId, cacheReadTokens, promptTokens)
+          }
         }
 
         if (!messageStartEmitted) {

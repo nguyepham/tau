@@ -87,9 +87,21 @@ const PROVIDER_META: Partial<Record<APIProvider, ProviderMeta>> = {
     getKeyUrl: 'https://opencode.ai/auth',
     supportsOAuth: false,
   },
+  opencodego: {
+    // Go shares the same OpenCode credential as Zen — one key powers both.
+    envVar: 'OPENCODE_API_KEY',
+    getKeyUrl: 'https://opencode.ai/auth',
+    supportsOAuth: false,
+  },
   commandcode: {
     envVar: 'CMD_API_KEY',
     getKeyUrl: 'https://commandcode.ai/studio/api-keys',
+    supportsOAuth: false,
+  },
+  fireworks: {
+    envVar: 'FIREWORKS_API_KEY',
+    keyPrefix: 'fw_',
+    getKeyUrl: 'https://fireworks.ai/account/api-keys',
     supportsOAuth: false,
   },
   mistral: {
@@ -244,6 +256,14 @@ async function _testApiKey(
         url = 'https://opencode.ai/zen/v1/models'
         headers = { Authorization: `Bearer ${key}` }
         break
+      case 'opencodego':
+        url = 'https://opencode.ai/zen/go/v1/models'
+        headers = { Authorization: `Bearer ${key}` }
+        break
+      case 'fireworks':
+        url = 'https://api.fireworks.ai/inference/v1/models'
+        headers = { Authorization: `Bearer ${key}` }
+        break
       case 'commandcode':
         url = 'https://api.commandcode.ai/alpha/whoami'
         headers = {
@@ -300,7 +320,9 @@ function reloadSavedApiKeyInRuntime(provider: APIProvider): void {
     provider === 'vercel' ||
     provider === 'requesty' ||
     provider === 'opencode' ||
+    provider === 'opencodego' ||
     provider === 'commandcode' ||
+    provider === 'fireworks' ||
     provider === 'minimax' ||
     provider === 'ollama'
   ) {
@@ -613,6 +635,14 @@ export function ProviderLoginFlow({ provider, onDone }: Props) {
       if (provider === 'modelrouter') process.env.MODELROUTER_API_KEY = key
       if (provider === 'vercel') process.env.VERCEL_AI_GATEWAY_API_KEY = key
       if (provider === 'opencode') process.env.OPENCODE_ZEN_API_KEY = key
+      if (provider === 'opencodego') {
+        // Go and Zen share one OpenCode credential. Mirror the key into the
+        // shared OpenCode env + stored slot so logging into either tier
+        // authenticates both.
+        process.env.OPENCODE_API_KEY = key
+        process.env.OPENCODE_ZEN_API_KEY = key
+        saveProviderKey('opencode', key)
+      }
       if (provider === 'commandcode') {
         process.env.COMMANDCODE_API_KEY = key
         process.env.COMMAND_CODE_API_KEY = key

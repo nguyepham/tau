@@ -1,3 +1,4 @@
+import { statSync } from 'fs'
 import path from 'path'
 import pathWin32 from 'path/win32'
 import { getCwd } from '../../utils/cwd.js'
@@ -25,8 +26,73 @@ const LEADING_CD_RE =
 
 function pathApi(
   platform: Platform,
-): Pick<typeof path, 'isAbsolute' | 'resolve'> {
+): typeof path.posix | typeof pathWin32 {
   return platform === 'windows' ? pathWin32 : path.posix
+}
+
+function isExistingDirectory(
+  target: string,
+  platform: Platform,
+): boolean {
+  try {
+    return statSync(normalizeForHostFs(target, platform)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function pathEndsWith(
+  target: string,
+  suffixParts: string[],
+  platform: Platform,
+): boolean {
+  if (suffixParts.length === 0) return false
+  const api = pathApi(platform)
+  const targetParts = api
+    .resolve(target)
+    .split(/[\\/]+/)
+    .filter(Boolean)
+  if (suffixParts.length > targetParts.length) return false
+  const offset = targetParts.length - suffixParts.length
+  return suffixParts.every((part, index) => {
+    const actual = targetParts[offset + index]
+    return platform === 'windows'
+      ? actual?.toLowerCase() === part.toLowerCase()
+      : actual === part
+  })
+}
+
+/**
+ * Recover the common "cwd suffix was repeated" mistake without guessing a
+ * different project. Example:
+ *
+ *   cwd:       C:\repo\sd\ef
+ *   requested: sd/ef
+ *   lexical:   C:\repo\sd\ef\sd\ef
+ *
+ * If the lexical directory exists, it always wins. Otherwise, only collapse to
+ * the nearest existing ancestor when the missing suffix exactly repeats that
+ * ancestor's own suffix. This is host/path-shape based, not machine-specific.
+ */
+function recoverRepeatedWorkdirSuffix(
+  candidate: string,
+  platform: Platform,
+): string {
+  const api = pathApi(platform)
+  const absolute = api.resolve(candidate)
+  if (isExistingDirectory(absolute, platform)) return absolute
+
+  const missingParts: string[] = []
+  let ancestor = absolute
+  for (let depth = 0; depth < 40; depth++) {
+    const parent = api.dirname(ancestor)
+    if (parent === ancestor) break
+    missingParts.unshift(api.basename(ancestor))
+    ancestor = parent
+    if (!isExistingDirectory(ancestor, platform)) continue
+    return pathEndsWith(ancestor, missingParts, platform) ? ancestor : absolute
+  }
+  return absolute
 }
 
 /**
@@ -125,7 +191,15 @@ export function normalizeBashExecutionInput<T extends BashExecutionWorkdirInput>
 
   let command = input.command
   let workdir = input.workdir
+    ? recoverRepeatedWorkdirSuffix(
+        resolveBashPathFrom(cwd, input.workdir, platform),
+        platform,
+      )
+    : undefined
   let changed = false
+  let convertedCd = false
+
+  if (workdir !== input.workdir) changed = true
 
   for (let i = 0; i < 10; i++) {
     const leadingCd = extractLeadingCdCommand(command)
@@ -135,10 +209,20 @@ export function normalizeBashExecutionInput<T extends BashExecutionWorkdirInput>
     workdir = resolveBashPathFrom(baseDir, leadingCd.target, platform)
     command = leadingCd.remainder
     changed = true
+    convertedCd = true
+  }
+
+  if (convertedCd && workdir) {
+    workdir = recoverRepeatedWorkdirSuffix(workdir, platform)
   }
 
   return changed
-    ? ({ ...input, command, workdir, _workdirFromCd: true } as T)
+    ? ({
+        ...input,
+        command,
+        workdir,
+        _workdirFromCd: convertedCd ? true : input._workdirFromCd,
+      } as T)
     : input
 }
 

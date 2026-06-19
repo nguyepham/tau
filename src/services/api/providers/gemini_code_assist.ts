@@ -48,8 +48,8 @@ import type {
 import type { ModelInfo } from './base_provider.js'
 import {
   ANTIGRAVITY_API_VERSION,
-  ANTIGRAVITY_ENDPOINT_AUTOPUSH,
   ANTIGRAVITY_ENDPOINT_DAILY,
+  ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX,
   ANTIGRAVITY_ENDPOINT_PROD,
 } from '../../../constants/antigravity.js'
 
@@ -67,11 +67,15 @@ export function codeAssistGenerationBase(executor: GeminiExecutor): string {
 }
 
 export function codeAssistGenerationBases(executor: GeminiExecutor): readonly string[] {
+  // Mirrors CLIProxyAPI's fallback order (daily → prod, sandbox dropped):
+  // the non-sandbox daily channel is the one the real client uses and the
+  // one with reliable implicit-cache reads. The sandbox host — Tau's old
+  // primary — stays as a last-resort 404 fallback only.
   return executor === 'antigravity'
     ? [
       ANTIGRAVITY_GENERATION_BASE,
-      `${ANTIGRAVITY_ENDPOINT_AUTOPUSH}/v1internal`,
       CODE_ASSIST_BASE,
+      `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`,
     ]
     : [CODE_ASSIST_BASE]
 }

@@ -1,3 +1,5 @@
+import { rewriteUnquotedUrlAmpersand } from '../../utils/bash/defensiveRewrites.js'
+
 /**
  * Detect commands that detach a process with a raw `&`.
  *
@@ -15,6 +17,12 @@
  * - allows job-control parallelism that reaps its jobs with `wait`
  */
 export function detectDetachedBackgroundPattern(command: string): string | null {
+  // A `&` that is part of a URL query string (`?a=1&b=2`) is auto-quoted at
+  // execution time (applyBashDefensiveRewrites → rewriteUnquotedUrlAmpersand), so
+  // apply the same rewrite here first: the quoted URL is then stripped below and
+  // never read as a background operator. A real trailing background `&` survives.
+  command = rewriteUnquotedUrlAmpersand(command)
+
   // Heredoc bodies may contain `&` as data (e.g. writing a script); skip the
   // whole check rather than risk a false block.
   if (/<<-?\s*['"]?\w+/.test(command)) return null
@@ -32,4 +40,70 @@ export function detectDetachedBackgroundPattern(command: string): string | null 
   if (!/(?<![&><|])&(?![&>])/.test(stripped)) return null
 
   return 'this command detaches a process with a raw `&`'
+}
+
+function hasUnquotedForegroundStdinTopology(command: string): boolean {
+  let inSingle = false
+  let inDouble = false
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]!
+    if (inSingle) {
+      if (char === "'") inSingle = false
+      continue
+    }
+    if (inDouble) {
+      if (char === '\\' && index + 1 < command.length) {
+        index++
+        continue
+      }
+      if (char === '"') inDouble = false
+      continue
+    }
+    if (char === '\\' && index + 1 < command.length) {
+      index++
+      continue
+    }
+    if (char === "'") {
+      inSingle = true
+      continue
+    }
+    if (char === '"') {
+      inDouble = true
+      continue
+    }
+
+    if (
+      char === '|' &&
+      command[index - 1] !== '|' &&
+      command[index + 1] !== '|' &&
+      command[index + 1] !== '&'
+    ) {
+      return true
+    }
+    if (char === '<') {
+      // Input redirects, heredocs/here-strings, and process substitution all
+      // couple the foreground shell to an input producer/descriptor.
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Automatic backgrounding is safe only for commands whose lifecycle is not
+ * coupled to foreground stdin. Moving a pipeline/heredoc/input redirect to the
+ * task system mid-flight can sever or outlive its producer and make a finite
+ * command appear hung. Explicit run_in_background remains available.
+ */
+export function allowsAutomaticBackgrounding(command: string): boolean {
+  const trimmed = command.trim()
+  const firstWord = /^[A-Za-z_][A-Za-z0-9_]*=(?:\S+)\s+/.test(trimmed)
+    ? trimmed.replace(
+        /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)+/,
+        '',
+      ).split(/\s+/)[0]
+    : trimmed.split(/\s+/)[0]
+
+  if (firstWord === 'sleep') return false
+  return !hasUnquotedForegroundStdinTopology(command)
 }

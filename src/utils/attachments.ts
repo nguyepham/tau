@@ -719,6 +719,11 @@ export type Attachment =
       warningCount: number
       sample: string
     }
+  | {
+      type: 'cwd_awareness'
+      currentCwd: string
+      originalCwd: string
+    }
 
 export type TeammateMailboxAttachment = {
   type: 'teammate_mailbox'
@@ -987,6 +992,9 @@ export async function getAttachments(
         ),
         maybe('verify_plan_reminder', async () =>
           getVerifyPlanReminderAttachment(messages, toolUseContext),
+        ),
+        maybe('cwd_awareness', async () =>
+          Promise.resolve(getCwdAwarenessAttachment()),
         ),
       ]
     : []
@@ -1466,6 +1474,15 @@ function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
   }
   logEvent('tengu_ultrathink', {})
   return [{ type: 'ultrathink_effort', level: 'high' }]
+}
+
+function getCwdAwarenessAttachment(): Attachment[] {
+  const currentCwd = getCwd()
+  const originalCwd = getOriginalCwd()
+  if (currentCwd === originalCwd) {
+    return []
+  }
+  return [{ type: 'cwd_awareness', currentCwd, originalCwd }]
 }
 
 // Exported for compact.ts — the gate must be identical at both call sites.

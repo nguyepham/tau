@@ -543,6 +543,12 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
     process.env.CLAUDE_CODE_ENTRYPOINT = 'mcp';
     return;
   }
+  // `tau acp` speaks JSON-RPC over stdio (like `mcp serve`); it must skip the
+  // interactive startup path and must not have its stdin/stdout hijacked.
+  if (cliArgs.includes('acp')) {
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'acp';
+    return;
+  }
   if (isEnvTruthy(process.env.CLAUDE_CODE_ACTION)) {
     process.env.CLAUDE_CODE_ENTRYPOINT = 'claude-code-github-action';
     return;
@@ -599,6 +605,35 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE') ? {
   extraCliArgs: []
 } : undefined;
 export async function main() {
+  // ACP stdio server fast-path. An editor (Zed, JetBrains, the VS Code ACP
+  // Client extension) launches `tau acp` and immediately speaks JSON-RPC over
+  // stdin/stdout. This must run before any startup touches stdio — raw-mode
+  // setup / stdin.resume() during normal boot would discard the editor's
+  // buffered request. `tau acp --help` falls through to commander for help.
+  {
+    const acpArgs = process.argv.slice(2);
+    // Require `acp` AND no -p/--print: the ACP server spawns headless `tau -p`
+    // children (its real engine), and those must NOT re-enter ACP mode even if
+    // the user's prompt happens to contain the word "acp".
+    if (
+      acpArgs.includes('acp') &&
+      !acpArgs.includes('-p') &&
+      !acpArgs.includes('--print') &&
+      !acpArgs.includes('--help') &&
+      !acpArgs.includes('-h')
+    ) {
+      const {
+        runAcpServer
+      } = await import('./acp/index.js');
+      try {
+        await runAcpServer();
+        process.exit(0);
+      } catch (err) {
+        process.stderr.write(`tau acp: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+        process.exit(1);
+      }
+    }
+  }
   profileCheckpoint('main_function_start');
   setTeamModeEnabledForSession(false);
   onSessionSwitch(() => setTeamModeEnabledForSession(false));
@@ -895,9 +930,14 @@ export async function main() {
   profileCheckpoint('main_after_run');
 }
 async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json'): Promise<string | AsyncIterable<string>> {
-  if (!process.stdin.isTTY &&
-  // Input hijacking breaks MCP.
-  !process.argv.includes('mcp')) {
+  if ((!process.stdin.isTTY || process.env.TAU_ACP_CHILD === '1') &&
+  // Input hijacking breaks MCP and the ACP stdio server.
+  // TAU_ACP_CHILD: the `tau acp` server spawns headless children over a pipe;
+  // the bundle can mis-report that pipe's stdin as a TTY, which would skip
+  // stream-json input. The env flag (set only on those children) forces the
+  // read. Terminal `tau` never sets it, so its behavior is unchanged.
+  !process.argv.includes('mcp') &&
+  !process.argv.includes('acp')) {
     if (inputFormat === 'stream-json') {
       return process.stdin;
     }
@@ -4019,6 +4059,27 @@ async function run(): Promise<CommanderCommand> {
       mcpResetChoicesHandler
     } = await import('./cli/handlers/mcp.js');
     await mcpResetChoicesHandler();
+  });
+
+  // tau acp — Agent Client Protocol agent server over stdio.
+  // Lets editors that speak ACP (Zed, JetBrains 2026.1+, the VS Code ACP Client
+  // extension) drive Tau from their native agent panel. The terminal `tau` is
+  // unaffected — this is a separate, additive entrypoint.
+  program.command('acp').description('Start an ACP (Agent Client Protocol) agent server over stdio for editor integration (Zed, JetBrains, VS Code ACP Client)').action(async () => {
+    // In ACP stdio mode, stdout is the JSON-RPC channel — nothing else may
+    // write to it. Diagnostics go to stderr. (Normal launches are handled by
+    // the fast-path at the top of main(); this registration also keeps the
+    // command discoverable via `tau acp --help`.)
+    const {
+      runAcpServer
+    } = await import('./acp/index.js');
+    try {
+      await runAcpServer();
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(`tau acp: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+      process.exit(1);
+    }
   });
 
   // tau server

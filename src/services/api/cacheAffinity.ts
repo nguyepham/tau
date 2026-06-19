@@ -5,6 +5,30 @@ import type { QuerySource } from '../../constants/querySource.js'
 
 const FORK_AGENT_QUERY_SOURCE = 'agent:builtin:fork'
 
+const STABLE_REQUEST_SESSION_PROVIDERS = new Set<string>([
+  'antigravity',
+  'copilot',
+  'openrouter',
+  'agentrouter',
+  'opencode',
+  'opencodego',
+  'moonshot',
+  'mistral',
+  'fireworks',
+])
+
+/**
+ * Providers whose request shaping depends on a stable conversation/session
+ * identifier for prompt-cache affinity, gateway stickiness, or both.
+ *
+ * Keep this as the single source of truth: claude.ts, the provider bridge, and
+ * provider lanes all use it so a provider cannot silently lose its session ID
+ * between layers.
+ */
+export function providerUsesStableRequestSession(provider: string): boolean {
+  return STABLE_REQUEST_SESSION_PROVIDERS.has(provider)
+}
+
 export function resolveProviderRequestSessionId({
   provider,
   rootSessionId,
@@ -16,10 +40,15 @@ export function resolveProviderRequestSessionId({
   agentId?: AgentId
   querySource: QuerySource
 }): string | undefined {
-  if (provider !== 'antigravity') return undefined
+  if (!providerUsesStableRequestSession(provider)) return undefined
 
   const root = rootSessionId.trim()
   if (!root) return undefined
+
+  // Other cache-aware providers use the root Tau session as their stable
+  // affinity/cache key. Antigravity is the exception: fresh subagents need
+  // distinct derived sessions, while forks intentionally reuse the root.
+  if (provider !== 'antigravity') return root
 
   if (!agentId || querySource === FORK_AGENT_QUERY_SOURCE) {
     return root

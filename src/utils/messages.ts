@@ -4259,6 +4259,14 @@ You have exited auto mode. The user may now want to interact more directly. You 
         }),
       ])
     }
+    case 'cwd_awareness': {
+      return wrapMessagesInSystemReminder([
+        createUserMessage({
+          content: `Working directory update: The session cwd is now ${attachment.currentCwd} (original project root: ${attachment.originalCwd}). Use this as your current location for all relative paths and commands.`,
+          isMeta: true,
+        }),
+      ])
+    }
     case 'deferred_tools_delta': {
       const parts: string[] = []
       if (attachment.addedLines.length > 0) {

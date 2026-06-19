@@ -139,6 +139,10 @@ function _ensureLanesInitialized(): void {
       requestyBaseUrl: getProviderBaseUrl('requesty'),
       opencodeApiKey: getProviderRuntimeApiKey('opencode') ?? undefined,
       opencodeBaseUrl: getProviderBaseUrl('opencode'),
+      opencodegoApiKey: getProviderRuntimeApiKey('opencodego') ?? undefined,
+      opencodegoBaseUrl: getProviderBaseUrl('opencodego'),
+      fireworksApiKey: getProviderApiKey('fireworks') ?? undefined,
+      fireworksBaseUrl: getProviderBaseUrl('fireworks'),
       qwenApiKey: process.env.DASHSCOPE_API_KEY ?? process.env.QWEN_API_KEY,
       iflowApiKey: iflowChatKey,
       kilocodeApiKey: kilocodeToken,
@@ -185,6 +189,8 @@ function _laneNameForProvider(provider: APIProvider): string {
     case 'vercel':
     case 'requesty':
     case 'opencode':
+    case 'opencodego':
+    case 'fireworks':
       return 'openai-compat'
     case 'cline':
       return 'cline'
@@ -263,7 +269,7 @@ function createProvider(provider: APIProvider): BaseProvider {
   }
 
   const authMethod = getProviderAuthMethod(provider)
-  const apiKey = provider === 'opencode'
+  const apiKey = provider === 'opencode' || provider === 'opencodego'
     ? getProviderRuntimeApiKey(provider) ?? ''
     : getProviderApiKey(provider) ?? ''
   const baseUrl = getProviderBaseUrl(provider)
@@ -317,6 +323,8 @@ function createProvider(provider: APIProvider): BaseProvider {
     case 'vercel':
     case 'requesty':
     case 'opencode':
+    case 'opencodego':
+    case 'fireworks':
       return new OpenAIProvider({ apiKey, baseUrl })
     case 'commandcode':
       return new CommandCodeProvider({ apiKey, baseUrl })
@@ -742,6 +750,8 @@ export async function reloadOpenAICompatProviderAuth(provider: APIProvider): Pro
     case 'vercel':
     case 'requesty':
     case 'opencode':
+    case 'opencodego':
+    case 'fireworks':
     case 'groq':
     case 'ollama':
     case 'lmstudio':
@@ -771,7 +781,7 @@ export async function reloadOpenAICompatProviderAuth(provider: APIProvider): Pro
     return
   }
 
-  const apiKey = provider === 'opencode'
+  const apiKey = provider === 'opencode' || provider === 'opencodego'
     ? getProviderRuntimeApiKey(provider)
     : getProviderApiKey(provider)
   if (!apiKey) {

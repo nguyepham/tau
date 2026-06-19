@@ -23,6 +23,10 @@ import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
 import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
 import { TodoWriteTool } from '../TodoWriteTool/TodoWriteTool.js'
+import {
+  getBashCommandBestPractices,
+  getBashPlatformBestPractices,
+} from './bashBestPractices.js'
 import { BASH_TOOL_NAME } from './toolName.js'
 
 export function getDefaultTimeoutMs(): number {
@@ -328,31 +332,31 @@ export function getSimplePrompt(): string {
         ]),
   ]
   const backgroundNote = getBackgroundUsageNote()
-  const isWindows = getPlatform() === 'windows'
-
-  const windowsSubitems = isWindows
-    ? [
-        'On Windows, this tool runs in Git Bash. Use POSIX paths (`/c/path/to/project`) NOT Windows paths (`C:\\path\\to\\project`) — backslashes are escape characters in bash and `\\U`, `\\n`, `\\t` are interpreted, not passed literally.',
-        'Use POSIX redirects: `2>/dev/null` NOT `2>nul`. Writing to `nul` creates a literal file named `nul` (a Windows reserved name) that breaks git and other tools.',
-        'Prefer forward slashes in arguments to native Windows binaries — they accept `/`, and avoid all escape ambiguity.',
-        'Quote any path containing spaces with double quotes, AND prefer the `workdir` parameter for the working directory rather than `cd "/c/Path With Spaces" && cmd`.',
-        'Windows-native CLIs (tasklist, taskkill, reg, netsh, ipconfig, findstr, …) take `/FLAG` arguments that Git Bash mangles into paths; Tau auto-doubles them (`//FLAG`) so they work, but prefer the PowerShell equivalents when one exists: `Get-Process -Id`, `Stop-Process -Id <PID>`, `Get-NetTCPConnection -LocalPort <port>`. Git Bash has NO lsof/fuser.',
-      ]
-    : []
+  const platform = getPlatform()
+  const platformBestPractices = getBashPlatformBestPractices(platform)
+  const commandBestPractices = getBashCommandBestPractices()
+  if (platform === 'windows') {
+    platformBestPractices.push(
+      'Prefer forward slashes in arguments to native Windows binaries. Windows-native CLIs (tasklist, taskkill, reg, netsh, ipconfig, findstr, …) take `/FLAG` arguments that Git Bash may rewrite as paths; Tau auto-doubles recognized flags (`//FLAG`), but prefer PowerShell equivalents when available. Git Bash has no lsof/fuser.',
+      'Quote every path containing spaces, and prefer the `workdir` parameter over `cd "/c/Path With Spaces" && command`.',
+    )
+  }
 
   const instructionItems: Array<string | string[]> = [
     'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
-    'Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
+    'Always quote filepaths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
     'To run a command in a different directory, pass the `workdir` parameter — DO NOT use `cd <dir> && <command>`. `workdir` avoids path-quoting bugs (especially backslash handling on Windows) and never mutates the session cwd. Reserve `cd` for cases where the user explicitly asks.',
     'Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run `pwd` plus a directory listing or manifest search first; do not assume folders like `frontend` exist under the current session cwd.',
+    'CRITICAL: Before running commands that depend on a specific directory (docker compose, npm, python, etc.), ALWAYS verify the target exists first using Glob or Read. Do NOT guess or hallucinate paths. If the target is not in the current directory, use ABSOLUTE PATHS with command flags (e.g., `docker compose -f /absolute/path/to/compose.yml up -d`) instead of trying to change directories. This is more reliable than workdir or cd.',
     'Run normal Bash commands directly. Use `plan_only: true` only when the user explicitly asks for a dry-run plan; do not use it as a routine preflight for Python, package-manager, build, test, or cleanup commands.',
     `You may specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). By default, your command will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).`,
     ...(backgroundNote !== null ? [backgroundNote] : []),
+    'Shell correctness rules:',
+    commandBestPractices,
+    'Platform-specific shell rules:',
+    platformBestPractices,
     'When issuing multiple commands:',
     multipleCommandsSubitems,
-    ...(isWindows
-      ? ['Windows / Git Bash specifics:', windowsSubitems]
-      : []),
     'For git commands:',
     gitSubitems,
     'Avoid unnecessary `sleep` commands:',

@@ -88,6 +88,26 @@ export function isOpencodeThinkingModel(model: string): boolean {
   return false
 }
 
+/**
+ * Whether Tau should expose a user-selectable thinking effort for a model.
+ *
+ * OpenCode Go marks GLM-5.2 and Qwen3.7 Max as reasoning-capable, but their
+ * models.dev metadata publishes an empty `reasoning_options` list and
+ * OpenCode's ProviderTransform.variants() intentionally returns no variants
+ * for GLM/Qwen families. They may reason internally, but there is no supported
+ * Low/Medium/High request control to expose.
+ */
+export function supportsOpencodeThinkingSelection(
+  provider: string,
+  model: string,
+): boolean {
+  if (!isOpencodeThinkingModel(model)) return false
+  if (provider !== 'opencodego') return true
+
+  const normalized = model.trim().toLowerCase()
+  return normalized !== 'glm-5.2' && normalized !== 'qwen3.7-max'
+}
+
 const STORE_PATH = join(homedir(), '.claude', 'opencode-thinking.json')
 
 let _loaded = false

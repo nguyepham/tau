@@ -17,6 +17,7 @@
 
 import type { LaneToolRegistration } from '../types.js'
 import { windowsPathToPosixPath } from '../../utils/windowsPaths.js'
+import { applyShellWorkdir } from '../shared/shell_workdir.js'
 import { WEB_SEARCH_NATIVE_DESCRIPTION } from '../../tools/WebSearchTool/prompt.js'
 
 type AskUserOption = {
@@ -289,12 +290,12 @@ export const GEMINI_TOOL_REGISTRY: LaneToolRegistration[] = [
       }
       if (native.description) result.description = native.description
       if (native.is_background) result.run_in_background = native.is_background
-      // dir_path: the shared Bash impl uses cwd from context, but
-      // if Gemini specifies dir_path we prepend a cd
-      if (native.dir_path) {
-        result.command = `cd ${JSON.stringify(native.dir_path)} && ${native.command}`
-      }
-      return result
+      // dir_path → the shared Bash impl's first-class `workdir` (one-off,
+      // quoting-safe, never changes the session cwd). NOT a `cd <dir> &&`
+      // prefix, which breaks on spaces/Windows backslashes and silently
+      // persists the session cwd. `workdir` accepted too, in case the
+      // model echoes the name it sees in the shared shell guidance.
+      return applyShellWorkdir(result, native, ['dir_path', 'workdir'])
     },
     adaptOutput(output) {
       return typeof output === 'string' ? output : JSON.stringify(output)

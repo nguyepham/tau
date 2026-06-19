@@ -32,6 +32,8 @@ export type ProviderId =
   | 'vercel'
   | 'requesty'
   | 'opencode'
+  | 'opencodego'
+  | 'fireworks'
   | 'cline'
   | 'iflow'
   | 'kilocode'

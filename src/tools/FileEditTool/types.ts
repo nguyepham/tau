@@ -76,6 +76,12 @@ const outputSchema = lazySchema(() =>
       .describe('Whether the user modified the proposed changes'),
     replaceAll: z.boolean().describe('Whether all occurrences were replaced'),
     gitDiff: gitDiffSchema().optional(),
+    syntaxWarning: z
+      .string()
+      .optional()
+      .describe(
+        'Advisory note when a best-effort tree-sitter parse found the edit introduced new syntax errors (non-blocking)',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>

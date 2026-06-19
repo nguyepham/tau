@@ -157,6 +157,7 @@ const REPORTERS: Reporter[] = [
   reportOpenRouter,
   reportVercel,
   reportRequesty,
+  reportFireworks,
   reportDeepSeek,
   reportMistral,
   reportGLM,
@@ -199,6 +200,7 @@ function nameToProvider(name: string): ProviderUsageId {
     case 'modelrouter': return 'modelrouter'
     case 'vercel': return 'vercel'
     case 'requesty': return 'requesty'
+    case 'fireworks': return 'fireworks'
     case 'nim': return 'nim'
     case 'deepseek': return 'deepseek'
     case 'mistral': return 'mistral'
@@ -812,6 +814,116 @@ async function reportRequesty(): Promise<ProviderUsageReport> {
     detail: details.join(' '),
     metrics,
     docsUrl: DOCS.requesty,
+    links,
+  }
+}
+
+// Cached once resolved — the account id is stable for a key. Only successful
+// lookups are cached so a transient failure can be retried on the next /usage.
+let _fireworksAccountId: string | null = null
+
+async function resolveFireworksAccountId(
+  headers: Record<string, string>,
+): Promise<string | null> {
+  const explicit = process.env.FIREWORKS_ACCOUNT_ID?.trim()
+  if (explicit) return explicit.replace(/^accounts\//, '')
+  if (_fireworksAccountId) return _fireworksAccountId
+  try {
+    // AIP-style List Accounts — returns the accounts this key can access.
+    const data = await fetchJson('https://api.fireworks.ai/v1/accounts', { headers })
+    const accounts = (data as { accounts?: Array<{ name?: unknown }> })?.accounts
+    const name =
+      Array.isArray(accounts) && typeof accounts[0]?.name === 'string'
+        ? accounts[0].name
+        : null
+    if (name) _fireworksAccountId = name.replace(/^accounts\//, '')
+  } catch {
+    // Leave unresolved so the next refresh retries.
+  }
+  return _fireworksAccountId
+}
+
+function parseFireworksQuotas(
+  data: unknown,
+): Array<{ label: string; usage: number; limit: number | null }> {
+  const arr = (data as { quotas?: unknown })?.quotas
+  if (!Array.isArray(arr)) return []
+  const toNum = (v: unknown): number | null => {
+    if (typeof v === 'number') return v
+    if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v)
+    return null
+  }
+  return arr.map(raw => {
+    const q = raw as { name?: unknown; usage?: unknown; value?: unknown; maxValue?: unknown }
+    const fullName = typeof q.name === 'string' ? q.name : ''
+    const label = fullName.split('/').filter(Boolean).pop() ?? 'quota'
+    return {
+      label,
+      usage: typeof q.usage === 'number' ? q.usage : 0,
+      limit: toNum(q.value) ?? toNum(q.maxValue),
+    }
+  })
+}
+
+async function reportFireworks(): Promise<ProviderUsageReport> {
+  const apiKey = getProviderApiKey('fireworks')
+  const source = 'Fireworks Gateway API'
+  const links: UsageLink[] = [{
+    label: 'Fireworks billing',
+    url: 'https://fireworks.ai/account/billing',
+  }]
+
+  if (!apiKey) {
+    return {
+      ...baseReport('fireworks', 'not_configured', 'none', source, 'No Fireworks API key is configured.'),
+      links,
+    }
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    Accept: 'application/json',
+  }
+
+  const accountId = await resolveFireworksAccountId(headers)
+  if (!accountId) {
+    return {
+      ...baseReport(
+        'fireworks',
+        'connected',
+        'api_key',
+        source,
+        'Authenticated — could not resolve account id (set FIREWORKS_ACCOUNT_ID to surface quota usage).',
+      ),
+      links,
+    }
+  }
+
+  const data = await fetchJson(
+    `https://api.fireworks.ai/v1/accounts/${encodeURIComponent(accountId)}/quotas`,
+    { headers },
+  )
+  const quotas = parseFireworksQuotas(data)
+  const metrics: UsageMetric[] = quotas.map(quota => ({
+    label: quota.label,
+    usedPercent: quota.limit && quota.limit > 0
+      ? clampPercent((quota.usage / quota.limit) * 100)
+      : undefined,
+    summary: quota.limit && quota.limit > 0
+      ? `${formatNumber(quota.usage)} / ${formatNumber(quota.limit)}`
+      : `${formatNumber(quota.usage)} used`,
+  }))
+
+  return {
+    ...baseReport(
+      'fireworks',
+      'ok',
+      'api_key',
+      source,
+      `Account ${accountId}: ${quotas.length} quota${quotas.length === 1 ? '' : 's'} tracked.`,
+    ),
+    detail: metrics.length === 0 ? 'No quota usage reported for this account.' : undefined,
+    metrics: metrics.length > 0 ? metrics : undefined,
     links,
   }
 }

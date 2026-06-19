@@ -33,6 +33,7 @@ import { selectEditToolSet, OPENAI_COMPAT_TOOL_REGISTRY } from './tools.js'
 import { resolveEditFormat, resolveCapabilities } from './capabilities.js'
 import { setDeepSeekV4Thinking } from '../../utils/model/deepseekThinking.js'
 import { setGlmThinking } from '../../utils/model/glmThinking.js'
+import { supportsOpencodeThinkingSelection } from '../../utils/model/opencodeThinking.js'
 import {
   _resetClineThinkingForTests,
   setClineEffort,
@@ -100,7 +101,8 @@ function main(): void {
 
   // ── Registry invariants ─────────────────────────────────────────
   const ids: Array<Transformer['id']> = [
-    'deepseek', 'glm', 'groq', 'mistral', 'nim', 'ollama', 'openrouter', 'agentrouter', 'generic',
+    'deepseek', 'glm', 'groq', 'mistral', 'nim', 'ollama', 'openrouter',
+    'agentrouter', 'opencode', 'opencodego', 'generic',
   ]
   for (const id of ids) {
     test(`registry has ${id}`, () => {
@@ -111,6 +113,64 @@ function main(): void {
         `invalid defaultBaseUrl: ${t.defaultBaseUrl}`)
     })
   }
+
+  test('OpenCode Go does not expose thinking effort for GLM-5.2 or Qwen3.7 Max', () => {
+    assert(
+      !supportsOpencodeThinkingSelection('opencodego', 'glm-5.2'),
+      'GLM-5.2 must not expose unsupported effort controls',
+    )
+    assert(
+      !supportsOpencodeThinkingSelection('opencodego', 'qwen3.7-max'),
+      'Qwen3.7 Max must not expose unsupported effort controls',
+    )
+    assert(
+      supportsOpencodeThinkingSelection('opencode', 'qwen3.7-max'),
+      'normal Zen selection behavior must remain unchanged',
+    )
+  })
+
+  test('OpenCode Go strips unsupported GLM-5.2 thinking controls', () => {
+    const body = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
+    body.thinking = { type: 'enabled', clear_thinking: false }
+    body.reasoning = { effort: 'high' }
+    body.reasoning_effort = 'high'
+    body.enable_thinking = true
+    body.chat_template_args = { enable_thinking: true }
+
+    TRANSFORMERS.opencodego.transformRequest(body, mkCtx('glm-5.2', true))
+
+    assert(body.thinking === undefined, `thinking=${JSON.stringify(body.thinking)}`)
+    assert(body.reasoning === undefined, `reasoning=${JSON.stringify(body.reasoning)}`)
+    assert(body.reasoning_effort === undefined, `reasoning_effort=${body.reasoning_effort}`)
+    assert(body.enable_thinking === undefined, `enable_thinking=${body.enable_thinking}`)
+    assert(body.chat_template_args === undefined,
+      `chat_template_args=${JSON.stringify(body.chat_template_args)}`)
+  })
+
+  test('normal OpenCode Zen GLM request behavior is unchanged', () => {
+    const body = mkBody('glm-5.2')
+    TRANSFORMERS.opencode.transformRequest(body, mkCtx('glm-5.2', false))
+    assert(body.thinking !== undefined, 'Zen GLM thinking behavior was unexpectedly changed')
+  })
+
+  test('OpenCode Go hides only the requested MiMo model IDs', () => {
+    const raw = [
+      { id: 'mimo-v2-omni' },
+      { id: 'mimo-v2-pro' },
+      { id: 'mimo-v2.5' },
+      { id: 'mimo-v2.5-pro' },
+      { id: 'glm-5.2' },
+      { id: 'qwen3.7-max' },
+    ]
+    const filtered = TRANSFORMERS.opencodego.filterModelCatalog?.(raw) ?? raw
+    const modelIds = filtered.map(model => model.id)
+    assert(!modelIds.includes('mimo-v2-omni'), 'mimo-v2-omni was not removed')
+    assert(!modelIds.includes('mimo-v2-pro'), 'mimo-v2-pro was not removed')
+    assert(!modelIds.includes('mimo-v2.5'), 'mimo-v2.5 was not removed')
+    assert(modelIds.includes('mimo-v2.5-pro'), 'mimo-v2.5-pro should remain available')
+    assert(modelIds.includes('glm-5.2'), 'GLM-5.2 should remain available')
+    assert(modelIds.includes('qwen3.7-max'), 'Qwen3.7 Max should remain available')
+  })
 
   for (const id of ids) {
     test(`${id} schemaDropList contains $schema`, () => {

@@ -185,7 +185,9 @@ test('Cursor native aliases adapt back to shared tool implementations', () => {
     is_background: false,
   })
   assert(shell?.implId === 'Bash', 'wrong shell impl')
-  assert(shell.input.command === 'cd "/tmp/project" && pwd', 'wrong shell cwd adaptation')
+  // cwd maps to the shared Bash `workdir` field, NOT a `cd <dir> &&` prefix.
+  assert(shell.input.command === 'pwd', 'shell command should be untouched (no cd prefix)')
+  assert(shell.input.workdir === '/tmp/project', 'cwd should map to workdir')
 
   const web = resolveCursorToolCall('web_search', { search_term: 'cursor cli tools' })
   assert(web?.implId === 'WebSearch', 'wrong web impl')
@@ -206,7 +208,9 @@ test('Cursor tolerates Shell as a terminal alias', () => {
     description: 'Verify shell alias',
   })
   assert(shell?.implId === 'Bash', 'wrong Shell impl')
-  assert(shell.input.command === 'cd "/tmp/project" && echo ok', 'wrong Shell cwd adaptation')
+  // cwd maps to the shared Bash `workdir` field, NOT a `cd <dir> &&` prefix.
+  assert(shell.input.command === 'echo ok', 'Shell command should be untouched (no cd prefix)')
+  assert(shell.input.workdir === '/tmp/project', 'cwd should map to workdir')
   assert(shell.input.description === 'Verify shell alias', 'wrong Shell description')
 })
 

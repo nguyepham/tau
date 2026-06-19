@@ -7,6 +7,7 @@ import { join as posixJoin } from 'path/posix'
 import { tmpdir } from 'os'
 import { logEvent } from 'src/services/analytics/index.js'
 import {
+  clearSystemPromptSectionCacheEntry,
   getOriginalCwd,
   getSessionId,
   setCwdState,
@@ -26,6 +27,7 @@ import {
 import { getTaskOutputDir } from './task/diskOutput.js'
 import { TaskOutput } from './task/TaskOutput.js'
 import { which } from './which.js'
+import { normalizePythonCommand } from './shell/pythonInterpreter.js'
 
 export type { ExecResult } from './ShellCommand.js'
 
@@ -228,6 +230,12 @@ export async function exec(
   shellType: ShellType,
   options?: ExecOptions,
 ): Promise<ShellCommand> {
+  // Windows: make the POSIX-conventional `python3` / `pip3` names work when
+  // they only resolve to the Microsoft Store stub (exits 9009 / 49 without
+  // running). No-op on other platforms, when the command references no
+  // python3/pip3, or when a real python3 already exists. See
+  // ./shell/pythonInterpreter.ts.
+  command = normalizePythonCommand(command)
   const {
     timeout,
     onProgress,
@@ -386,6 +394,10 @@ export async function exec(
         // Python otherwise often defaults redirected stdio to the ANSI code
         // page, so printing Unicode can fail with UnicodeEncodeError.
         PYTHONIOENCODING: baseEnv.PYTHONIOENCODING || 'utf-8',
+        // Unbuffered Python stdio so output isn't lost when the process is
+        // killed (timeout) or crashes before a buffered flush — bytes are
+        // written incrementally instead of sitting in a block buffer.
+        PYTHONUNBUFFERED: baseEnv.PYTHONUNBUFFERED || '1',
         SHELL: shellType === 'bash' ? binShell : undefined,
         GIT_EDITOR: 'true',
         CLAUDECODE: '1',
@@ -476,6 +488,7 @@ export async function exec(
           if (newCwd.normalize('NFC') !== cwd) {
             setCwd(newCwd, cwd)
             invalidateSessionEnvCache()
+            clearSystemPromptSectionCacheEntry('env_info_simple')
             void onCwdChangedForHooks(cwd, newCwd)
           }
         } catch {

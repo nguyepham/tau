@@ -219,6 +219,17 @@ export async function createBashShellProvider(
       }
       const claudeTmuxEnv = getClaudeTmuxEnv()
       const env: Record<string, string> = {}
+      // Keep Bash `$TMPDIR` aligned with Node/File tools on Windows even when
+      // sandboxing is off. Git Bash maps `/tmp` to this same per-user host
+      // directory; exposing the explicit POSIX spelling prevents a script
+      // created by one tool from being looked up under a different filesystem.
+      if (getPlatform() === 'windows' && !currentSandboxTmpDir) {
+        const posixTmpDir = windowsPathToPosixPath(osTmpdir())
+        env.TMPDIR = posixTmpDir
+        env.TMP = posixTmpDir
+        env.TEMP = posixTmpDir
+        env.CLAUDE_CODE_TMPDIR = posixTmpDir
+      }
       // CRITICAL: Override TMUX to isolate ALL tmux commands to Claude's socket.
       // This is NOT the user's TMUX value - it points to Claude's isolated socket.
       // When null (before socket initializes), user's TMUX is preserved.

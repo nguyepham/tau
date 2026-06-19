@@ -50,8 +50,10 @@ function main(): void {
       codeAssistGenerationBase('antigravity') === ANTIGRAVITY_GENERATION_BASE,
       'Antigravity generation base should use daily endpoint',
     )
+    // Non-sandbox daily channel — the real client's primary, with reliable
+    // implicit-cache reads (the sandbox host is a 404 fallback only now).
     assert(
-      ANTIGRAVITY_GENERATION_BASE === 'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal',
+      ANTIGRAVITY_GENERATION_BASE === 'https://daily-cloudcode-pa.googleapis.com/v1internal',
       `wrong Antigravity generation base: ${ANTIGRAVITY_GENERATION_BASE}`,
     )
     assert(

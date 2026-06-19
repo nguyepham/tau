@@ -8,10 +8,15 @@ import {
   applyBashDefensiveRewrites,
   normalizeSmartQuotesOutsideQuotes,
   normalizeUnicodeSpacesOutsideQuotes,
+  rewriteAmbiguousInlineCodeQuoting,
   rewritePowerShellNullRedirect,
+  rewritePipedDockerExecStdin,
+  rewritePortablePathOptionSpacing,
   rewriteWindowsCmdAutoRun,
   rewriteUnsafeGlobalNodeTaskkill,
+  rewriteUnquotedUrlAmpersand,
   rewriteWindowsNativeToolSlashFlags,
+  rewriteWindowsRemotePosixPaths,
   rewriteWindowsReservedRedirects,
   stripCommandGarbage,
 } from './defensiveRewrites.js'
@@ -375,6 +380,461 @@ function main(): void {
     )
   })
 
+  console.log('\nrewriteAmbiguousInlineCodeQuoting:')
+
+  test('preserves nested code quotes for generic --eval payloads', () => {
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'runtime --eval "fn({_id:"value", host:"node:27017"})"',
+      ),
+      `runtime --eval 'fn({_id:"value", host:"node:27017"})'`,
+      'nested code quotes must reach the evaluator intact',
+    )
+  })
+
+  test('handles equals-form evaluator flags and short evaluator flags', () => {
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'runtime --eval="fn({name:"value"})"',
+      ),
+      `runtime --eval='fn({name:"value"})'`,
+      'equals-form long flag must preserve code',
+    )
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'node -e "console.log({name:"value"})"',
+      ),
+      `node -e 'console.log({name:"value"})'`,
+      'registered short evaluator flags must be repaired too',
+    )
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'docker exec app node -e "console.log({name:"value"})"',
+      ),
+      `docker exec app node -e 'console.log({name:"value"})'`,
+      'short evaluator flags must work behind process boundaries',
+    )
+  })
+
+  test('repairs multi-word payloads without blocking', () => {
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'node -e "console.log("hello world")"',
+      ),
+      `node -e 'console.log("hello world")'`,
+      'the complete quoted span must be rejoined as one argument',
+    )
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(
+        'transport exec target runtime --eval "fn({_id:"config Repl", members:[]})"',
+      ),
+      `transport exec target runtime --eval 'fn({_id:"config Repl", members:[]})'`,
+      'the repair is independent of the wrapper/runtime names',
+    )
+  })
+
+  test('leaves already-safe inline code and unrelated -e flags unchanged', () => {
+    const safe = [
+      `runtime --eval 'fn({_id:"value"})'`,
+      'python -c "print(\\"value\\")"',
+      `node -e 'console.log("value")'`,
+      'grep -e "a" file.txt',
+      'sed -e "s/a/b/" file.txt',
+    ]
+    for (const command of safe) {
+      assertEqual(
+        rewriteAmbiguousInlineCodeQuoting(command),
+        command,
+        `must preserve: ${command}`,
+      )
+    }
+  })
+
+  test('inline-code quoting rewrite is idempotent', () => {
+    const once = rewriteAmbiguousInlineCodeQuoting(
+      'runtime --eval "fn({name:"value"})"',
+    )
+    assertEqual(
+      rewriteAmbiguousInlineCodeQuoting(once),
+      once,
+      'second pass must not alter the corrected payload',
+    )
+  })
+
+  console.log('\nrewritePortablePathOptionSpacing:')
+
+  test('normalizes static path-valued long options to space form', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'runtime --file=/tmp/init.js',
+        'runtime --file /tmp/init.js',
+      ],
+      [
+        'tool --config=./config/app.yml --output=/var/tmp/result.json',
+        'tool --config ./config/app.yml --output /var/tmp/result.json',
+      ],
+      [
+        'tool --workdir=C:/Projects/app',
+        'tool --workdir C:/Projects/app',
+      ],
+      [
+        'tool --arbitrary-path-name=/some/path',
+        'tool --arbitrary-path-name /some/path',
+      ],
+    ]
+    for (const [input, expected] of cases) {
+      assertEqual(rewritePortablePathOptionSpacing(input), expected, input)
+    }
+  })
+
+  test('leaves non-path, dynamic, and unrelated equals options unchanged', () => {
+    const unchanged = [
+      'tool --color=always --format=json',
+      'tool --file="$FILE"',
+      'tool --count=3',
+      'tool --endpoint=https://example.test/a/b',
+      'echo --file=/tmp/x',
+    ]
+    for (const command of unchanged) {
+      const expected =
+        command === 'echo --file=/tmp/x' ? 'echo --file /tmp/x' : command
+      assertEqual(
+        rewritePortablePathOptionSpacing(command),
+        expected,
+        `portable option handling: ${command}`,
+      )
+    }
+  })
+
+  test('path-option spacing composes with Windows remote path protection', () => {
+    assertEqual(
+      applyBashDefensiveRewrites(
+        'docker exec app runtime --file=/tmp/init.js',
+        'windows',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/tmp/init.js' docker exec app runtime --file /tmp/init.js",
+      'the separated remote path must also bypass MSYS conversion',
+    )
+  })
+
+  console.log('\nrewriteWindowsRemotePosixPaths:')
+
+  test('protects direct Docker exec HDFS paths without wrapping the command', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'docker exec namenode hadoop fs -cat /bigdata/hello.txt',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/bigdata/hello.txt' docker exec namenode hadoop fs -cat /bigdata/hello.txt",
+      'the remote HDFS path must not be converted to a C: path',
+    )
+  })
+
+  test('protects Docker Compose, Podman, and Nerdctl exec paths', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'docker compose exec namenode hadoop fs -ls /bigdata/',
+        "MSYS2_ARG_CONV_EXCL='/bigdata/' docker compose exec namenode hadoop fs -ls /bigdata/",
+      ],
+      [
+        'podman exec app cat /etc/config',
+        "MSYS2_ARG_CONV_EXCL='/etc/config' podman exec app cat /etc/config",
+      ],
+      [
+        'nerdctl exec app ls /workspace',
+        "MSYS2_ARG_CONV_EXCL='/workspace' nerdctl exec app ls /workspace",
+      ],
+    ]
+    for (const [input, expected] of cases) {
+      assertEqual(rewriteWindowsRemotePosixPaths(input), expected, input)
+    }
+  })
+
+  test('protects unknown transports by boundary argv shape', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'transport exec target command /foreign/data',
+        "MSYS2_ARG_CONV_EXCL='/foreign/data' transport exec target command /foreign/data",
+      ],
+      [
+        'transport run image command /foreign/data',
+        "MSYS2_ARG_CONV_EXCL='/foreign/data' transport run image command /foreign/data",
+      ],
+      [
+        'transport shell target -- command /foreign/data',
+        "MSYS2_ARG_CONV_EXCL='/foreign/data' transport shell target -- command /foreign/data",
+      ],
+      [
+        'newcopy local.txt endpoint:/foreign/data',
+        "MSYS2_ARG_CONV_EXCL='endpoint:/foreign/data' newcopy local.txt endpoint:/foreign/data",
+      ],
+      [
+        'filesystem dfs -cat /foreign/data',
+        "MSYS2_ARG_CONV_EXCL='/foreign/data' filesystem dfs -cat /foreign/data",
+      ],
+    ]
+    for (const [input, expected] of cases) {
+      assertEqual(rewriteWindowsRemotePosixPaths(input), expected, input)
+    }
+  })
+
+  test('protects remote workdirs and inline remote path options', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'docker exec -w /workspace app tool --output=/tmp/result.json',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/workspace;--output=/tmp/result.json' docker exec -w /workspace app tool --output=/tmp/result.json",
+      'remote option values on both sides of the container boundary must survive',
+    )
+  })
+
+  test('protects Docker run command paths but preserves host bind-mount conversion', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'docker run --rm -v /c/Users/me/data:/data image cat /data/input.txt',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/data/input.txt' docker run --rm -v /c/Users/me/data:/data image cat /data/input.txt",
+      'only the path after the image belongs to the container',
+    )
+  })
+
+  test('protects Kubernetes exec and copy remote paths', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'kubectl --kubeconfig /c/Users/me/.kube/config exec pod -- cat /var/log/app.log',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/var/log/app.log' kubectl --kubeconfig /c/Users/me/.kube/config exec pod -- cat /var/log/app.log",
+      'kubeconfig is local; the path after -- is remote',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'kubectl cp default/pod:/var/log/app.log /c/Users/me/app.log',
+      ),
+      "MSYS2_ARG_CONV_EXCL='default/pod:/var/log/app.log' kubectl cp default/pod:/var/log/app.log /c/Users/me/app.log",
+      'only the pod:path copy endpoint is remote',
+    )
+  })
+
+  test('protects SSH remote arguments while preserving local identity paths', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'ssh -i /c/Users/me/.ssh/id_ed25519 host cat /etc/os-release',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/etc/os-release' ssh -i /c/Users/me/.ssh/id_ed25519 host cat /etc/os-release",
+      'the local identity file must retain normal MSYS conversion',
+    )
+  })
+
+  test('protects SCP and rsync remote specs but not local paths', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'scp host:/var/log/app.log /c/Users/me/app.log',
+      ),
+      "MSYS2_ARG_CONV_EXCL='host:/var/log/app.log' scp host:/var/log/app.log /c/Users/me/app.log",
+      'scp remote source must be excluded narrowly',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'rsync -a /c/Users/me/data/ host:/srv/data/',
+      ),
+      "MSYS2_ARG_CONV_EXCL='host:/srv/data/' rsync -a /c/Users/me/data/ host:/srv/data/",
+      'rsync local source must still convert',
+    )
+  })
+
+  test('protects WSL, ADB, and direct Hadoop/HDFS remote filesystem paths', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'wsl --distribution Ubuntu -- ls /home/me',
+        "MSYS2_ARG_CONV_EXCL='/home/me' wsl --distribution Ubuntu -- ls /home/me",
+      ],
+      [
+        'adb shell cat /sdcard/config.json',
+        "MSYS2_ARG_CONV_EXCL='/sdcard/config.json' adb shell cat /sdcard/config.json",
+      ],
+      [
+        'hadoop fs -ls /bigdata/',
+        "MSYS2_ARG_CONV_EXCL='/bigdata/' hadoop fs -ls /bigdata/",
+      ],
+      [
+        'hdfs dfs -cat /warehouse/item',
+        "MSYS2_ARG_CONV_EXCL='/warehouse/item' hdfs dfs -cat /warehouse/item",
+      ],
+    ]
+    for (const [input, expected] of cases) {
+      assertEqual(rewriteWindowsRemotePosixPaths(input), expected, input)
+    }
+  })
+
+  test('preserves WSL management-command host paths', () => {
+    const commands = [
+      'wsl --import Ubuntu /c/WSL/Ubuntu /c/images/ubuntu.tar',
+      'wsl --export Ubuntu /c/backups/ubuntu.tar',
+      'wsl --mount /c/disks/linux.vhdx',
+    ]
+    for (const command of commands) {
+      assertEqual(
+        rewriteWindowsRemotePosixPaths(command),
+        command,
+        'WSL management paths belong to the Windows host',
+      )
+    }
+    assertEqual(
+      rewriteWindowsRemotePosixPaths('wsl --cd /home/me -- ls /srv/data'),
+      "MSYS2_ARG_CONV_EXCL='/home/me;/srv/data' wsl --cd /home/me -- ls /srv/data",
+      'both --cd and arguments after -- belong to Linux',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths('wsl --cd /home/me ls /srv/data'),
+      "MSYS2_ARG_CONV_EXCL='/home/me;/srv/data' wsl --cd /home/me ls /srv/data",
+      'both the Linux cwd and command path need protection without --',
+    )
+  })
+
+  test('separates ADB push/pull local and Android paths', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'adb push /c/Users/me/config.json /sdcard/config.json',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/sdcard/config.json' adb push /c/Users/me/config.json /sdcard/config.json",
+      'adb push source is local and destination is remote',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'adb pull /sdcard/config.json /c/Users/me/config.json',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/sdcard/config.json' adb pull /sdcard/config.json /c/Users/me/config.json",
+      'adb pull source is remote and destination is local',
+    )
+  })
+
+  test('separates HDFS upload/download local and remote paths', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'hdfs dfs -put /c/Users/me/input.csv /warehouse/input.csv',
+        "MSYS2_ARG_CONV_EXCL='/warehouse/input.csv' hdfs dfs -put /c/Users/me/input.csv /warehouse/input.csv",
+      ],
+      [
+        'hadoop fs -copyFromLocal /c/Users/me/a /c/Users/me/b /warehouse/',
+        "MSYS2_ARG_CONV_EXCL='/warehouse/' hadoop fs -copyFromLocal /c/Users/me/a /c/Users/me/b /warehouse/",
+      ],
+      [
+        'hdfs dfs -get /warehouse/result.csv /c/Users/me/result.csv',
+        "MSYS2_ARG_CONV_EXCL='/warehouse/result.csv' hdfs dfs -get /warehouse/result.csv /c/Users/me/result.csv",
+      ],
+      [
+        'hdfs dfs -getmerge /warehouse/a /warehouse/b /c/Users/me/all.csv',
+        "MSYS2_ARG_CONV_EXCL='/warehouse/a;/warehouse/b' hdfs dfs -getmerge /warehouse/a /warehouse/b /c/Users/me/all.csv",
+      ],
+    ]
+    for (const [input, expected] of cases) {
+      assertEqual(rewriteWindowsRemotePosixPaths(input), expected, input)
+    }
+  })
+
+  test('supports IPv6 SSH copy endpoints', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'scp user@[2001:db8::1]:/srv/file /c/Users/me/file',
+      ),
+      "MSYS2_ARG_CONV_EXCL='user@[2001:db8::1]:/srv/file' scp user@[2001:db8::1]:/srv/file /c/Users/me/file",
+      'bracketed IPv6 remote specs must be preserved',
+    )
+  })
+
+  test('supports env/winpty wrappers and pipeline-local insertion', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'FOO=bar winpty docker exec app cat /etc/config',
+      ),
+      "MSYS2_ARG_CONV_EXCL='/etc/config' FOO=bar winpty docker exec app cat /etc/config",
+      'the exclusion must precede wrapper and environment words',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        'printf x | docker exec -i app tee /tmp/input',
+      ),
+      "printf x | MSYS2_ARG_CONV_EXCL='/tmp/input' docker exec -i app tee /tmp/input",
+      'only the right-hand native boundary segment needs the exclusion',
+    )
+  })
+
+  test('handles quoted static paths and each compound command segment', () => {
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(
+        `docker exec a cat '/one path/file' && docker exec b cat /two/file`,
+      ),
+      `MSYS2_ARG_CONV_EXCL='/one path/file' docker exec a cat '/one path/file' && MSYS2_ARG_CONV_EXCL='/two/file' docker exec b cat /two/file`,
+      'quotes are shell syntax, not protection from MSYS argv conversion',
+    )
+  })
+
+  test('does not alter safe host commands or already protected commands', () => {
+    const unchanged = [
+      'docker build /c/Users/me/project',
+      'kubectl apply -f /c/Users/me/deployment.yaml',
+      'ssh -i /c/Users/me/.ssh/id host',
+      `docker exec app bash -c 'cat /inside/container'`,
+      "MSYS_NO_PATHCONV=1 docker exec app cat /inside",
+      "MSYS2_ARG_CONV_EXCL='/inside' docker exec app cat /inside",
+      "cat <<'EOF'\ndocker exec app cat /inside\nEOF",
+      'echo "$(docker exec app cat /inside)"',
+    ]
+    for (const command of unchanged) {
+      assertEqual(
+        rewriteWindowsRemotePosixPaths(command),
+        command,
+        `must preserve: ${command}`,
+      )
+    }
+  })
+
+  test('the full pipeline applies remote path protection only on Windows', () => {
+    const input = 'docker exec namenode hadoop fs -ls /bigdata/'
+    assertEqual(
+      applyBashDefensiveRewrites(input, 'windows'),
+      "MSYS2_ARG_CONV_EXCL='/bigdata/' docker exec namenode hadoop fs -ls /bigdata/",
+      'Git Bash needs the conversion exclusion',
+    )
+    assertEqual(
+      applyBashDefensiveRewrites(input, 'linux'),
+      input,
+      'Linux must receive the original POSIX command',
+    )
+    assertEqual(
+      applyBashDefensiveRewrites(input, 'macos'),
+      input,
+      'macOS must receive the original POSIX command',
+    )
+    assertEqual(
+      applyBashDefensiveRewrites(input, 'wsl'),
+      input,
+      'WSL is already Linux and must not receive an MSYS variable',
+    )
+  })
+
+  test('remote path protection is idempotent', () => {
+    const once = rewriteWindowsRemotePosixPaths(
+      'docker exec app cat /etc/config',
+    )
+    assertEqual(
+      rewriteWindowsRemotePosixPaths(once),
+      once,
+      'a second pass must not duplicate the environment assignment',
+    )
+  })
+
+  test('preserves heredoc bodies while protecting commands after them', () => {
+    const input =
+      "cat > /tmp/init.js <<'EOF'\nconst path = '/leave/body/alone';\nEOF\ndocker cp /tmp/init.js app:/tmp/init.js\ndocker exec app runtime --file=/tmp/init.js"
+    const expected =
+      "cat > /tmp/init.js <<'EOF'\nconst path = '/leave/body/alone';\nEOF\nMSYS2_ARG_CONV_EXCL='app:/tmp/init.js' docker cp /tmp/init.js app:/tmp/init.js\nMSYS2_ARG_CONV_EXCL='/tmp/init.js' docker exec app runtime --file /tmp/init.js"
+    assertEqual(
+      applyBashDefensiveRewrites(input, 'windows'),
+      expected,
+      'heredoc content is data; later boundary commands still need normalization',
+    )
+  })
+
   console.log('\nnormalizeUnicodeSpacesOutsideQuotes:')
 
   test('rewrites NBSP between tokens to a normal space', () => {
@@ -569,6 +1029,135 @@ function main(): void {
       'pipeline must block unsafe node image kills',
     )
     assert(!out.includes('2>$null'), 'pipeline still rewrites redirects first')
+  })
+
+  test('quotes a URL whose query string carries an unquoted &', () => {
+    const out = rewriteUnquotedUrlAmpersand('curl -s http://localhost:8000/x?a=1&b=2')
+    assert(out === "curl -s 'http://localhost:8000/x?a=1&b=2'", `got: ${out}`)
+  })
+
+  test('quotes the URL but preserves a following && operator', () => {
+    const out = rewriteUnquotedUrlAmpersand('curl http://x?a=1&b=2 && echo ok')
+    assert(out === "curl 'http://x?a=1&b=2' && echo ok", `got: ${out}`)
+  })
+
+  test('leaves `&&` and a real background `&` (no URL query) intact', () => {
+    assert(
+      rewriteUnquotedUrlAmpersand('echo hi && echo bye') === 'echo hi && echo bye',
+      '&& must be untouched',
+    )
+    assert(
+      rewriteUnquotedUrlAmpersand('curl http://x/y & echo done') === 'curl http://x/y & echo done',
+      'background & with no URL query must be untouched',
+    )
+  })
+
+  test('URL ampersand rewrite is idempotent and skips already-quoted URLs', () => {
+    const once = rewriteUnquotedUrlAmpersand('curl http://x?a=1&b=2')
+    assert(rewriteUnquotedUrlAmpersand(once) === once, 'second pass must be a no-op')
+    assert(
+      rewriteUnquotedUrlAmpersand("curl 'http://x?a=1&b=2'") === "curl 'http://x?a=1&b=2'",
+      'already-quoted URL must be left alone',
+    )
+  })
+
+  test('the full pipeline quotes a URL ampersand (the reported curl case)', () => {
+    const out = applyBashDefensiveRewrites(
+      'curl http://localhost:8000/optimize?spindle_load=50&current_feedrate=100',
+    )
+    assert(
+      out === "curl 'http://localhost:8000/optimize?spindle_load=50&current_feedrate=100'",
+      `pipeline must quote the URL, got: ${out}`,
+    )
+  })
+
+  test('URL ampersand rewrite preserves heredoc bodies', () => {
+    const input = "cat <<'EOF'\nhttp://x?a=1&b=2\nEOF"
+    assertEqual(
+      rewriteUnquotedUrlAmpersand(input),
+      input,
+      'heredoc content must remain byte-for-byte unchanged',
+    )
+  })
+
+  console.log('\nrewritePipedDockerExecStdin:')
+
+  test('adds -i when a pipeline feeds docker exec', () => {
+    assertEqual(
+      rewritePipedDockerExecStdin(
+        `echo 'rs.status()' | docker exec mongo1 mongosh`,
+      ),
+      `echo 'rs.status()' | docker exec -i mongo1 mongosh`,
+      'piped docker exec must keep stdin open',
+    )
+  })
+
+  test('preserves existing short and long interactive flags', () => {
+    assertEqual(
+      rewritePipedDockerExecStdin('printf x | docker exec -it app sh'),
+      'printf x | docker exec -it app sh',
+      '-it already includes stdin',
+    )
+    assertEqual(
+      rewritePipedDockerExecStdin(
+        'printf x | docker exec --interactive app command',
+      ),
+      'printf x | docker exec --interactive app command',
+      '--interactive already includes stdin',
+    )
+  })
+
+  test('adds -i for piped Podman and Nerdctl exec commands', () => {
+    assertEqual(
+      rewritePipedDockerExecStdin('printf x | podman exec app cat'),
+      'printf x | podman exec -i app cat',
+      'Podman exec uses the same stdin contract',
+    )
+    assertEqual(
+      rewritePipedDockerExecStdin('printf x | nerdctl exec app cat'),
+      'printf x | nerdctl exec -i app cat',
+      'Nerdctl exec uses the same stdin contract',
+    )
+  })
+
+  test('adds -i to a heredoc pipeline without touching the body', () => {
+    const input =
+      "cat <<'EOF' | docker exec app runtime\n{\"path\":\"/inside/body\"}\nEOF"
+    assertEqual(
+      rewritePipedDockerExecStdin(input),
+      "cat <<'EOF' | docker exec -i app runtime\n{\"path\":\"/inside/body\"}\nEOF",
+      'only the command header may change',
+    )
+  })
+
+  test('does not rewrite quoted text, heredocs, logical OR, or non-piped docker exec', () => {
+    for (const command of [
+      `echo "x | docker exec app command"`,
+      "cat <<'EOF'\nx | docker exec app command\nEOF",
+      'false || docker exec app command',
+      'docker exec app command',
+    ]) {
+      assertEqual(
+        rewritePipedDockerExecStdin(command),
+        command,
+        'non-pipeline occurrence must be untouched',
+      )
+    }
+  })
+
+  test('piped docker exec rewrite is idempotent and part of the full pipeline', () => {
+    const input = `echo 'db.items.find()' | docker exec mongo1 mongosh mydb`
+    const once = applyBashDefensiveRewrites(input)
+    assertEqual(
+      once,
+      `echo 'db.items.find()' | docker exec -i mongo1 mongosh mydb`,
+      'full pipeline must add -i',
+    )
+    assertEqual(
+      applyBashDefensiveRewrites(once),
+      once,
+      'second pass must not add another -i',
+    )
   })
 
   console.log(`\n${passed} passed, ${failed} failed`)

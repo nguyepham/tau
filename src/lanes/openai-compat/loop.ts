@@ -54,8 +54,10 @@ import { isMoonshotThinkingModel } from '../../utils/model/moonshotCatalog.js'
 import {
   getOpencodeEffort,
   isOpencodeThinkingModel,
+  supportsOpencodeThinkingSelection,
 } from '../../utils/model/opencodeThinking.js'
 import { recordProviderModelContextWindows } from '../../utils/model/contextWindows.js'
+import { providerUsesStableRequestSession } from '../../services/api/cacheAffinity.js'
 
 // ─── Provider Detection ──────────────────────────────────────────
 
@@ -75,6 +77,8 @@ type ProviderType =
   | 'vercel'
   | 'requesty'
   | 'opencode'
+  | 'opencodego'
+  | 'fireworks'
   | 'cline'
   | 'iflow'
   | 'kilocode'
@@ -97,6 +101,10 @@ function detectProvider(model: string, baseUrl: string): ProviderType {
   if (b.includes('lxg2it') || b.includes('modelrouter')) return 'modelrouter'
   if (b.includes('ai-gateway.vercel') || b.includes('vercel')) return 'vercel'
   if (b.includes('requesty')) return 'requesty'
+  if (b.includes('fireworks.ai')) return 'fireworks'
+  // Go shares the opencode.ai host — match the `/zen/go` path first so it
+  // doesn't fall through to the Zen branch below.
+  if (b.includes('opencode.ai/zen/go')) return 'opencodego'
   if (b.includes('opencode.ai/zen') || b.includes('opencode.ai')) return 'opencode'
   if (b.includes('openrouter')) return 'openrouter'
   if (b.includes('cline.bot')) return 'cline'
@@ -156,6 +164,8 @@ interface OpenAIChatRequest {
   route?: string
   prompt_cache_key?: string
   prompt_cache_retention?: '24h'
+  // Fireworks: include perf_metrics (incl. cached-prompt-tokens) in the body.
+  perf_metrics_in_response?: boolean
   providerOptions?: {
     gateway?: {
       caching?: 'auto'
@@ -347,10 +357,31 @@ export class OpenAICompatLane implements Lane {
 
     const provider = cfg.provider
     const isLocal = isLocalBaseUrl(cfg.baseUrl)
-    const cacheSessionId =
-      provider === 'copilot' || provider === 'openrouter' || provider === 'agentrouter' || provider === 'opencode' || provider === 'moonshot' || provider === 'mistral'
-        ? sessionId
-        : undefined
+    const cacheSessionId = providerUsesStableRequestSession(provider)
+      ? sessionId
+      : undefined
+
+    // OpenCode Go exposes Qwen3.7 Max only on its Anthropic-compatible
+    // `/messages` endpoint. The `/chat/completions` route identifies itself as
+    // `oa-compat` and rejects this model before the request reaches an upstream.
+    // This model has no selectable reasoning variants, so the native request
+    // intentionally omits `thinking` and lets the model use its server default.
+    if (provider === 'opencodego' && isOpenCodeGoAnthropicModel(model)) {
+      return yield* streamOpenCodeGoAnthropic(
+        cfg,
+        {
+          model,
+          messages,
+          system,
+          tools,
+          max_tokens,
+          temperature,
+          stop_sequences,
+          signal,
+        },
+        cacheSessionId,
+      )
+    }
 
     // Assemble system text. We keep it simple for Phase-1 (caller's text).
     const rawSystemText = typeof system === 'string'
@@ -654,6 +685,20 @@ export class OpenAICompatLane implements Lane {
                 cacheWriteTokens = arWrite ?? 0
                 reportedCachedInputTokens = (arRead ?? 0) + (arWrite ?? 0)
               }
+            }
+          }
+
+          // Fireworks reports cached prompt tokens via perf_metrics
+          // (`cached-prompt-tokens`), which for streaming arrives in the
+          // final chunk when perf_metrics_in_response is set. The standard
+          // usage block omits prompt_tokens_details mid-stream, so fold this
+          // value into the cache-read count. Fireworks-only — no other
+          // provider's usage/billing path is touched. perf_metrics may ride
+          // on a chunk without `usage`, so it lives outside the block above.
+          if (provider === 'fireworks' && chunk.perf_metrics && typeof chunk.perf_metrics === 'object') {
+            const cached = (chunk.perf_metrics as Record<string, unknown>)['cached-prompt-tokens']
+            if (typeof cached === 'number' && cached > reportedCachedInputTokens) {
+              reportedCachedInputTokens = cached
             }
           }
 
@@ -1178,6 +1223,226 @@ function* emitErrorText(text: string): Generator<AnthropicStreamEvent> {
   yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }
   yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }
   yield { type: 'content_block_stop', index: 0 }
+}
+
+function isOpenCodeGoAnthropicModel(model: string): boolean {
+  return model.trim().toLowerCase() === 'qwen3.7-max'
+}
+
+async function* streamOpenCodeGoAnthropic(
+  cfg: { apiKey: string; baseUrl: string },
+  params: Pick<
+    LaneProviderCallParams,
+    'model' | 'messages' | 'system' | 'tools' | 'max_tokens'
+    | 'temperature' | 'stop_sequences' | 'signal'
+  >,
+  sessionId?: string,
+): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
+  const body: Record<string, unknown> = {
+    model: params.model,
+    messages: params.messages,
+    max_tokens: params.max_tokens,
+    stream: true,
+  }
+
+  if (typeof params.system === 'string') {
+    if (params.system.trim()) body.system = params.system
+  } else if (params.system.length > 0) {
+    body.system = params.system
+  }
+  if (params.tools.length > 0) body.tools = params.tools
+  if (params.temperature !== undefined) body.temperature = params.temperature
+  if (params.stop_sequences?.length) body.stop_sequences = params.stop_sequences
+
+  // `/messages` authenticates with x-api-key. Keep the same OpenCode
+  // affinity/rate-limit headers as the compat route, but never send a Tau
+  // thinking/effort field: this model has no supported reasoning variants.
+  const headers = buildRequestHeaders('opencodego', cfg.apiKey, params.model, sessionId)
+  delete headers.Authorization
+  headers['x-api-key'] = cfg.apiKey
+  headers['anthropic-version'] = '2023-06-01'
+
+  const url = `${normalizeBaseUrl(cfg.baseUrl)}/messages`
+  const messageId = `compat-${Date.now()}`
+  let sawMessageStart = false
+  let sawMessageStop = false
+  let inputTokens = 0
+  let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
+
+  const emitSyntheticStart = (): AnthropicStreamEvent => ({
+    type: 'message_start',
+    message: {
+      id: messageId,
+      type: 'message',
+      role: 'assistant',
+      content: [],
+      model: params.model,
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  })
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: params.signal,
+    })
+  } catch (error) {
+    yield emitSyntheticStart()
+    yield* emitErrorText(
+      `opencodego API connection error: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    yield {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      usage: { output_tokens: 0 },
+    }
+    yield { type: 'message_stop' }
+    return blankUsage(0, 0, 0, 0)
+  }
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '')
+    yield emitSyntheticStart()
+    yield* emitErrorText(formatProviderHttpError('opencodego', response.status, errText, false))
+    yield {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      usage: { output_tokens: 0 },
+    }
+    yield { type: 'message_stop' }
+    return blankUsage(0, 0, 0, 0)
+  }
+
+  if (!response.body) {
+    yield emitSyntheticStart()
+    yield* emitErrorText('opencodego API error: empty response body')
+    yield {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      usage: { output_tokens: 0 },
+    }
+    yield { type: 'message_stop' }
+    return blankUsage(0, 0, 0, 0)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
+
+      let boundary: number
+      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const data = rawEvent
+          .split('\n')
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart())
+          .join('\n')
+          .trim()
+        if (!data || data === '[DONE]') continue
+
+        let parsed: any
+        try {
+          parsed = JSON.parse(data)
+        } catch {
+          continue
+        }
+
+        if (parsed.type === 'error') {
+          if (!sawMessageStart) {
+            sawMessageStart = true
+            yield emitSyntheticStart()
+          }
+          const detail =
+            parsed.error?.message
+            ?? parsed.message
+            ?? JSON.stringify(parsed.error ?? parsed)
+          yield* emitErrorText(`opencodego API stream error: ${detail}`)
+          yield {
+            type: 'message_delta',
+            delta: { stop_reason: 'end_turn' },
+            usage: { output_tokens: outputTokens },
+          }
+          yield { type: 'message_stop' }
+          return {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_read_tokens: cacheReadTokens,
+            cache_write_tokens: cacheWriteTokens,
+            thinking_tokens: 0,
+          }
+        }
+
+        if (parsed.type === 'message_start') {
+          sawMessageStart = true
+          const usage = parsed.message?.usage ?? {}
+          inputTokens = usage.input_tokens ?? inputTokens
+          outputTokens = usage.output_tokens ?? outputTokens
+          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens
+          cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens
+        } else if (parsed.type === 'message_delta') {
+          const usage = parsed.usage ?? {}
+          inputTokens = usage.input_tokens ?? inputTokens
+          outputTokens = usage.output_tokens ?? outputTokens
+          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens
+          cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens
+        } else if (parsed.type === 'message_stop') {
+          sawMessageStop = true
+        }
+
+        if (
+          parsed.type === 'message_start'
+          || parsed.type === 'content_block_start'
+          || parsed.type === 'content_block_delta'
+          || parsed.type === 'content_block_stop'
+          || parsed.type === 'message_delta'
+          || parsed.type === 'message_stop'
+        ) {
+          yield parsed as AnthropicStreamEvent
+        }
+      }
+
+      if (done) break
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  if (!sawMessageStart) yield emitSyntheticStart()
+  if (!sawMessageStop) {
+    yield {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        ...(cacheReadTokens > 0 && { cache_read_input_tokens: cacheReadTokens }),
+        ...(cacheWriteTokens > 0 && { cache_creation_input_tokens: cacheWriteTokens }),
+      },
+    }
+    yield { type: 'message_stop' }
+  }
+
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_read_tokens: cacheReadTokens,
+    cache_write_tokens: cacheWriteTokens,
+    thinking_tokens: 0,
+  }
 }
 
 interface ProviderErrorPayload {
@@ -2184,14 +2449,20 @@ function convertHistoryToOpenAI(
   // be passed back to the API". The DeepSeek-style conversion already
   // does exactly this carry-back, so reuse it for every reasoning-on
   // opencode row.
-  if (provider === 'opencode' && opencodeThinkingActive(model)) {
+  // OpenCode Go shares Zen's gateway + upstreams, so the same reasoning
+  // carry-back applies — without it a thinking-on Go row 400s on the next
+  // tool turn ("reasoning_content must be passed back").
+  if (
+    (provider === 'opencode' || provider === 'opencodego')
+    && opencodeThinkingActive(provider, model)
+  ) {
     return convertHistoryToOpenAIForDeepSeek(messages, systemText)
   }
   return convertHistoryToOpenAIDefault(messages, systemText)
 }
 
-function opencodeThinkingActive(model: string): boolean {
-  if (!isOpencodeThinkingModel(model)) return false
+function opencodeThinkingActive(provider: ProviderType, model: string): boolean {
+  if (!supportsOpencodeThinkingSelection(provider, model)) return false
   return getOpencodeEffort(model) !== 'default'
 }
 

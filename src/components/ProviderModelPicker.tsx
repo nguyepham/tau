@@ -43,7 +43,7 @@ import {
   cycleOpencodeEffort,
   getOpencodeEffort,
   getOpencodeEffortLabel,
-  isOpencodeThinkingModel,
+  supportsOpencodeThinkingSelection,
 } from '../utils/model/opencodeThinking.js'
 import {
   cycleCommandCodeEffort,
@@ -476,8 +476,8 @@ export function ProviderModelPicker({
 
       if (
         row?.kind === 'model'
-        && selectedProvider === 'opencode'
-        && isOpencodeThinkingModel(row.model.id)
+        && (selectedProvider === 'opencode' || selectedProvider === 'opencodego')
+        && supportsOpencodeThinkingSelection(selectedProvider, row.model.id)
       ) {
         cycleOpencodeEffort(row.model.id, key.leftArrow ? 'left' : 'right')
         setOpencodeEffortTick(tick => tick + 1)
@@ -630,7 +630,9 @@ export function ProviderModelPicker({
               const isGlmThinking = selectedProvider === 'glm' && isGlmThinkingModel(model.id)
               const isClineThinking = selectedProvider === 'cline' && supportsClineThinkingSelection(model.id, model.tags)
               const clineEffort = isClineThinking ? getClineEffort(model.id) : undefined
-              const isOpencodeThinking = selectedProvider === 'opencode' && isOpencodeThinkingModel(model.id)
+              const isOpencodeThinking =
+                (selectedProvider === 'opencode' || selectedProvider === 'opencodego')
+                && supportsOpencodeThinkingSelection(selectedProvider, model.id)
               const opencodeEffort = isOpencodeThinking ? getOpencodeEffort(model.id) : undefined
               const isCommandCodeThinking =
                 selectedProvider === 'commandcode'

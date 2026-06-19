@@ -4,7 +4,10 @@
  * Run: bun run src/tools/BashTool/backgroundDetachValidation.test.ts
  */
 
-import { detectDetachedBackgroundPattern } from './backgroundDetachValidation.js'
+import {
+  allowsAutomaticBackgrounding,
+  detectDetachedBackgroundPattern,
+} from './backgroundDetachValidation.js'
 
 let passed = 0
 let failed = 0
@@ -109,6 +112,62 @@ function main(): void {
   test('allows plain foreground commands', () => {
     assert(detectDetachedBackgroundPattern('node server.js') === null, 'plain command')
     assert(detectDetachedBackgroundPattern('ls -la | grep src') === null, 'pipeline')
+  })
+
+  test('does not flag a URL whose query string contains & (auto-quoted)', () => {
+    assert(
+      detectDetachedBackgroundPattern('curl -s http://localhost:8000/x?a=1&b=2') === null,
+      'URL query & must not be read as a background operator',
+    )
+    assert(
+      detectDetachedBackgroundPattern(
+        'curl http://localhost:8000/optimize/feedrate?spindle_load=50&current_feedrate=100',
+      ) === null,
+      'the reported curl case must pass',
+    )
+  })
+
+  test('still flags a real trailing background & alongside a URL', () => {
+    assert(
+      detectDetachedBackgroundPattern('curl http://x/y & ') !== null,
+      'a real background & must still be flagged',
+    )
+  })
+
+  console.log('\nautomatic background eligibility:')
+
+  test('keeps pipelines and input-coupled commands in the foreground', () => {
+    const foreground = [
+      `echo 'db.status()' | docker exec -i db mongosh`,
+      'producer | consumer',
+      "command <<'EOF'\ninput\nEOF",
+      'command < input.txt',
+      'command <<< "input"',
+      'diff <(left) <(right)',
+    ]
+    for (const command of foreground) {
+      assert(
+        !allowsAutomaticBackgrounding(command),
+        `must stay foreground: ${command}`,
+      )
+    }
+  })
+
+  test('allows ordinary long-running commands to auto-background', () => {
+    for (const command of ['npm run build', 'docker compose up', 'pytest']) {
+      assert(
+        allowsAutomaticBackgrounding(command),
+        `ordinary command may auto-background: ${command}`,
+      )
+    }
+  })
+
+  test('keeps sleep foreground even behind environment assignments', () => {
+    assert(!allowsAutomaticBackgrounding('sleep 5'), 'plain sleep')
+    assert(
+      !allowsAutomaticBackgrounding('LC_ALL=C sleep 5'),
+      'environment-prefixed sleep',
+    )
   })
 
   console.log(`\n${passed} passed, ${failed} failed`)
