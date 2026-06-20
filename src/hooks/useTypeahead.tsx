@@ -247,6 +247,19 @@ export function applyShellSuggestion(suggestion: SuggestionItem, input: string, 
   setCursorOffset(wordStart + replacementText.length);
 }
 const DM_MEMBER_RE = /(^|\s)@[\w-]*$/;
+function isDirectMessageSuggestion(suggestion: SuggestionItem | undefined): suggestion is SuggestionItem {
+  return Boolean(suggestion?.id?.startsWith('dm-'));
+}
+function mergeAtSuggestions(memberSuggestions: SuggestionItem[], unifiedSuggestions: SuggestionItem[]): SuggestionItem[] {
+  const seen = new Set<string>();
+  const merged: SuggestionItem[] = [];
+  for (const item of [...memberSuggestions, ...unifiedSuggestions]) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push(item);
+  }
+  return merged;
+}
 function applyTriggerSuggestion(suggestion: SuggestionItem, input: string, cursorOffset: number, triggerRe: RegExp, onInputChange: (value: string) => void, setCursorOffset: (offset: number) => void): void {
   const m = input.slice(0, cursorOffset).match(triggerRe);
   if (!m || m.index === undefined) return;
@@ -468,6 +481,36 @@ export function useTypeahead({
 
   // Merged ghost text: prompt mode uses synchronous useMemo, bash mode uses async useState
   const effectiveGhostText = suppressSuggestions ? undefined : mode === 'prompt' ? syncPromptGhostText : inlineGhostText;
+  const getAtMemberSuggestions = useCallback((partialName: string): SuggestionItem[] => {
+    const partial = partialName.toLowerCase();
+    // Imperative read: teammates/subagents can be added mid-session.
+    const state = store.getState();
+    const members: SuggestionItem[] = [];
+    const seen = new Set<string>();
+    if (isAgentSwarmsEnabled() && state.teamContext) {
+      for (const t of Object.values(state.teamContext.teammates ?? {})) {
+        if (t.name === TEAM_LEAD_NAME) continue;
+        if (!t.name.toLowerCase().startsWith(partial)) continue;
+        seen.add(t.name);
+        members.push({
+          id: `dm-${t.name}`,
+          displayText: `@${t.name}`,
+          description: 'send message'
+        });
+      }
+    }
+    for (const [name, agentId] of state.agentNameRegistry) {
+      if (seen.has(name)) continue;
+      if (!name.toLowerCase().startsWith(partial)) continue;
+      const status = state.tasks[agentId]?.status;
+      members.push({
+        id: `dm-${name}`,
+        displayText: `@${name}`,
+        description: status ? `send message · ${status}` : 'send message'
+      });
+    }
+    return members;
+  }, [store]);
 
   // Use a ref for cursorOffset to avoid re-triggering suggestions on cursor movement alone
   // We only want to re-fetch suggestions when the actual search token changes
@@ -476,6 +519,7 @@ export function useTypeahead({
 
   // Track the latest search token to discard stale results from slow async operations
   const latestSearchTokenRef = useRef<string | null>(null);
+  const latestSearchWasAtSymbolRef = useRef(false);
   // Track previous input to detect actual text changes vs. callback recreations
   const prevInputRef = useRef('');
   // Track the latest path token to discard stale results from path completion
@@ -505,7 +549,9 @@ export function useTypeahead({
   // Expensive async operation to fetch file/resource suggestions
   const fetchFileSuggestions = useCallback(async (searchToken: string, isAtSymbol = false): Promise<void> => {
     latestSearchTokenRef.current = searchToken;
-    const combinedItems = await generateUnifiedSuggestions(searchToken, mcpResources, agents, isAtSymbol);
+    latestSearchWasAtSymbolRef.current = isAtSymbol;
+    const unifiedItems = await generateUnifiedSuggestions(searchToken, mcpResources, agents, isAtSymbol);
+    const combinedItems = isAtSymbol ? mergeAtSuggestions(getAtMemberSuggestions(searchToken), unifiedItems) : unifiedItems;
     // Discard stale results if a newer query was initiated while waiting
     if (latestSearchTokenRef.current !== searchToken) {
       return;
@@ -528,7 +574,7 @@ export function useTypeahead({
     }));
     setSuggestionType(combinedItems.length > 0 ? 'file' : 'none');
     setMaxColumnWidth(undefined); // No fixed width for file suggestions
-  }, [mcpResources, setSuggestionsState, setSuggestionType, setMaxColumnWidth, agents]);
+  }, [mcpResources, setSuggestionsState, setSuggestionType, setMaxColumnWidth, agents, getAtMemberSuggestions]);
 
   // Pre-warm the file index on mount so the first @-mention doesn't block.
   // The build runs in background with ~4ms event-loop yields, so it doesn't
@@ -552,7 +598,7 @@ export function useTypeahead({
       const token = latestSearchTokenRef.current;
       if (token !== null) {
         latestSearchTokenRef.current = null;
-        void fetchFileSuggestions(token, token === '');
+        void fetchFileSuggestions(token, latestSearchWasAtSymbolRef.current);
       }
     });
   }, [fetchFileSuggestions]);
@@ -640,52 +686,6 @@ export function useTypeahead({
       } else {
         // No history match, clear ghost text
         setInlineGhostText(undefined);
-      }
-    }
-
-    // Check for @ to trigger team member / named subagent suggestions
-    // Must check before @ file symbol to prevent conflict
-    // Skip in bash mode - @ has no special meaning in shell commands
-    const atMatch = mode !== 'bash' ? value.substring(0, effectiveCursorOffset).match(/(^|\s)@([\w-]*)$/) : null;
-    if (atMatch) {
-      const partialName = (atMatch[2] ?? '').toLowerCase();
-      // Imperative read — reading at call-time fixes staleness for
-      // teammates/subagents added mid-session.
-      const state = store.getState();
-      const members: SuggestionItem[] = [];
-      const seen = new Set<string>();
-      if (isAgentSwarmsEnabled() && state.teamContext) {
-        for (const t of Object.values(state.teamContext.teammates ?? {})) {
-          if (t.name === TEAM_LEAD_NAME) continue;
-          if (!t.name.toLowerCase().startsWith(partialName)) continue;
-          seen.add(t.name);
-          members.push({
-            id: `dm-${t.name}`,
-            displayText: `@${t.name}`,
-            description: 'send message'
-          });
-        }
-      }
-      for (const [name, agentId] of state.agentNameRegistry) {
-        if (seen.has(name)) continue;
-        if (!name.toLowerCase().startsWith(partialName)) continue;
-        const status = state.tasks[agentId]?.status;
-        members.push({
-          id: `dm-${name}`,
-          displayText: `@${name}`,
-          description: status ? `send message · ${status}` : 'send message'
-        });
-      }
-      if (members.length > 0) {
-        debouncedFetchFileSuggestions.cancel();
-        setSuggestionsState(prev => ({
-          commandArgumentHint: undefined,
-          suggestions: members,
-          selectedSuggestion: getPreservedSelection(prev.suggestions, prev.selectedSuggestion, members)
-        }));
-        setSuggestionType('agent');
-        setMaxColumnWidth(undefined);
-        return;
       }
     }
 
@@ -1105,6 +1105,12 @@ export function useTypeahead({
           clearSuggestions();
         }
       } else if (suggestionType === 'file' && suggestions.length > 0) {
+        const selectedItem = suggestions[index];
+        if (isDirectMessageSuggestion(selectedItem)) {
+          applyTriggerSuggestion(selectedItem, input, cursorOffset, DM_MEMBER_RE, onInputChange, setCursorOffset);
+          clearSuggestions();
+          return;
+        }
         const completionToken = extractCompletionToken(input, cursorOffset, true);
         if (!completionToken) {
           clearSuggestions();
@@ -1189,7 +1195,8 @@ export function useTypeahead({
           // If token starts with @, search without the @ prefix
           const isAtSymbol = completionInfo.token.startsWith('@');
           const searchToken = isAtSymbol ? completionInfo.token.substring(1) : completionInfo.token;
-          suggestionItems = await generateUnifiedSuggestions(searchToken, mcpResources, agents, isAtSymbol);
+          const unifiedItems = await generateUnifiedSuggestions(searchToken, mcpResources, agents, isAtSymbol);
+          suggestionItems = isAtSymbol ? mergeAtSuggestions(getAtMemberSuggestions(searchToken), unifiedItems) : unifiedItems;
         } else {
           suggestionItems = [];
         }
@@ -1205,7 +1212,7 @@ export function useTypeahead({
         setMaxColumnWidth(undefined);
       }
     }
-  }, [suggestions, selectedSuggestion, input, suggestionType, commands, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, cursorOffset, updateSuggestions, mcpResources, setSuggestionsState, agents, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, effectiveGhostText]);
+  }, [suggestions, selectedSuggestion, input, suggestionType, commands, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, cursorOffset, updateSuggestions, mcpResources, setSuggestionsState, agents, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, effectiveGhostText, getAtMemberSuggestions]);
 
   // Handle enter key press - apply and execute suggestions
   const handleEnter = useCallback(() => {
@@ -1255,6 +1262,12 @@ export function useTypeahead({
         clearSuggestions();
       }
     } else if (suggestionType === 'file' && selectedSuggestion < suggestions.length) {
+      if (isDirectMessageSuggestion(suggestion)) {
+        applyTriggerSuggestion(suggestion, input, cursorOffset, DM_MEMBER_RE, onInputChange, setCursorOffset);
+        debouncedFetchFileSuggestions.cancel();
+        clearSuggestions();
+        return;
+      }
       // Extract completion token directly when needed
       const completionInfo = extractCompletionToken(input, cursorOffset, true);
       if (completionInfo) {

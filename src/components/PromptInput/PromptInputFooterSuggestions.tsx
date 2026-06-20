@@ -25,6 +25,7 @@ function getIcon(itemId: string): string {
   if (itemId.startsWith('file-')) return '+';
   if (itemId.startsWith('mcp-resource-')) return '◇';
   if (itemId.startsWith('agent-')) return '*';
+  if (itemId.startsWith('dm-')) return '@';
   return '+';
 }
 
@@ -32,7 +33,7 @@ function getIcon(itemId: string): string {
  * Check if an item is a unified suggestion type (file, mcp-resource, or agent)
  */
 function isUnifiedSuggestion(itemId: string): boolean {
-  return itemId.startsWith('file-') || itemId.startsWith('mcp-resource-') || itemId.startsWith('agent-');
+  return itemId.startsWith('file-') || itemId.startsWith('mcp-resource-') || itemId.startsWith('agent-') || itemId.startsWith('dm-');
 }
 const SuggestionItemRow = memo(function SuggestionItemRow(t0) {
   const $ = _c(36);

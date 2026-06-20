@@ -721,6 +721,13 @@ export async function generateFileSuggestions(
     return []
   }
 
+  // If the partial path is empty or just a dot, return current directory suggestions
+  if (partialPath === '' || partialPath === '.' || partialPath === './') {
+    const topLevelPaths = await getTopLevelPaths()
+    startBackgroundCacheRefresh()
+    return topLevelPaths.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
+  }
+
   // Use custom command directly if configured. We don't mix in our config files
   // because the command returns pre-ranked results using its own search logic.
   if (getInitialSettings().fileSuggestion?.type === 'command') {
@@ -730,13 +737,6 @@ export async function generateFileSuggestions(
     }
     const results = await executeFileSuggestionCommand(input)
     return results.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
-  }
-
-  // If the partial path is empty or just a dot, return current directory suggestions
-  if (partialPath === '' || partialPath === '.' || partialPath === './') {
-    const topLevelPaths = await getTopLevelPaths()
-    startBackgroundCacheRefresh()
-    return topLevelPaths.slice(0, MAX_SUGGESTIONS).map(createFileSuggestionItem)
   }
 
   const startTime = Date.now()

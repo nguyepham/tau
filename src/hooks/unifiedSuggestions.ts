@@ -148,7 +148,14 @@ export async function generateUnifiedSuggestions(
     }))
 
   if (!query) {
-    const allSources = [...fileSources, ...mcpSources, ...agentSources]
+    const agentBudget = Math.min(agentSources.length, 5)
+    const mcpBudget = Math.min(mcpSources.length, 3)
+    const fileBudget = Math.max(0, MAX_UNIFIED_SUGGESTIONS - agentBudget - mcpBudget)
+    const allSources = [
+      ...fileSources.slice(0, fileBudget),
+      ...mcpSources.slice(0, mcpBudget),
+      ...agentSources.slice(0, agentBudget),
+    ]
     return allSources
       .slice(0, MAX_UNIFIED_SUGGESTIONS)
       .map(createSuggestionFromSource)
