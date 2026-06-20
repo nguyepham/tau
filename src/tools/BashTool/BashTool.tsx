@@ -295,19 +295,34 @@ For commands that are harder to parse at a glance (piped commands, obscure flags
   _workdirFromCd: z.boolean().optional().describe('Internal: set when a leading `cd <dir> &&` was converted into workdir, so the session cwd can persist like a real shell')
 }));
 
-// Always omit _simulatedSedEdit from the model-facing schema. It is an internal-only
-// field set by SedEditPermissionRequest after the user approves a sed edit preview.
-// Exposing it in the schema would let the model bypass permission checks and the
+// Always omit _simulatedSedEdit and _workdirFromCd from the model-facing schema.
+// They are internal-only fields: _simulatedSedEdit is set by SedEditPermissionRequest
+// after the user approves a sed edit preview, and _workdirFromCd is set by
+// validateInput (bashWorkdir) when it converts a leading `cd X && …` into a workdir.
+// Exposing _simulatedSedEdit would let the model bypass permission checks and the
 // sandbox by pairing an innocuous command with an arbitrary file write.
 // Also conditionally remove run_in_background when background tasks are disabled.
-const inputSchema = lazySchema(() => isBackgroundTasksDisabled ? fullInputSchema().omit({
-  run_in_background: true,
-  _simulatedSedEdit: true,
-  _workdirFromCd: true
-}) : fullInputSchema().omit({
-  _simulatedSedEdit: true,
-  _workdirFromCd: true
-}));
+//
+// This schema is reused for TWO jobs: the model-facing JSON (zodToJsonSchema) AND
+// re-parsing the LIVE tool input in the permission UI / api layer. Because
+// validateInput mutates that live input in place to add `_workdirFromCd`, a strict
+// re-parse (strictObject) would throw `unrecognized_keys` and crash the Bash
+// permission dialog. Re-wrap the omitted shape as a plain (stripping) z.object so
+// internal/unknown keys are dropped from the PARSED RESULT instead of rejected.
+// call() still reads `_workdirFromCd` off the original input object (not a parse
+// result), and `_simulatedSedEdit` stays omitted here AND stripped in toolExecution
+// (defense-in-depth) — so neither the workdir feature nor the sed-edit guard breaks.
+const inputSchema = lazySchema(() => {
+  const omittedShape = (isBackgroundTasksDisabled ? fullInputSchema().omit({
+    run_in_background: true,
+    _simulatedSedEdit: true,
+    _workdirFromCd: true
+  }) : fullInputSchema().omit({
+    _simulatedSedEdit: true,
+    _workdirFromCd: true
+  })).shape;
+  return z.object(omittedShape);
+});
 type InputSchema = ReturnType<typeof inputSchema>;
 
 // Use fullInputSchema for the type to always include run_in_background

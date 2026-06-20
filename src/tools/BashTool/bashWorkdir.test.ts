@@ -7,6 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, posix as pathPosix, relative } from 'path'
+import { toJSONSchema, z } from 'zod/v4'
 import { getPlatform } from '../../utils/platform.js'
 import {
   extractLeadingCdCommand,
@@ -122,6 +123,57 @@ async function main(): Promise<void> {
       'linux',
     )
     assert(result._workdirFromCd === undefined, 'flag must stay unset')
+  })
+
+  await test('omit+strip Bash input schema tolerates the injected _workdirFromCd flag', () => {
+    // Regression for the `unrecognized_keys: _workdirFromCd` crash in the Bash
+    // permission dialog. Mirrors BashTool.tsx `inputSchema`: a strictObject with
+    // the internal keys omitted, re-wrapped as a STRIPPING z.object. validateInput
+    // mutates the live tool input in place to add `_workdirFromCd` (see
+    // normalizeBashExecutionInputInPlace), and the permission UI / api layer then
+    // re-parse that same input. If this schema is left strict, that parse throws
+    // and crashes the dialog. It must STRIP unknown/internal keys, not reject them.
+    const full = z.strictObject({
+      command: z.string(),
+      description: z.string().optional(),
+      workdir: z.string().optional(),
+      _simulatedSedEdit: z
+        .object({ filePath: z.string(), newContent: z.string() })
+        .optional(),
+      _workdirFromCd: z.boolean().optional(),
+    })
+    const strict = full.omit({ _simulatedSedEdit: true, _workdirFromCd: true })
+    const modelFacing = z.object(strict.shape)
+
+    // Old strict behavior would throw here — the exact production bug.
+    let strictThrew = false
+    try {
+      strict.parse({ command: 'npm install', workdir: '/repo/be', _workdirFromCd: true })
+    } catch {
+      strictThrew = true
+    }
+    assert(strictThrew, 'sanity: a strict omit DOES reject the injected internal key')
+
+    // New stripping behavior must parse cleanly and drop the internal key.
+    const parsed = modelFacing.parse({
+      command: 'npm install',
+      workdir: '/repo/be',
+      _workdirFromCd: true,
+    })
+    assert(parsed.command === 'npm install', 'command must survive the parse')
+    assert(
+      !('_workdirFromCd' in parsed),
+      'internal flag must be stripped from the parsed result',
+    )
+
+    // The model-facing JSON must still hide the internal keys.
+    const json = toJSONSchema(modelFacing) as {
+      properties?: Record<string, unknown>
+    }
+    assert(
+      !json.properties?._workdirFromCd && !json.properties?._simulatedSedEdit,
+      'internal keys must stay hidden from the model-facing schema',
+    )
   })
 
   await test('isSameBashCwd compares case-insensitively on Windows', () => {

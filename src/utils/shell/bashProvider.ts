@@ -224,11 +224,22 @@ export async function createBashShellProvider(
       // directory; exposing the explicit POSIX spelling prevents a script
       // created by one tool from being looked up under a different filesystem.
       if (getPlatform() === 'windows' && !currentSandboxTmpDir) {
-        const posixTmpDir = windowsPathToPosixPath(osTmpdir())
+        const winTmpDir = osTmpdir()
+        const posixTmpDir = windowsPathToPosixPath(winTmpDir)
+        // $TMPDIR is the POSIX convention read by bash scripts; the POSIX spelling
+        // keeps it aligned with Git Bash's own `/tmp` view and the File tools.
         env.TMPDIR = posixTmpDir
-        env.TMP = posixTmpDir
-        env.TEMP = posixTmpDir
         env.CLAUDE_CODE_TMPDIR = posixTmpDir
+        // TMP/TEMP are WINDOWS-convention vars, read by native Windows programs AND
+        // by Git Bash's `usertemp` `/tmp` mount. They must NOT be the MSYS POSIX
+        // spelling (`/c/Users/...`): native tools can't resolve a `/c/...` path, and
+        // `usertemp` resolves it against the current drive -> a bogus `C:\c\Users\...`
+        // so Git Bash prints "could not find /tmp, please create!" on every command.
+        // Use a forward-slash DRIVE path (`C:/Users/...`): valid for native Windows
+        // APIs and safe to use as `$TMP` in bash (no backslash-escape pitfalls).
+        const driveTmpDir = winTmpDir.replace(/\\/g, '/')
+        env.TMP = driveTmpDir
+        env.TEMP = driveTmpDir
       }
       // CRITICAL: Override TMUX to isolate ALL tmux commands to Claude's socket.
       // This is NOT the user's TMUX value - it points to Claude's isolated socket.
