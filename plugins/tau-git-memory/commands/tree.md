@@ -1,4 +1,4 @@
-Show the Tau Git Memory tree as a visual schema.
+Show the Zen Git Memory tree as a visual schema.
 
 ```!
 node "${CLAUDE_PLUGIN_ROOT}/scripts/git-memory.mjs" tree --text 2>&1

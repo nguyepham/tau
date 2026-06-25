@@ -1,8 +1,8 @@
-import * as vscode from 'vscode'
-import { ChatViewProvider } from './chatViewProvider'
+import * as vscode from "vscode";
+import { ChatViewProvider } from "./chatViewProvider";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new ChatViewProvider(context)
+  const provider = new ChatViewProvider(context);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
@@ -10,10 +10,10 @@ export function activate(context: vscode.ExtensionContext): void {
       provider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
-    vscode.commands.registerCommand('tau.newChat', () => provider.newChat()),
-    vscode.commands.registerCommand('tau.stop', () => provider.stop()),
-    vscode.commands.registerCommand('tau.restart', () => provider.restart()),
-  )
+    vscode.commands.registerCommand("zen.newChat", () => provider.newChat()),
+    vscode.commands.registerCommand("zen.stop", () => provider.stop()),
+    vscode.commands.registerCommand("zen.restart", () => provider.restart()),
+  );
 }
 
 export function deactivate(): void {

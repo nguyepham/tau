@@ -1,6 +1,6 @@
 {
   "$schema": "vscode://schemas/color-theme",
-  "name": "Tau Light",
+  "name": "Zen Light",
   "type": "light",
   "colors": {
     "editor.background": "#FAFFF8",

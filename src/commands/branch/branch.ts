@@ -1,17 +1,17 @@
-import { randomUUID, type UUID } from 'crypto'
-import { mkdir, readFile, writeFile } from 'fs/promises'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
-import type { LocalJSXCommandContext } from '../../commands.js'
-import { logEvent } from '../../services/analytics/index.js'
-import type { LocalJSXCommandOnDone } from '../../types/command.js'
+import { randomUUID, type UUID } from "crypto";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { getOriginalCwd, getSessionId } from "../../bootstrap/state.js";
+import type { LocalJSXCommandContext } from "../../commands.js";
+import { logEvent } from "../../services/analytics/index.js";
+import type { LocalJSXCommandOnDone } from "../../types/command.js";
 import type {
   ContentReplacementEntry,
   Entry,
   LogOption,
   SerializedMessage,
   TranscriptMessage,
-} from '../../types/logs.js'
-import { parseJSONL } from '../../utils/json.js'
+} from "../../types/logs.js";
+import { parseJSONL } from "../../utils/json.js";
 import {
   getFirstMeaningfulUserMessageTextContent,
   getProjectDir,
@@ -20,16 +20,16 @@ import {
   isTranscriptMessage,
   saveCustomTitle,
   searchSessionsByCustomTitle,
-} from '../../utils/sessionStorage.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { escapeRegExp } from '../../utils/stringUtils.js'
+} from "../../utils/sessionStorage.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
+import { escapeRegExp } from "../../utils/stringUtils.js";
 
 type TranscriptEntry = TranscriptMessage & {
   forkedFrom?: {
-    sessionId: string
-    messageUuid: UUID
-  }
-}
+    sessionId: string;
+    messageUuid: UUID;
+  };
+};
 
 /**
  * Derive a single-line title base from the LATEST meaningful user prompt
@@ -43,25 +43,23 @@ type TranscriptEntry = TranscriptMessage & {
  * metadata tags, and built-in slash command echoes by reusing
  * getFirstMeaningfulUserMessageTextContent on a reversed array.
  */
-export function deriveFirstPrompt(
-  transcript: SerializedMessage[],
-): string {
-  const reversed = [...transcript].reverse()
+export function deriveFirstPrompt(transcript: SerializedMessage[]): string {
+  const reversed = [...transcript].reverse();
   const text =
     getFirstMeaningfulUserMessageTextContent(reversed) ??
-    getFirstMeaningfulUserMessageTextContent(transcript)
-  if (!text) return 'Branched conversation'
+    getFirstMeaningfulUserMessageTextContent(transcript);
+  if (!text) return "Branched conversation";
   return (
-    text.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Branched conversation'
-  )
+    text.replace(/\s+/g, " ").trim().slice(0, 100) || "Branched conversation"
+  );
 }
 
 /** "(Branch · 14:32)" suffix — disambiguates siblings created from the same base. */
 function autoSuffix(label: string): string {
-  const now = new Date()
-  const hh = now.getHours().toString().padStart(2, '0')
-  const mm = now.getMinutes().toString().padStart(2, '0')
-  return `(${label} · ${hh}:${mm})`
+  const now = new Date();
+  const hh = now.getHours().toString().padStart(2, "0");
+  const mm = now.getMinutes().toString().padStart(2, "0");
+  return `(${label} · ${hh}:${mm})`;
 }
 
 /**
@@ -70,45 +68,45 @@ function autoSuffix(label: string): string {
  * sessionId and adding forkedFrom traceability.
  */
 async function createFork(customTitle?: string): Promise<{
-  sessionId: UUID
-  title: string | undefined
-  forkPath: string
-  serializedMessages: SerializedMessage[]
-  contentReplacementRecords: ContentReplacementEntry['replacements']
+  sessionId: UUID;
+  title: string | undefined;
+  forkPath: string;
+  serializedMessages: SerializedMessage[];
+  contentReplacementRecords: ContentReplacementEntry["replacements"];
 }> {
-  const forkSessionId = randomUUID() as UUID
-  const originalSessionId = getSessionId()
-  const projectDir = getProjectDir(getOriginalCwd())
-  const forkSessionPath = getTranscriptPathForSession(forkSessionId)
-  const currentTranscriptPath = getTranscriptPath()
+  const forkSessionId = randomUUID() as UUID;
+  const originalSessionId = getSessionId();
+  const projectDir = getProjectDir(getOriginalCwd());
+  const forkSessionPath = getTranscriptPathForSession(forkSessionId);
+  const currentTranscriptPath = getTranscriptPath();
 
   // Ensure project directory exists
-  await mkdir(projectDir, { recursive: true, mode: 0o700 })
+  await mkdir(projectDir, { recursive: true, mode: 0o700 });
 
   // Read current transcript file
-  let transcriptContent: Buffer
+  let transcriptContent: Buffer;
   try {
-    transcriptContent = await readFile(currentTranscriptPath)
+    transcriptContent = await readFile(currentTranscriptPath);
   } catch {
-    throw new Error('No conversation to branch')
+    throw new Error("No conversation to branch");
   }
 
   if (transcriptContent.length === 0) {
-    throw new Error('No conversation to branch')
+    throw new Error("No conversation to branch");
   }
 
   // Parse all transcript entries (messages + metadata entries like content-replacement)
-  const entries = parseJSONL<Entry>(transcriptContent)
+  const entries = parseJSONL<Entry>(transcriptContent);
 
   // Filter to only main conversation messages (exclude sidechains and non-message entries)
   const mainConversationEntries = entries.filter(
     (entry): entry is TranscriptMessage =>
       isTranscriptMessage(entry) && !entry.isSidechain,
-  )
+  );
 
   // Content-replacement entries for the original session. These record which
   // tool_result blocks were replaced with previews by the per-message budget.
-  // Without them in the fork JSONL, `tau -r {forkId}` reconstructs state
+  // Without them in the fork JSONL, `zen -r {forkId}` reconstructs state
   // with an empty replacements Map → previously-replaced results are classified
   // as FROZEN and sent as full content (prompt cache miss + permanent overage).
   // sessionId must be rewritten since loadTranscriptFile keys lookup by the
@@ -116,19 +114,19 @@ async function createFork(customTitle?: string): Promise<{
   const contentReplacementRecords = entries
     .filter(
       (entry): entry is ContentReplacementEntry =>
-        entry.type === 'content-replacement' &&
+        entry.type === "content-replacement" &&
         entry.sessionId === originalSessionId,
     )
-    .flatMap(entry => entry.replacements)
+    .flatMap((entry) => entry.replacements);
 
   if (mainConversationEntries.length === 0) {
-    throw new Error('No messages to branch')
+    throw new Error("No messages to branch");
   }
 
   // Build forked entries with new sessionId and preserved metadata
-  let parentUuid: UUID | null = null
-  const lines: string[] = []
-  const serializedMessages: SerializedMessage[] = []
+  let parentUuid: UUID | null = null;
+  const lines: string[] = [];
+  const serializedMessages: SerializedMessage[] = [];
 
   for (const entry of mainConversationEntries) {
     // Create forked transcript entry preserving all original metadata
@@ -141,18 +139,18 @@ async function createFork(customTitle?: string): Promise<{
         sessionId: originalSessionId,
         messageUuid: entry.uuid,
       },
-    }
+    };
 
     // Build serialized message for LogOption
     const serialized: SerializedMessage = {
       ...entry,
       sessionId: forkSessionId,
-    }
+    };
 
-    serializedMessages.push(serialized)
-    lines.push(jsonStringify(forkedEntry))
-    if (entry.type !== 'progress') {
-      parentUuid = entry.uuid
+    serializedMessages.push(serialized);
+    lines.push(jsonStringify(forkedEntry));
+    if (entry.type !== "progress") {
+      parentUuid = entry.uuid;
     }
   }
 
@@ -161,18 +159,18 @@ async function createFork(customTitle?: string): Promise<{
   // loadTranscriptFile's content-replacement branch picks it up.
   if (contentReplacementRecords.length > 0) {
     const forkedReplacementEntry: ContentReplacementEntry = {
-      type: 'content-replacement',
+      type: "content-replacement",
       sessionId: forkSessionId,
       replacements: contentReplacementRecords,
-    }
-    lines.push(jsonStringify(forkedReplacementEntry))
+    };
+    lines.push(jsonStringify(forkedReplacementEntry));
   }
 
   // Write the fork session file
-  await writeFile(forkSessionPath, lines.join('\n') + '\n', {
-    encoding: 'utf8',
+  await writeFile(forkSessionPath, lines.join("\n") + "\n", {
+    encoding: "utf8",
     mode: 0o600,
-  })
+  });
 
   return {
     sessionId: forkSessionId,
@@ -180,7 +178,7 @@ async function createFork(customTitle?: string): Promise<{
     forkPath: forkSessionPath,
     serializedMessages,
     contentReplacementRecords,
-  }
+  };
 }
 
 /**
@@ -188,46 +186,48 @@ async function createFork(customTitle?: string): Promise<{
  * If "baseName (Branch)" already exists, tries "baseName (Branch 2)", "baseName (Branch 3)", etc.
  */
 async function getUniqueForkName(baseName: string): Promise<string> {
-  const candidateName = `${baseName} (Branch)`
+  const candidateName = `${baseName} (Branch)`;
 
   // Check if this exact name already exists
   const existingWithExactName = await searchSessionsByCustomTitle(
     candidateName,
     { exact: true },
-  )
+  );
 
   if (existingWithExactName.length === 0) {
-    return candidateName
+    return candidateName;
   }
 
   // Name collision - find a unique numbered suffix
   // Search for all sessions that start with the base pattern
-  const existingForks = await searchSessionsByCustomTitle(`${baseName} (Branch`)
+  const existingForks = await searchSessionsByCustomTitle(
+    `${baseName} (Branch`,
+  );
 
   // Extract existing fork numbers to find the next available
-  const usedNumbers = new Set<number>([1]) // Consider " (Branch)" as number 1
+  const usedNumbers = new Set<number>([1]); // Consider " (Branch)" as number 1
   const forkNumberPattern = new RegExp(
     `^${escapeRegExp(baseName)} \\(Branch(?: (\\d+))?\\)$`,
-  )
+  );
 
   for (const session of existingForks) {
-    const match = session.customTitle?.match(forkNumberPattern)
+    const match = session.customTitle?.match(forkNumberPattern);
     if (match) {
       if (match[1]) {
-        usedNumbers.add(parseInt(match[1], 10))
+        usedNumbers.add(parseInt(match[1], 10));
       } else {
-        usedNumbers.add(1) // " (Branch)" without number is treated as 1
+        usedNumbers.add(1); // " (Branch)" without number is treated as 1
       }
     }
   }
 
   // Find the next available number
-  let nextNumber = 2
+  let nextNumber = 2;
   while (usedNumbers.has(nextNumber)) {
-    nextNumber++
+    nextNumber++;
   }
 
-  return `${baseName} (Branch ${nextNumber})`
+  return `${baseName} (Branch ${nextNumber})`;
 }
 
 export async function call(
@@ -235,9 +235,9 @@ export async function call(
   context: LocalJSXCommandContext,
   args: string,
 ): Promise<React.ReactNode> {
-  const customTitle = args?.trim() || undefined
+  const customTitle = args?.trim() || undefined;
 
-  const originalSessionId = getSessionId()
+  const originalSessionId = getSessionId();
 
   try {
     const {
@@ -246,11 +246,11 @@ export async function call(
       forkPath,
       serializedMessages,
       contentReplacementRecords,
-    } = await createFork(customTitle)
+    } = await createFork(customTitle);
 
     // Build LogOption for resume
-    const now = new Date()
-    const firstPrompt = deriveFirstPrompt(serializedMessages)
+    const now = new Date();
+    const firstPrompt = deriveFirstPrompt(serializedMessages);
 
     // Naming policy:
     //   /branch          -> "<lastPrompt> (Branch · HH:MM)" — time stamp
@@ -259,19 +259,19 @@ export async function call(
     //   /branch <name>   -> "<name> (Branch)" with numeric collision handling
     //                       (preserves the original behavior for users who
     //                       explicitly name their branches).
-    const baseName = title ?? firstPrompt
+    const baseName = title ?? firstPrompt;
     const effectiveTitle = title
       ? await getUniqueForkName(baseName)
-      : `${baseName} ${autoSuffix('Branch')}`
-    await saveCustomTitle(sessionId, effectiveTitle, forkPath)
+      : `${baseName} ${autoSuffix("Branch")}`;
+    await saveCustomTitle(sessionId, effectiveTitle, forkPath);
 
-    logEvent('tengu_conversation_forked', {
+    logEvent("tengu_conversation_forked", {
       message_count: serializedMessages.length,
       has_custom_title: !!title,
-    })
+    });
 
     const forkLog: LogOption = {
-      date: now.toISOString().split('T')[0]!,
+      date: now.toISOString().split("T")[0]!,
       messages: serializedMessages,
       fullPath: forkPath,
       value: now.getTime(),
@@ -283,28 +283,28 @@ export async function call(
       sessionId,
       customTitle: effectiveTitle,
       contentReplacements: contentReplacementRecords,
-    }
+    };
 
     // Resume into the fork
-    const titleInfo = title ? ` "${title}"` : ''
-    const resumeHint = `\nTo resume the original: tau -r ${originalSessionId}`
-    const successMessage = `Branched conversation${titleInfo}. You are now in the branch.${resumeHint}`
+    const titleInfo = title ? ` "${title}"` : "";
+    const resumeHint = `\nTo resume the original: zen -r ${originalSessionId}`;
+    const successMessage = `Branched conversation${titleInfo}. You are now in the branch.${resumeHint}`;
 
     if (context.resume) {
-      await context.resume(sessionId, forkLog, 'fork')
-      onDone(successMessage, { display: 'system' })
+      await context.resume(sessionId, forkLog, "fork");
+      onDone(successMessage, { display: "system" });
     } else {
       // Fallback if resume not available
       onDone(
         `Branched conversation${titleInfo}. Resume with: /resume ${sessionId}`,
-      )
+      );
     }
 
-    return null
+    return null;
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Unknown error occurred'
-    onDone(`Failed to branch conversation: ${message}`)
-    return null
+      error instanceof Error ? error.message : "Unknown error occurred";
+    onDone(`Failed to branch conversation: ${message}`);
+    return null;
   }
 }

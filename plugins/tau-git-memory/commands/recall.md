@@ -1,4 +1,4 @@
-Search Tau Git Memory now for:
+Search Zen Git Memory now for:
 
 ```text
 $ARGUMENTS

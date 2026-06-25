@@ -1,19 +1,17 @@
+import React from "react";
 import { c as _c } from "react/compiler-runtime";
-import React, { useCallback } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
-import { Box, Link, Newline, Text } from '../ink.js';
-import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
-import { updateSettingsForSource } from '../utils/settings/settings.js';
-import { Select } from './CustomSelect/index.js';
-import { Dialog } from './design-system/Dialog.js';
+import { logEvent } from "src/services/analytics/index.js";
+import { Box, Link, Newline, Text } from "../ink.js";
+import { gracefulShutdownSync } from "../utils/gracefulShutdown.js";
+import { updateSettingsForSource } from "../utils/settings/settings.js";
+import { Select } from "./CustomSelect/index.js";
+import { Dialog } from "./design-system/Dialog.js";
 type Props = {
   onAccept(): void;
 };
 export function BypassPermissionsModeDialog(t0) {
   const $ = _c(7);
-  const {
-    onAccept
-  } = t0;
+  const { onAccept } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -26,19 +24,17 @@ export function BypassPermissionsModeDialog(t0) {
   if ($[1] !== onAccept) {
     t2 = function onChange(value) {
       bb3: switch (value) {
-        case "accept":
-          {
-            logEvent("tengu_bypass_permissions_mode_dialog_accept", {});
-            updateSettingsForSource("userSettings", {
-              skipDangerousModePermissionPrompt: true
-            });
-            onAccept();
-            break bb3;
-          }
-        case "decline":
-          {
-            gracefulShutdownSync(1);
-          }
+        case "accept": {
+          logEvent("tengu_bypass_permissions_mode_dialog_accept", {});
+          updateSettingsForSource("userSettings", {
+            skipDangerousModePermissionPrompt: true,
+          });
+          onAccept();
+          break bb3;
+        }
+        case "decline": {
+          gracefulShutdownSync(1);
+        }
       }
     };
     $[1] = onAccept;
@@ -50,27 +46,57 @@ export function BypassPermissionsModeDialog(t0) {
   const handleEscape = _temp2;
   let t3;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box flexDirection="column" gap={1}><Text>In Bypass Permissions mode, Tau will not ask for your approval before running potentially dangerous commands.<Newline />This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.</Text><Text>By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.</Text><Link url="https://code.claude.com/docs/en/security" /></Box>;
+    t3 = (
+      <Box flexDirection="column" gap={1}>
+        <Text>
+          In Bypass Permissions mode, Zen will not ask for your approval before
+          running potentially dangerous commands.
+          <Newline />
+          This mode should only be used in a sandboxed container/VM that has
+          restricted internet access and can easily be restored if damaged.
+        </Text>
+        <Text>
+          By proceeding, you accept all responsibility for actions taken while
+          running in Bypass Permissions mode.
+        </Text>
+        <Link url="https://code.claude.com/docs/en/security" />
+      </Box>
+    );
     $[3] = t3;
   } else {
     t3 = $[3];
   }
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = [{
-      label: "No, exit",
-      value: "decline"
-    }, {
-      label: "Yes, I accept",
-      value: "accept"
-    }];
+    t4 = [
+      {
+        label: "No, exit",
+        value: "decline",
+      },
+      {
+        label: "Yes, I accept",
+        value: "accept",
+      },
+    ];
     $[4] = t4;
   } else {
     t4 = $[4];
   }
   let t5;
   if ($[5] !== onChange) {
-    t5 = <Dialog title="WARNING: Tau running in Bypass Permissions mode" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
+    t5 = (
+      <Dialog
+        title="WARNING: Zen running in Bypass Permissions mode"
+        color="error"
+        onCancel={handleEscape}
+      >
+        {t3}
+        <Select
+          options={t4}
+          onChange={(value_0) => onChange(value_0 as "accept" | "decline")}
+        />
+      </Dialog>
+    );
     $[5] = onChange;
     $[6] = t5;
   } else {

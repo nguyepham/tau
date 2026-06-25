@@ -1,22 +1,22 @@
-# Tau Git Memory
+# Zen Git Memory
 
-Prototype Tau plugin for local, Git-backed memory.
+Prototype Zen plugin for local, Git-backed memory.
 
 It stores memories as Markdown files in a small Git repository and keeps the memory branch aligned with the current project Git branch. It does not use Docker, a vector database, embeddings, or a background service.
 
 ## Test Locally
 
-Use it for one Tau session:
+Use it for one Zen session:
 
 ```bash
-tau --plugin-dir /path/to/claudex/plugins/tau-git-memory
+zen --plugin-dir /path/to/claudex/plugins/zen-git-memory
 ```
 
 Or register the local marketplace:
 
 ```bash
-tau plugin marketplace add /path/to/claudex/plugins
-tau plugin install tau-git-memory@claude-code-git-memory
+zen plugin marketplace add /path/to/claudex/plugins
+zen plugin install zen-git-memory@claude-code-git-memory
 ```
 
 ## Storage
@@ -24,21 +24,21 @@ tau plugin install tau-git-memory@claude-code-git-memory
 Default store:
 
 ```text
-~/.tau/git-memory/<project-slug>
+~/.zen/git-memory/<project-slug>
 ```
 
 Override it when testing:
 
 ```bash
-TAU_GIT_MEMORY_STORE=/tmp/tau-memory-test tau --plugin-dir /path/to/claudex/plugins/tau-git-memory
+TAU_GIT_MEMORY_STORE=/tmp/zen-memory-test zen --plugin-dir /path/to/claudex/plugins/zen-git-memory
 ```
 
 ## Commands
 
-- `/tau-git-memory:status`
-- `/tau-git-memory:remember [--tag pinned|fallback|normal] <path> <memory>`
-- `/tau-git-memory:recall <query>`
-- `/tau-git-memory:tree`
+- `/zen-git-memory:status`
+- `/zen-git-memory:remember [--tag pinned|fallback|normal] <path> <memory>`
+- `/zen-git-memory:recall <query>`
+- `/zen-git-memory:tree`
 
 Memory paths are dot-separated, for example `preferences.coding.style` or `project.architecture.memory`.
 If no tag is provided, the memory is saved as `normal`.
@@ -46,14 +46,14 @@ If no tag is provided, the memory is saved as `normal`.
 Useful examples:
 
 ```text
-/tau-git-memory:remember --tag pinned preferences.coding.style Keep edits focused and follow existing project patterns.
-/tau-git-memory:remember --tag fallback project.default.rules When unsure, inspect files before changing behavior.
-/tau-git-memory:remember project.setup.commands Use npm test before committing.
+/zen-git-memory:remember --tag pinned preferences.coding.style Keep edits focused and follow existing project patterns.
+/zen-git-memory:remember --tag fallback project.default.rules When unsure, inspect files before changing behavior.
+/zen-git-memory:remember project.setup.commands Use npm test before committing.
 ```
 
 ## Context Injection
 
-The plugin uses Tau hooks:
+The plugin uses Zen hooks:
 
 - `SessionStart` reads an existing store, injects the tag-zone rules, a compact list of available memory paths, and cached compact `pinned` snippets.
 - `UserPromptSubmit` keyword-searches `normal` memories on the current memory branch.
@@ -62,7 +62,7 @@ The plugin uses Tau hooks:
 - If keyword search finds no normal match, it injects `fallback` memories.
 - Pinned and fallback memories are not searched for keyword injection because they belong to separate zones.
 
-Hooks fast-return when the project has no initialized memory store. Manual commands such as `/tau-git-memory:remember` and `/tau-git-memory:status` still initialize the store.
+Hooks fast-return when the project has no initialized memory store. Manual commands such as `/zen-git-memory:remember` and `/zen-git-memory:status` still initialize the store.
 
 If the current memory branch exists but has no memories, read hooks and recall commands fall back to `main` by default, restore the original branch after reading, and label the fallback source in injected context.
 

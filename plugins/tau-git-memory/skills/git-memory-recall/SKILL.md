@@ -1,6 +1,6 @@
 # Git Memory Recall
 
-You are retrieving facts from Tau Git Memory.
+You are retrieving facts from Zen Git Memory.
 
 Use the plugin script, not ad hoc filesystem reads:
 

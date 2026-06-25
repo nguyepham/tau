@@ -1,4 +1,4 @@
-module github.com/abdoknbgit/tau/native/shell-parser
+module github.com/abdoknbgit/zen/native/shell-parser
 
 go 1.23
 
