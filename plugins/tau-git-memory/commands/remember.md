@@ -1,4 +1,4 @@
-Save the user's input into Tau Git Memory now.
+Save the user's input into Zen Git Memory now.
 
 Supported tags are `pinned`, `fallback`, and `normal`. If no tag is provided, use `normal`.
 

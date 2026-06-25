@@ -1,30 +1,24 @@
+import { useState } from "react";
 import { c as _c } from "react/compiler-runtime";
-import React, { type ReactNode, useCallback, useState } from 'react';
-import { Box, Text } from '../../../../ink.js';
-import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
-import { editPromptInEditor } from '../../../../utils/promptEditor.js';
-import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
-import { Byline } from '../../../design-system/Byline.js';
-import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js';
-import TextInput from '../../../TextInput.js';
-import { useWizard } from '../../../wizard/index.js';
-import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
-import type { AgentWizardData } from '../types.js';
+import { Box, Text } from "../../../../ink.js";
+import { useKeybinding } from "../../../../keybindings/useKeybinding.js";
+import { editPromptInEditor } from "../../../../utils/promptEditor.js";
+import { ConfigurableShortcutHint } from "../../../ConfigurableShortcutHint.js";
+import { Byline } from "../../../design-system/Byline.js";
+import { KeyboardShortcutHint } from "../../../design-system/KeyboardShortcutHint.js";
+import TextInput from "../../../TextInput.js";
+import { useWizard } from "../../../wizard/index.js";
+import { WizardDialogLayout } from "../../../wizard/WizardDialogLayout.js";
 export function DescriptionStep() {
   const $ = _c(18);
-  const {
-    goNext,
-    goBack,
-    updateWizardData,
-    wizardData
-  } = useWizard();
+  const { goNext, goBack, updateWizardData, wizardData } = useWizard();
   const [whenToUse, setWhenToUse] = useState(wizardData.whenToUse || "");
   const [cursorOffset, setCursorOffset] = useState(whenToUse.length);
   const [error, setError] = useState(null);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
-      context: "Settings"
+      context: "Settings",
     };
     $[0] = t0;
   } else {
@@ -49,7 +43,7 @@ export function DescriptionStep() {
   let t2;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = {
-      context: "Chat"
+      context: "Chat",
     };
     $[3] = t2;
   } else {
@@ -58,7 +52,7 @@ export function DescriptionStep() {
   useKeybinding("chat:externalEditor", handleExternalEditor, t2);
   let t3;
   if ($[4] !== goNext || $[5] !== updateWizardData) {
-    t3 = value => {
+    t3 = (value) => {
       const trimmedValue = value.trim();
       if (!trimmedValue) {
         setError("Description is required");
@@ -66,7 +60,7 @@ export function DescriptionStep() {
       }
       setError(null);
       updateWizardData({
-        whenToUse: trimmedValue
+        whenToUse: trimmedValue,
       });
       goNext();
     };
@@ -79,21 +73,52 @@ export function DescriptionStep() {
   const handleSubmit = t3;
   let t4;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Byline><KeyboardShortcutHint shortcut="Type" action="enter text" /><KeyboardShortcutHint shortcut="Enter" action="continue" /><ConfigurableShortcutHint action="chat:externalEditor" context="Chat" fallback="ctrl+g" description="open in editor" /><ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="go back" /></Byline>;
+    t4 = (
+      <Byline>
+        <KeyboardShortcutHint shortcut="Type" action="enter text" />
+        <KeyboardShortcutHint shortcut="Enter" action="continue" />
+        <ConfigurableShortcutHint
+          action="chat:externalEditor"
+          context="Chat"
+          fallback="ctrl+g"
+          description="open in editor"
+        />
+        <ConfigurableShortcutHint
+          action="confirm:no"
+          context="Settings"
+          fallback="Esc"
+          description="go back"
+        />
+      </Byline>
+    );
     $[7] = t4;
   } else {
     t4 = $[7];
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text>When should Tau use this agent?</Text>;
+    t5 = <Text>When should Zen use this agent?</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
   }
   let t6;
   if ($[9] !== cursorOffset || $[10] !== handleSubmit || $[11] !== whenToUse) {
-    t6 = <Box marginTop={1}><TextInput value={whenToUse} onChange={setWhenToUse} onSubmit={handleSubmit} placeholder="e.g., use this agent after you're done writing code..." columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus={true} showCursor={true} /></Box>;
+    t6 = (
+      <Box marginTop={1}>
+        <TextInput
+          value={whenToUse}
+          onChange={setWhenToUse}
+          onSubmit={handleSubmit}
+          placeholder="e.g., use this agent after you're done writing code..."
+          columns={80}
+          cursorOffset={cursorOffset}
+          onChangeCursorOffset={setCursorOffset}
+          focus={true}
+          showCursor={true}
+        />
+      </Box>
+    );
     $[9] = cursorOffset;
     $[10] = handleSubmit;
     $[11] = whenToUse;
@@ -103,7 +128,11 @@ export function DescriptionStep() {
   }
   let t7;
   if ($[13] !== error) {
-    t7 = error && <Box marginTop={1}><Text color="error">{error}</Text></Box>;
+    t7 = error && (
+      <Box marginTop={1}>
+        <Text color="error">{error}</Text>
+      </Box>
+    );
     $[13] = error;
     $[14] = t7;
   } else {
@@ -111,7 +140,18 @@ export function DescriptionStep() {
   }
   let t8;
   if ($[15] !== t6 || $[16] !== t7) {
-    t8 = <WizardDialogLayout subtitle="Description (tell Tau when to use this agent)" footerText={t4}><Box flexDirection="column">{t5}{t6}{t7}</Box></WizardDialogLayout>;
+    t8 = (
+      <WizardDialogLayout
+        subtitle="Description (tell Zen when to use this agent)"
+        footerText={t4}
+      >
+        <Box flexDirection="column">
+          {t5}
+          {t6}
+          {t7}
+        </Box>
+      </WizardDialogLayout>
+    );
     $[15] = t6;
     $[16] = t7;
     $[17] = t8;

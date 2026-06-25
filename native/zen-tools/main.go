@@ -46,7 +46,7 @@ func main() {
 	for _, cmd := range commands {
 		if cmd.name == name {
 			if err := cmd.run(os.Args[2:]); err != nil {
-				fmt.Fprintf(os.Stderr, "tau-tools %s: %v\n", cmd.name, err)
+				fmt.Fprintf(os.Stderr, "zen-tools %s: %v\n", cmd.name, err)
 				os.Exit(1)
 			}
 			return
@@ -59,11 +59,11 @@ func main() {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, "tau-tools %s\n\n", version)
-	fmt.Fprintln(w, "Optional native helpers for Tau. These commands are not invoked by Tau unless wired explicitly.")
+	fmt.Fprintf(w, "zen-tools %s\n\n", version)
+	fmt.Fprintln(w, "Optional native helpers for Zen. These commands are not invoked by Zen unless wired explicitly.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  tau-tools <command> [flags]")
+	fmt.Fprintln(w, "  zen-tools <command> [flags]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	for _, cmd := range commands {

@@ -1,7 +1,7 @@
-const path = require('node:path');
+const path = require("node:path");
 
-const DIFF_SCHEME = 'claudex-diff';
-const DIFF_VISIBLE_CONTEXT = 'claudex.diff.isVisible';
+const DIFF_SCHEME = "claudex-diff";
+const DIFF_VISIBLE_CONTEXT = "claudex.diff.isVisible";
 
 /**
  * Bundle of state owned by the extension that diff RPCs need access to:
@@ -23,7 +23,7 @@ class DiffContentProvider {
   }
 
   provideTextDocumentContent(uri) {
-    return this._content.get(uri.toString()) || '';
+    return this._content.get(uri.toString()) || "";
   }
 
   setContent(uri, text) {
@@ -49,7 +49,7 @@ class DiffManager {
 
   _setVisibleContext(visible) {
     return this._vscode.commands.executeCommand(
-      'setContext',
+      "setContext",
       DIFF_VISIBLE_CONTEXT,
       visible,
     );
@@ -67,23 +67,22 @@ class DiffManager {
    * Opens a diff view and returns a Promise that resolves once the user either
    * accepts (returns the modified content) or rejects (returns null).
    *
-   * Tool-call args from the CLI side (Tau naming):
+   * Tool-call args from the CLI side (Zen naming):
    *   { old_file_path, new_file_path, new_file_contents, tab_name }
    */
   async openDiff(args) {
     const oldPath = this._toAbsolute(args && args.old_file_path);
-    const newPath =
-      this._toAbsolute(args && args.new_file_path) || oldPath;
+    const newPath = this._toAbsolute(args && args.new_file_path) || oldPath;
     const newContents =
-      typeof (args && args.new_file_contents) === 'string'
+      typeof (args && args.new_file_contents) === "string"
         ? args.new_file_contents
-        : '';
+        : "";
     const tabName =
       (args && args.tab_name) ||
-      `${path.basename(newPath || 'untitled')} ↔ Tau`;
+      `${path.basename(newPath || "untitled")} ↔ Zen`;
 
     if (!oldPath && !newPath) {
-      throw new Error('openDiff requires old_file_path or new_file_path');
+      throw new Error("openDiff requires old_file_path or new_file_path");
     }
 
     const rightUri = this._vscode.Uri.from({
@@ -101,13 +100,13 @@ class DiffManager {
     } catch (_) {
       // File doesn't exist on disk — show against an empty untitled doc.
       leftUri = this._vscode.Uri.from({
-        scheme: 'untitled',
-        path: oldPath || newPath || 'untitled',
+        scheme: "untitled",
+        path: oldPath || newPath || "untitled",
       });
     }
 
     await this._vscode.commands.executeCommand(
-      'vscode.diff',
+      "vscode.diff",
       leftUri,
       rightUri,
       tabName,
@@ -115,13 +114,13 @@ class DiffManager {
     );
     await this._setVisibleContext(true);
 
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       // If a stale entry exists for the same tab name, resolve it as cancelled
       // before overwriting — never silently leak a pending RPC.
       const stale = this._byTabName.get(tabName);
       if (stale) {
         try {
-          stale.resolve({ accepted: false, content: null, reason: 'replaced' });
+          stale.resolve({ accepted: false, content: null, reason: "replaced" });
         } catch (_) {
           // ignore
         }
@@ -150,7 +149,7 @@ class DiffManager {
     const entry = this._byTabName.get(tabName);
     if (!entry) return;
 
-    let modified = '';
+    let modified = "";
     try {
       const doc = await this._vscode.workspace.openTextDocument(rightUri);
       modified = doc.getText();
@@ -243,7 +242,7 @@ class DiffManager {
     if (entry) {
       await this._closeTabForRightUri(entry.rightUri);
       this._cleanup(tabName, entry.rightUri);
-      entry.resolve({ accepted: false, content: null, reason: 'closed' });
+      entry.resolve({ accepted: false, content: null, reason: "closed" });
       return { closed: 1 };
     }
     // Fall back to closing any tab whose label matches.
@@ -276,7 +275,7 @@ class DiffManager {
         // continue closing the rest
       }
       this._cleanup(tabName, entry.rightUri);
-      entry.resolve({ accepted: false, content: null, reason: 'closeAll' });
+      entry.resolve({ accepted: false, content: null, reason: "closeAll" });
       closed += 1;
     }
     return { closed };
@@ -285,23 +284,23 @@ class DiffManager {
 
 function createDiffHandlers(diffManager) {
   return {
-    openDiff: async args => {
+    openDiff: async (args) => {
       const result = await diffManager.openDiff(args);
       const text = result.accepted
-        ? `FILE_CONTENTS:${result.content || ''}`
-        : 'FILE_REJECTED';
-      return { content: [{ type: 'text', text }] };
+        ? `FILE_CONTENTS:${result.content || ""}`
+        : "FILE_REJECTED";
+      return { content: [{ type: "text", text }] };
     },
-    close_tab: async args => {
+    close_tab: async (args) => {
       const result = await diffManager.closeTab(args || {});
       return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
+        content: [{ type: "text", text: JSON.stringify(result) }],
       };
     },
     closeAllDiffTabs: async () => {
       const result = await diffManager.closeAllDiffTabs();
       return {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
+        content: [{ type: "text", text: JSON.stringify(result) }],
       };
     },
   };

@@ -1,22 +1,19 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { type ReactNode } from 'react';
-import type { KeyboardEvent } from '../../../../ink/events/keyboard-event.js';
-import { Box, Text } from '../../../../ink.js';
-import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
-import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
-import type { Tools } from '../../../../Tool.js';
-import { getMemoryScopeDisplay } from '../../../../tools/AgentTool/agentMemory.js';
-import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';
-import { truncateToWidth } from '../../../../utils/format.js';
-import { getAgentModelDisplay } from '../../../../utils/model/agent.js';
-import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
-import { Byline } from '../../../design-system/Byline.js';
-import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js';
-import { useWizard } from '../../../wizard/index.js';
-import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
-import { getNewRelativeAgentFilePath } from '../../agentFileUtils.js';
-import { validateAgent } from '../../validateAgent.js';
-import type { AgentWizardData } from '../types.js';
+import { Box, Text } from "../../../../ink.js";
+import { useKeybinding } from "../../../../keybindings/useKeybinding.js";
+import { isAutoMemoryEnabled } from "../../../../memdir/paths.js";
+import type { Tools } from "../../../../Tool.js";
+import { getMemoryScopeDisplay } from "../../../../tools/AgentTool/agentMemory.js";
+import type { AgentDefinition } from "../../../../tools/AgentTool/loadAgentsDir.js";
+import { truncateToWidth } from "../../../../utils/format.js";
+import { getAgentModelDisplay } from "../../../../utils/model/agent.js";
+import { ConfigurableShortcutHint } from "../../../ConfigurableShortcutHint.js";
+import { Byline } from "../../../design-system/Byline.js";
+import { KeyboardShortcutHint } from "../../../design-system/KeyboardShortcutHint.js";
+import { useWizard } from "../../../wizard/index.js";
+import { WizardDialogLayout } from "../../../wizard/WizardDialogLayout.js";
+import { getNewRelativeAgentFilePath } from "../../agentFileUtils.js";
+import { validateAgent } from "../../validateAgent.js";
 type Props = {
   tools: Tools;
   existingAgents: AgentDefinition[];
@@ -26,21 +23,12 @@ type Props = {
 };
 export function ConfirmStep(t0) {
   const $ = _c(88);
-  const {
-    tools,
-    existingAgents,
-    onSave,
-    onSaveAndEdit,
-    error
-  } = t0;
-  const {
-    goBack,
-    wizardData
-  } = useWizard();
+  const { tools, existingAgents, onSave, onSaveAndEdit, error } = t0;
+  const { goBack, wizardData } = useWizard();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {
-      context: "Confirmation"
+      context: "Confirmation",
     };
     $[0] = t1;
   } else {
@@ -49,7 +37,7 @@ export function ConfirmStep(t0) {
   useKeybinding("confirm:no", goBack, t1);
   let t2;
   if ($[1] !== onSave || $[2] !== onSaveAndEdit) {
-    t2 = e => {
+    t2 = (e) => {
       if (e.key === "s" || e.key === "return") {
         e.preventDefault();
         onSave();
@@ -87,7 +75,13 @@ export function ConfirmStep(t0) {
   let t7;
   let t8;
   let t9;
-  if ($[4] !== agent || $[5] !== existingAgents || $[6] !== handleKeyDown || $[7] !== tools || $[8] !== wizardData.location) {
+  if (
+    $[4] !== agent ||
+    $[5] !== existingAgents ||
+    $[6] !== handleKeyDown ||
+    $[7] !== tools ||
+    $[8] !== wizardData.location
+  ) {
     const validation = validateAgent(agent, tools, existingAgents);
     let t20;
     if ($[28] !== agent) {
@@ -110,7 +104,11 @@ export function ConfirmStep(t0) {
     const getToolsDisplay = _temp;
     let t22;
     if ($[32] !== agent.memory) {
-      t22 = isAutoMemoryEnabled() ? <Text><Text bold={true}>Memory</Text>: {getMemoryScopeDisplay(agent.memory)}</Text> : null;
+      t22 = isAutoMemoryEnabled() ? (
+        <Text>
+          <Text bold={true}>Memory</Text>: {getMemoryScopeDisplay(agent.memory)}
+        </Text>
+      ) : null;
       $[32] = agent.memory;
       $[33] = t22;
     } else {
@@ -120,7 +118,18 @@ export function ConfirmStep(t0) {
     T1 = WizardDialogLayout;
     t18 = "Confirm and save";
     if ($[34] === Symbol.for("react.memo_cache_sentinel")) {
-      t19 = <Byline><KeyboardShortcutHint shortcut="s/Enter" action="save" /><KeyboardShortcutHint shortcut="e" action="edit in your editor" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline>;
+      t19 = (
+        <Byline>
+          <KeyboardShortcutHint shortcut="s/Enter" action="save" />
+          <KeyboardShortcutHint shortcut="e" action="edit in your editor" />
+          <ConfigurableShortcutHint
+            action="confirm:no"
+            context="Confirmation"
+            fallback="Esc"
+            description="cancel"
+          />
+        </Byline>
+      );
       $[34] = t19;
     } else {
       t19 = $[34];
@@ -138,7 +147,11 @@ export function ConfirmStep(t0) {
       t23 = $[35];
     }
     if ($[36] !== agent.agentType) {
-      t7 = <Text>{t23}: {agent.agentType}</Text>;
+      t7 = (
+        <Text>
+          {t23}: {agent.agentType}
+        </Text>
+      );
       $[36] = agent.agentType;
       $[37] = t7;
     } else {
@@ -155,7 +168,7 @@ export function ConfirmStep(t0) {
     if ($[39] !== agent.agentType || $[40] !== wizardData.location) {
       t25 = getNewRelativeAgentFilePath({
         source: wizardData.location,
-        agentType: agent.agentType
+        agentType: agent.agentType,
       });
       $[39] = agent.agentType;
       $[40] = wizardData.location;
@@ -164,7 +177,11 @@ export function ConfirmStep(t0) {
       t25 = $[41];
     }
     if ($[42] !== t25) {
-      t8 = <Text>{t24}:{" "}{t25}</Text>;
+      t8 = (
+        <Text>
+          {t24}: {t25}
+        </Text>
+      );
       $[42] = t25;
       $[43] = t8;
     } else {
@@ -186,7 +203,11 @@ export function ConfirmStep(t0) {
       t27 = $[46];
     }
     if ($[47] !== t27) {
-      t9 = <Text>{t26}: {t27}</Text>;
+      t9 = (
+        <Text>
+          {t26}: {t27}
+        </Text>
+      );
       $[47] = t27;
       $[48] = t9;
     } else {
@@ -208,7 +229,11 @@ export function ConfirmStep(t0) {
       t29 = $[51];
     }
     if ($[52] !== t29) {
-      t10 = <Text>{t28}: {t29}</Text>;
+      t10 = (
+        <Text>
+          {t28}: {t29}
+        </Text>
+      );
       $[52] = t29;
       $[53] = t10;
     } else {
@@ -216,33 +241,64 @@ export function ConfirmStep(t0) {
     }
     t11 = memoryDisplayElement;
     if ($[54] === Symbol.for("react.memo_cache_sentinel")) {
-      t12 = <Box marginTop={1}><Text><Text bold={true}>Description</Text> (tells Tau when to use this agent):</Text></Box>;
+      t12 = (
+        <Box marginTop={1}>
+          <Text>
+            <Text bold={true}>Description</Text> (tells Zen when to use this
+            agent):
+          </Text>
+        </Box>
+      );
       $[54] = t12;
     } else {
       t12 = $[54];
     }
     if ($[55] !== whenToUsePreview) {
-      t13 = <Box marginLeft={2} marginTop={1}><Text>{whenToUsePreview}</Text></Box>;
+      t13 = (
+        <Box marginLeft={2} marginTop={1}>
+          <Text>{whenToUsePreview}</Text>
+        </Box>
+      );
       $[55] = whenToUsePreview;
       $[56] = t13;
     } else {
       t13 = $[56];
     }
     if ($[57] === Symbol.for("react.memo_cache_sentinel")) {
-      t14 = <Box marginTop={1}><Text><Text bold={true}>System prompt</Text>:</Text></Box>;
+      t14 = (
+        <Box marginTop={1}>
+          <Text>
+            <Text bold={true}>System prompt</Text>:
+          </Text>
+        </Box>
+      );
       $[57] = t14;
     } else {
       t14 = $[57];
     }
     if ($[58] !== systemPromptPreview) {
-      t15 = <Box marginLeft={2} marginTop={1}><Text>{systemPromptPreview}</Text></Box>;
+      t15 = (
+        <Box marginLeft={2} marginTop={1}>
+          <Text>{systemPromptPreview}</Text>
+        </Box>
+      );
       $[58] = systemPromptPreview;
       $[59] = t15;
     } else {
       t15 = $[59];
     }
-    t16 = validation.warnings.length > 0 && <Box marginTop={1} flexDirection="column"><Text color="warning">Warnings:</Text>{validation.warnings.map(_temp2)}</Box>;
-    t17 = validation.errors.length > 0 && <Box marginTop={1} flexDirection="column"><Text color="error">Errors:</Text>{validation.errors.map(_temp3)}</Box>;
+    t16 = validation.warnings.length > 0 && (
+      <Box marginTop={1} flexDirection="column">
+        <Text color="warning">Warnings:</Text>
+        {validation.warnings.map(_temp2)}
+      </Box>
+    );
+    t17 = validation.errors.length > 0 && (
+      <Box marginTop={1} flexDirection="column">
+        <Text color="error">Errors:</Text>
+        {validation.errors.map(_temp3)}
+      </Box>
+    );
     $[4] = agent;
     $[5] = existingAgents;
     $[6] = handleKeyDown;
@@ -290,7 +346,11 @@ export function ConfirmStep(t0) {
   }
   let t20;
   if ($[60] !== error) {
-    t20 = error && <Box marginTop={1}><Text color="error">{error}</Text></Box>;
+    t20 = error && (
+      <Box marginTop={1}>
+        <Text color="error">{error}</Text>
+      </Box>
+    );
     $[60] = error;
     $[61] = t20;
   } else {
@@ -312,14 +372,55 @@ export function ConfirmStep(t0) {
   }
   let t23;
   if ($[64] === Symbol.for("react.memo_cache_sentinel")) {
-    t23 = <Box marginTop={2}><Text color="success">Press {t21} or {t22} to save,{" "}<Text bold={true}>e</Text> to save and edit</Text></Box>;
+    t23 = (
+      <Box marginTop={2}>
+        <Text color="success">
+          Press {t21} or {t22} to save, <Text bold={true}>e</Text> to save and
+          edit
+        </Text>
+      </Box>
+    );
     $[64] = t23;
   } else {
     t23 = $[64];
   }
   let t24;
-  if ($[65] !== T0 || $[66] !== t10 || $[67] !== t11 || $[68] !== t12 || $[69] !== t13 || $[70] !== t14 || $[71] !== t15 || $[72] !== t16 || $[73] !== t17 || $[74] !== t20 || $[75] !== t3 || $[76] !== t4 || $[77] !== t5 || $[78] !== t6 || $[79] !== t7 || $[80] !== t8 || $[81] !== t9) {
-    t24 = <T0 flexDirection={t3} tabIndex={t4} autoFocus={t5} onKeyDown={t6}>{t7}{t8}{t9}{t10}{t11}{t12}{t13}{t14}{t15}{t16}{t17}{t20}{t23}</T0>;
+  if (
+    $[65] !== T0 ||
+    $[66] !== t10 ||
+    $[67] !== t11 ||
+    $[68] !== t12 ||
+    $[69] !== t13 ||
+    $[70] !== t14 ||
+    $[71] !== t15 ||
+    $[72] !== t16 ||
+    $[73] !== t17 ||
+    $[74] !== t20 ||
+    $[75] !== t3 ||
+    $[76] !== t4 ||
+    $[77] !== t5 ||
+    $[78] !== t6 ||
+    $[79] !== t7 ||
+    $[80] !== t8 ||
+    $[81] !== t9
+  ) {
+    t24 = (
+      <T0 flexDirection={t3} tabIndex={t4} autoFocus={t5} onKeyDown={t6}>
+        {t7}
+        {t8}
+        {t9}
+        {t10}
+        {t11}
+        {t12}
+        {t13}
+        {t14}
+        {t15}
+        {t16}
+        {t17}
+        {t20}
+        {t23}
+      </T0>
+    );
     $[65] = T0;
     $[66] = t10;
     $[67] = t11;
@@ -343,7 +444,11 @@ export function ConfirmStep(t0) {
   }
   let t25;
   if ($[83] !== T1 || $[84] !== t18 || $[85] !== t19 || $[86] !== t24) {
-    t25 = <T1 subtitle={t18} footerText={t19}>{t24}</T1>;
+    t25 = (
+      <T1 subtitle={t18} footerText={t19}>
+        {t24}
+      </T1>
+    );
     $[83] = T1;
     $[84] = t18;
     $[85] = t19;
@@ -355,10 +460,20 @@ export function ConfirmStep(t0) {
   return t25;
 }
 function _temp3(err, i_0) {
-  return <Text key={i_0} color="error">{" "}• {err}</Text>;
+  return (
+    <Text key={i_0} color="error">
+      {" "}
+      • {err}
+    </Text>
+  );
 }
 function _temp2(warning, i) {
-  return <Text key={i} dimColor={true}>{" "}• {warning}</Text>;
+  return (
+    <Text key={i} dimColor={true}>
+      {" "}
+      • {warning}
+    </Text>
+  );
 }
 function _temp(toolNames) {
   if (toolNames === undefined) {

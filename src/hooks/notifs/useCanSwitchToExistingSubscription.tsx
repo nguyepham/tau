@@ -1,10 +1,9 @@
-import * as React from 'react';
-import { getOauthProfileFromApiKey } from 'src/services/oauth/getOauthProfile.js';
-import { isClaudeAISubscriber } from 'src/utils/auth.js';
-import { Text } from '../../ink.js';
-import { logEvent } from '../../services/analytics/index.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { useStartupNotification } from './useStartupNotification.js';
+import { getOauthProfileFromApiKey } from "src/services/oauth/getOauthProfile.js";
+import { isClaudeAISubscriber } from "src/utils/auth.js";
+import { Text } from "../../ink.js";
+import { logEvent } from "../../services/analytics/index.js";
+import { getGlobalConfig, saveGlobalConfig } from "../../utils/config.js";
+import { useStartupNotification } from "./useStartupNotification.js";
 const MAX_SHOW_COUNT = 3;
 
 /**
@@ -30,17 +29,25 @@ async function _temp2() {
   logEvent("tengu_switch_to_subscription_notice_shown", {});
   return {
     key: "switch-to-subscription",
-    jsx: <Text color="suggestion">Use your existing Claude {subscriptionType} plan with Tau<Text color="text" dimColor={true}>{" "}· /login to activate</Text></Text>,
-    priority: "low"
+    jsx: (
+      <Text color="suggestion">
+        Use your existing Claude {subscriptionType} plan with Zen
+        <Text color="text" dimColor={true}>
+          {" "}
+          · /login to activate
+        </Text>
+      </Text>
+    ),
+    priority: "low",
   };
 }
 function _temp(current) {
   return {
     ...current,
-    subscriptionNoticeCount: (current.subscriptionNoticeCount ?? 0) + 1
+    subscriptionNoticeCount: (current.subscriptionNoticeCount ?? 0) + 1,
   };
 }
-async function getExistingClaudeSubscription(): Promise<'Max' | 'Pro' | null> {
+async function getExistingClaudeSubscription(): Promise<"Max" | "Pro" | null> {
   // If already using subscription auth, there is nothing to switch to
   if (isClaudeAISubscriber()) {
     return null;
@@ -50,10 +57,10 @@ async function getExistingClaudeSubscription(): Promise<'Max' | 'Pro' | null> {
     return null;
   }
   if (profile.account.has_claude_max) {
-    return 'Max';
+    return "Max";
   }
   if (profile.account.has_claude_pro) {
-    return 'Pro';
+    return "Pro";
   }
   return null;
 }

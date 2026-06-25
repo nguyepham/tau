@@ -1,28 +1,21 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { useCallback, useMemo } from 'react';
-import { logError } from 'src/utils/log.js';
-import { getOriginalCwd } from '../../../bootstrap/state.js';
-import { Box, Text } from '../../../ink.js';
-import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js';
-import { SKILL_TOOL_NAME } from '../../../tools/SkillTool/constants.js';
-import { SkillTool } from '../../../tools/SkillTool/SkillTool.js';
-import { env } from '../../../utils/env.js';
-import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
-import { logUnaryEvent } from '../../../utils/unaryLogging.js';
-import { type UnaryEvent, usePermissionRequestLogging } from '../hooks.js';
-import { PermissionDialog } from '../PermissionDialog.js';
-import { PermissionPrompt, type PermissionPromptOption, type ToolAnalyticsContext } from '../PermissionPrompt.js';
-import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
-type SkillOptionValue = 'yes' | 'yes-exact' | 'yes-prefix' | 'no';
+import { logError } from "src/utils/log.js";
+import { getOriginalCwd } from "../../../bootstrap/state.js";
+import { Box, Text } from "../../../ink.js";
+import { sanitizeToolNameForAnalytics } from "../../../services/analytics/metadata.js";
+import { SKILL_TOOL_NAME } from "../../../tools/SkillTool/constants.js";
+import { SkillTool } from "../../../tools/SkillTool/SkillTool.js";
+import { env } from "../../../utils/env.js";
+import { shouldShowAlwaysAllowOptions } from "../../../utils/permissions/permissionsLoader.js";
+import { logUnaryEvent } from "../../../utils/unaryLogging.js";
+import { usePermissionRequestLogging } from "../hooks.js";
+import { PermissionDialog } from "../PermissionDialog.js";
+import { PermissionPrompt } from "../PermissionPrompt.js";
+import { PermissionRuleExplanation } from "../PermissionRuleExplanation.js";
+type SkillOptionValue = "yes" | "yes-exact" | "yes-prefix" | "no";
 export function SkillPermissionRequest(props) {
   const $ = _c(51);
-  const {
-    toolUseConfirm,
-    onDone,
-    onReject,
-    workerBadge
-  } = props;
+  const { toolUseConfirm, onDone, onReject, workerBadge } = props;
   const parseInput = _temp;
   let t0;
   if ($[0] !== toolUseConfirm.input) {
@@ -33,12 +26,17 @@ export function SkillPermissionRequest(props) {
     t0 = $[1];
   }
   const skill = t0;
-  const commandObj = toolUseConfirm.permissionResult.behavior === "ask" && toolUseConfirm.permissionResult.metadata && "command" in toolUseConfirm.permissionResult.metadata ? toolUseConfirm.permissionResult.metadata.command : undefined;
+  const commandObj =
+    toolUseConfirm.permissionResult.behavior === "ask" &&
+    toolUseConfirm.permissionResult.metadata &&
+    "command" in toolUseConfirm.permissionResult.metadata
+      ? toolUseConfirm.permissionResult.metadata.command
+      : undefined;
   let t1;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {
       completion_type: "tool_use_single",
-      language_name: "none"
+      language_name: "none",
     };
     $[2] = t1;
   } else {
@@ -64,13 +62,15 @@ export function SkillPermissionRequest(props) {
   const showAlwaysAllowOptions = t3;
   let t4;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = [{
-      label: "Yes",
-      value: "yes",
-      feedbackConfig: {
-        type: "accept"
-      }
-    }];
+    t4 = [
+      {
+        label: "Yes",
+        value: "yes",
+        feedbackConfig: {
+          type: "accept",
+        },
+      },
+    ];
     $[5] = t4;
   } else {
     t4 = $[5];
@@ -91,8 +91,12 @@ export function SkillPermissionRequest(props) {
       let t7;
       if ($[9] !== t5) {
         t7 = {
-          label: <Text>Yes, and don't ask again for {t5} in{" "}{t6}</Text>,
-          value: "yes-exact"
+          label: (
+            <Text>
+              Yes, and don't ask again for {t5} in {t6}
+            </Text>
+          ),
+          value: "yes-exact",
         };
         $[9] = t5;
         $[10] = t7;
@@ -122,8 +126,12 @@ export function SkillPermissionRequest(props) {
         let t11;
         if ($[14] !== t9) {
           t11 = {
-            label: <Text>Yes, and don't ask again for{" "}{t9} commands in{" "}{t10}</Text>,
-            value: "yes-prefix"
+            label: (
+              <Text>
+                Yes, and don't ask again for {t9} commands in {t10}
+              </Text>
+            ),
+            value: "yes-prefix",
           };
           $[14] = t9;
           $[15] = t11;
@@ -144,8 +152,8 @@ export function SkillPermissionRequest(props) {
       label: "No",
       value: "no",
       feedbackConfig: {
-        type: "reject"
-      }
+        type: "reject",
+      },
     };
     $[16] = t5;
   } else {
@@ -174,7 +182,7 @@ export function SkillPermissionRequest(props) {
   if ($[21] !== t7 || $[22] !== t8) {
     t9 = {
       toolName: t7,
-      isMcp: t8
+      isMcp: t8,
     };
     $[21] = t7;
     $[22] = t8;
@@ -184,87 +192,97 @@ export function SkillPermissionRequest(props) {
   }
   const toolAnalyticsContext = t9;
   let t10;
-  if ($[24] !== onDone || $[25] !== onReject || $[26] !== skill || $[27] !== toolUseConfirm) {
+  if (
+    $[24] !== onDone ||
+    $[25] !== onReject ||
+    $[26] !== skill ||
+    $[27] !== toolUseConfirm
+  ) {
     t10 = (value, feedback) => {
       bb33: switch (value) {
-        case "yes":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "accept",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onAllow(toolUseConfirm.input, [], feedback);
-            onDone();
-            break bb33;
-          }
-        case "yes-exact":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "accept",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onAllow(toolUseConfirm.input, [{
+        case "yes": {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform,
+            },
+          });
+          toolUseConfirm.onAllow(toolUseConfirm.input, [], feedback);
+          onDone();
+          break bb33;
+        }
+        case "yes-exact": {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform,
+            },
+          });
+          toolUseConfirm.onAllow(toolUseConfirm.input, [
+            {
               type: "addRules",
-              rules: [{
-                toolName: SKILL_TOOL_NAME,
-                ruleContent: skill
-              }],
+              rules: [
+                {
+                  toolName: SKILL_TOOL_NAME,
+                  ruleContent: skill,
+                },
+              ],
               behavior: "allow",
-              destination: "localSettings"
-            }]);
-            onDone();
-            break bb33;
-          }
-        case "yes-prefix":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "accept",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            const spaceIndex_0 = skill.indexOf(" ");
-            const commandPrefix_0 = spaceIndex_0 > 0 ? skill.substring(0, spaceIndex_0) : skill;
-            toolUseConfirm.onAllow(toolUseConfirm.input, [{
+              destination: "localSettings",
+            },
+          ]);
+          onDone();
+          break bb33;
+        }
+        case "yes-prefix": {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "accept",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform,
+            },
+          });
+          const spaceIndex_0 = skill.indexOf(" ");
+          const commandPrefix_0 =
+            spaceIndex_0 > 0 ? skill.substring(0, spaceIndex_0) : skill;
+          toolUseConfirm.onAllow(toolUseConfirm.input, [
+            {
               type: "addRules",
-              rules: [{
-                toolName: SKILL_TOOL_NAME,
-                ruleContent: `${commandPrefix_0}:*`
-              }],
+              rules: [
+                {
+                  toolName: SKILL_TOOL_NAME,
+                  ruleContent: `${commandPrefix_0}:*`,
+                },
+              ],
               behavior: "allow",
-              destination: "localSettings"
-            }]);
-            onDone();
-            break bb33;
-          }
-        case "no":
-          {
-            logUnaryEvent({
-              completion_type: "tool_use_single",
-              event: "reject",
-              metadata: {
-                language_name: "none",
-                message_id: toolUseConfirm.assistantMessage.message.id,
-                platform: env.platform
-              }
-            });
-            toolUseConfirm.onReject(feedback);
-            onReject();
-            onDone();
-          }
+              destination: "localSettings",
+            },
+          ]);
+          onDone();
+          break bb33;
+        }
+        case "no": {
+          logUnaryEvent({
+            completion_type: "tool_use_single",
+            event: "reject",
+            metadata: {
+              language_name: "none",
+              message_id: toolUseConfirm.assistantMessage.message.id,
+              platform: env.platform,
+            },
+          });
+          toolUseConfirm.onReject(feedback);
+          onReject();
+          onDone();
+        }
       }
     };
     $[24] = onDone;
@@ -285,8 +303,8 @@ export function SkillPermissionRequest(props) {
         metadata: {
           language_name: "none",
           message_id: toolUseConfirm.assistantMessage.message.id,
-          platform: env.platform
-        }
+          platform: env.platform,
+        },
       });
       toolUseConfirm.onReject();
       onReject();
@@ -303,7 +321,9 @@ export function SkillPermissionRequest(props) {
   const t12 = `Use skill "${skill}"?`;
   let t13;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = <Text>Tau may use instructions, code, or files from this Skill.</Text>;
+    t13 = (
+      <Text>Zen may use instructions, code, or files from this Skill.</Text>
+    );
     $[33] = t13;
   } else {
     t13 = $[33];
@@ -311,7 +331,11 @@ export function SkillPermissionRequest(props) {
   const t14 = commandObj?.description;
   let t15;
   if ($[34] !== t14) {
-    t15 = <Box flexDirection="column" paddingX={2} paddingY={1}><Text dimColor={true}>{t14}</Text></Box>;
+    t15 = (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text dimColor={true}>{t14}</Text>
+      </Box>
+    );
     $[34] = t14;
     $[35] = t15;
   } else {
@@ -319,15 +343,32 @@ export function SkillPermissionRequest(props) {
   }
   let t16;
   if ($[36] !== toolUseConfirm.permissionResult) {
-    t16 = <PermissionRuleExplanation permissionResult={toolUseConfirm.permissionResult} toolType="tool" />;
+    t16 = (
+      <PermissionRuleExplanation
+        permissionResult={toolUseConfirm.permissionResult}
+        toolType="tool"
+      />
+    );
     $[36] = toolUseConfirm.permissionResult;
     $[37] = t16;
   } else {
     t16 = $[37];
   }
   let t17;
-  if ($[38] !== handleCancel || $[39] !== handleSelect || $[40] !== options || $[41] !== toolAnalyticsContext) {
-    t17 = <PermissionPrompt options={options} onSelect={handleSelect} onCancel={handleCancel} toolAnalyticsContext={toolAnalyticsContext} />;
+  if (
+    $[38] !== handleCancel ||
+    $[39] !== handleSelect ||
+    $[40] !== options ||
+    $[41] !== toolAnalyticsContext
+  ) {
+    t17 = (
+      <PermissionPrompt
+        options={options}
+        onSelect={handleSelect}
+        onCancel={handleCancel}
+        toolAnalyticsContext={toolAnalyticsContext}
+      />
+    );
     $[38] = handleCancel;
     $[39] = handleSelect;
     $[40] = options;
@@ -338,7 +379,12 @@ export function SkillPermissionRequest(props) {
   }
   let t18;
   if ($[43] !== t16 || $[44] !== t17) {
-    t18 = <Box flexDirection="column">{t16}{t17}</Box>;
+    t18 = (
+      <Box flexDirection="column">
+        {t16}
+        {t17}
+      </Box>
+    );
     $[43] = t16;
     $[44] = t17;
     $[45] = t18;
@@ -346,8 +392,19 @@ export function SkillPermissionRequest(props) {
     t18 = $[45];
   }
   let t19;
-  if ($[46] !== t12 || $[47] !== t15 || $[48] !== t18 || $[49] !== workerBadge) {
-    t19 = <PermissionDialog title={t12} workerBadge={workerBadge}>{t13}{t15}{t18}</PermissionDialog>;
+  if (
+    $[46] !== t12 ||
+    $[47] !== t15 ||
+    $[48] !== t18 ||
+    $[49] !== workerBadge
+  ) {
+    t19 = (
+      <PermissionDialog title={t12} workerBadge={workerBadge}>
+        {t13}
+        {t15}
+        {t18}
+      </PermissionDialog>
+    );
     $[46] = t12;
     $[47] = t15;
     $[48] = t18;
@@ -361,7 +418,9 @@ export function SkillPermissionRequest(props) {
 function _temp(input) {
   const result = SkillTool.inputSchema.safeParse(input);
   if (!result.success) {
-    logError(new Error(`Failed to parse skill tool input: ${result.error.message}`));
+    logError(
+      new Error(`Failed to parse skill tool input: ${result.error.message}`),
+    );
     return "";
   }
   return result.data.skill;

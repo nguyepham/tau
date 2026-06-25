@@ -1,12 +1,12 @@
-import type { Command } from '../../commands.js'
+import type { Command } from "../../commands.js";
 
 const whatsapp = {
-  type: 'local-jsx',
-  name: 'whatsapp',
-  description: 'Chat with Tau via WhatsApp (on/off/login)',
-  argumentHint: '[on|off|login|status]',
+  type: "local-jsx",
+  name: "whatsapp",
+  description: "Chat with Zen via WhatsApp (on/off/login)",
+  argumentHint: "[on|off|login|status]",
   isSensitive: false,
-  load: () => import('./whatsapp.js'),
-} satisfies Command
+  load: () => import("./whatsapp.js"),
+} satisfies Command;
 
-export default whatsapp
+export default whatsapp;

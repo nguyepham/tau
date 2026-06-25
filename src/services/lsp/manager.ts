@@ -1,44 +1,44 @@
-import { logForDebugging } from '../../utils/debug.js'
-import { isBareMode } from '../../utils/envUtils.js'
-import { errorMessage } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
+import { logForDebugging } from "../../utils/debug.js";
+import { isBareMode } from "../../utils/envUtils.js";
+import { errorMessage } from "../../utils/errors.js";
+import { logError } from "../../utils/log.js";
 import {
   createLSPServerManager,
   type LSPServerManager,
-} from './LSPServerManager.js'
-import { registerLSPNotificationHandlers } from './passiveFeedback.js'
-import { primeLspServers } from './prime.js'
+} from "./LSPServerManager.js";
+import { registerLSPNotificationHandlers } from "./passiveFeedback.js";
+import { primeLspServers } from "./prime.js";
 
 /**
  * Initialization state of the LSP server manager
  */
-type InitializationState = 'not-started' | 'pending' | 'success' | 'failed'
+type InitializationState = "not-started" | "pending" | "success" | "failed";
 
 /**
  * Global singleton instance of the LSP server manager.
- * Initialized during Tau startup.
+ * Initialized during Zen startup.
  */
-let lspManagerInstance: LSPServerManager | undefined
+let lspManagerInstance: LSPServerManager | undefined;
 
 /**
  * Current initialization state
  */
-let initializationState: InitializationState = 'not-started'
+let initializationState: InitializationState = "not-started";
 
 /**
  * Error from last initialization attempt, if any
  */
-let initializationError: Error | undefined
+let initializationError: Error | undefined;
 
 /**
  * Generation counter to prevent stale initialization promises from updating state
  */
-let initializationGeneration = 0
+let initializationGeneration = 0;
 
 /**
  * Promise that resolves when initialization completes (success or failure)
  */
-let initializationPromise: Promise<void> | undefined
+let initializationPromise: Promise<void> | undefined;
 
 /**
  * Test-only sync reset. shutdownLspServerManager() is async and tears down
@@ -47,10 +47,10 @@ let initializationPromise: Promise<void> | undefined
  * tests on the same shard.
  */
 export function _resetLspManagerForTesting(): void {
-  initializationState = 'not-started'
-  initializationError = undefined
-  initializationPromise = undefined
-  initializationGeneration++
+  initializationState = "not-started";
+  initializationError = undefined;
+  initializationPromise = undefined;
+  initializationGeneration++;
 }
 
 /**
@@ -58,15 +58,15 @@ export function _resetLspManagerForTesting(): void {
  * Returns undefined if not yet initialized, initialization failed, or still pending.
  *
  * Callers should check for undefined and handle gracefully, as initialization happens
- * asynchronously during Tau startup. Use getInitializationStatus() to
+ * asynchronously during Zen startup. Use getInitializationStatus() to
  * distinguish between pending, failed, and not-started states.
  */
 export function getLspServerManager(): LSPServerManager | undefined {
   // Don't return a broken instance if initialization failed
-  if (initializationState === 'failed') {
-    return undefined
+  if (initializationState === "failed") {
+    return undefined;
   }
-  return lspManagerInstance
+  return lspManagerInstance;
 }
 
 /**
@@ -74,13 +74,13 @@ export function getLspServerManager(): LSPServerManager | undefined {
  * returns "not indexing" when no manager is up.
  */
 export function getLspIndexingStatus(): {
-  indexing: boolean
-  percent: number
-  serverNames: string[]
+  indexing: boolean;
+  percent: number;
+  serverNames: string[];
 } {
-  const manager = getLspServerManager()
-  if (!manager) return { indexing: false, percent: 100, serverNames: [] }
-  return manager.getIndexingStatus()
+  const manager = getLspServerManager();
+  if (!manager) return { indexing: false, percent: 100, serverNames: [] };
+  return manager.getIndexingStatus();
 }
 
 /**
@@ -89,23 +89,23 @@ export function getLspIndexingStatus(): {
  * @returns Status object with current state and error (if failed)
  */
 export function getInitializationStatus():
-  | { status: 'not-started' }
-  | { status: 'pending' }
-  | { status: 'success' }
-  | { status: 'failed'; error: Error } {
-  if (initializationState === 'failed') {
+  | { status: "not-started" }
+  | { status: "pending" }
+  | { status: "success" }
+  | { status: "failed"; error: Error } {
+  if (initializationState === "failed") {
     return {
-      status: 'failed',
-      error: initializationError || new Error('Initialization failed'),
-    }
+      status: "failed",
+      error: initializationError || new Error("Initialization failed"),
+    };
   }
-  if (initializationState === 'not-started') {
-    return { status: 'not-started' }
+  if (initializationState === "not-started") {
+    return { status: "not-started" };
   }
-  if (initializationState === 'pending') {
-    return { status: 'pending' }
+  if (initializationState === "pending") {
+    return { status: "pending" };
   }
-  return { status: 'success' }
+  return { status: "success" };
 }
 
 /**
@@ -113,15 +113,15 @@ export function getInitializationStatus():
  * Backs LSPTool.isEnabled().
  */
 export function isLspConnected(): boolean {
-  if (initializationState === 'failed') return false
-  const manager = getLspServerManager()
-  if (!manager) return false
-  const servers = manager.getAllServers()
-  if (servers.size === 0) return false
+  if (initializationState === "failed") return false;
+  const manager = getLspServerManager();
+  if (!manager) return false;
+  const servers = manager.getAllServers();
+  if (servers.size === 0) return false;
   for (const server of servers.values()) {
-    if (server.state !== 'error') return true
+    if (server.state !== "error") return true;
   }
-  return false
+  return false;
 }
 
 /**
@@ -135,13 +135,13 @@ export function isLspConnected(): boolean {
  */
 export async function waitForInitialization(): Promise<void> {
   // If already initialized or failed, return immediately
-  if (initializationState === 'success' || initializationState === 'failed') {
-    return
+  if (initializationState === "success" || initializationState === "failed") {
+    return;
   }
 
   // If pending and we have a promise, wait for it
-  if (initializationState === 'pending' && initializationPromise) {
-    await initializationPromise
+  if (initializationState === "pending" && initializationPromise) {
+    await initializationPromise;
   }
 
   // If not started, return immediately (nothing to wait for)
@@ -150,7 +150,7 @@ export async function waitForInitialization(): Promise<void> {
 /**
  * Initialize the LSP server manager singleton.
  *
- * This function is called during Tau startup. It synchronously creates
+ * This function is called during Zen startup. It synchronously creates
  * the manager instance, then starts async initialization (loading LSP configs)
  * in the background without blocking the startup process.
  *
@@ -161,34 +161,34 @@ export function initializeLspServerManager(): void {
   // --bare / SIMPLE: no LSP. LSP is for editor integration (diagnostics,
   // hover, go-to-def in the REPL). Scripted -p calls have no use for it.
   if (isBareMode()) {
-    return
+    return;
   }
-  logForDebugging('[LSP MANAGER] initializeLspServerManager() called')
+  logForDebugging("[LSP MANAGER] initializeLspServerManager() called");
 
   // Skip if already initialized or currently initializing
-  if (lspManagerInstance !== undefined && initializationState !== 'failed') {
+  if (lspManagerInstance !== undefined && initializationState !== "failed") {
     logForDebugging(
-      '[LSP MANAGER] Already initialized or initializing, skipping',
-    )
-    return
+      "[LSP MANAGER] Already initialized or initializing, skipping",
+    );
+    return;
   }
 
   // Reset state for retry if previous initialization failed
-  if (initializationState === 'failed') {
-    lspManagerInstance = undefined
-    initializationError = undefined
+  if (initializationState === "failed") {
+    lspManagerInstance = undefined;
+    initializationError = undefined;
   }
 
   // Create the manager instance and mark as pending
-  lspManagerInstance = createLSPServerManager()
-  initializationState = 'pending'
-  logForDebugging('[LSP MANAGER] Created manager instance, state=pending')
+  lspManagerInstance = createLSPServerManager();
+  initializationState = "pending";
+  logForDebugging("[LSP MANAGER] Created manager instance, state=pending");
 
   // Increment generation to invalidate any pending initializations
-  const currentGeneration = ++initializationGeneration
+  const currentGeneration = ++initializationGeneration;
   logForDebugging(
     `[LSP MANAGER] Starting async initialization (generation ${currentGeneration})`,
-  )
+  );
 
   // Start initialization asynchronously without blocking
   // Store the promise so callers can await it via waitForInitialization()
@@ -197,32 +197,32 @@ export function initializeLspServerManager(): void {
     .then(() => {
       // Only update state if this is still the current initialization
       if (currentGeneration === initializationGeneration) {
-        initializationState = 'success'
-        logForDebugging('LSP server manager initialized successfully')
+        initializationState = "success";
+        logForDebugging("LSP server manager initialized successfully");
 
         // Register passive notification handlers for diagnostics
         if (lspManagerInstance) {
-          registerLSPNotificationHandlers(lspManagerInstance)
+          registerLSPNotificationHandlers(lspManagerInstance);
           // Warm the always-on servers now so the indexing bar appears at
           // session start instead of waiting for the first LSP query.
-          void primeLspServers(lspManagerInstance)
+          void primeLspServers(lspManagerInstance);
         }
       }
     })
     .catch((error: unknown) => {
       // Only update state if this is still the current initialization
       if (currentGeneration === initializationGeneration) {
-        initializationState = 'failed'
-        initializationError = error as Error
+        initializationState = "failed";
+        initializationError = error as Error;
         // Clear the instance since it's not usable
-        lspManagerInstance = undefined
+        lspManagerInstance = undefined;
 
-        logError(error as Error)
+        logError(error as Error);
         logForDebugging(
           `Failed to initialize LSP server manager: ${errorMessage(error)}`,
-        )
+        );
       }
-    })
+    });
 }
 
 /**
@@ -242,38 +242,38 @@ export function initializeLspServerManager(): void {
  * init: the generation counter invalidates the in-flight promise.
  */
 export function reinitializeLspServerManager(): void {
-  if (initializationState === 'not-started') {
+  if (initializationState === "not-started") {
     // initializeLspServerManager() was never called (e.g. headless subcommand
     // path). Don't start it now.
-    return
+    return;
   }
 
-  logForDebugging('[LSP MANAGER] reinitializeLspServerManager() called')
+  logForDebugging("[LSP MANAGER] reinitializeLspServerManager() called");
 
   // Best-effort shutdown of any running servers on the old instance so
   // /reload-plugins doesn't leak child processes. Fire-and-forget: the
   // primary use case (issue #15521) has 0 servers so this is usually a no-op.
   if (lspManagerInstance) {
-    void lspManagerInstance.shutdown().catch(err => {
+    void lspManagerInstance.shutdown().catch((err) => {
       logForDebugging(
         `[LSP MANAGER] old instance shutdown during reinit failed: ${errorMessage(err)}`,
-      )
-    })
+      );
+    });
   }
 
   // Force the idempotence check in initializeLspServerManager() to fall
   // through. Generation counter handles invalidating any in-flight init.
-  lspManagerInstance = undefined
-  initializationState = 'not-started'
-  initializationError = undefined
+  lspManagerInstance = undefined;
+  initializationState = "not-started";
+  initializationError = undefined;
 
-  initializeLspServerManager()
+  initializeLspServerManager();
 }
 
 /**
  * Shutdown the LSP server manager and clean up resources.
  *
- * This should be called during Tau shutdown. Stops all running LSP servers
+ * This should be called during Zen shutdown. Stops all running LSP servers
  * and clears internal state. Safe to call when not initialized (no-op).
  *
  * NOTE: Errors during shutdown are logged for monitoring but NOT propagated to the caller.
@@ -284,24 +284,24 @@ export function reinitializeLspServerManager(): void {
  */
 export async function shutdownLspServerManager(): Promise<void> {
   if (lspManagerInstance === undefined) {
-    return
+    return;
   }
 
   try {
-    await lspManagerInstance.shutdown()
-    logForDebugging('LSP server manager shut down successfully')
+    await lspManagerInstance.shutdown();
+    logForDebugging("LSP server manager shut down successfully");
   } catch (error: unknown) {
-    logError(error as Error)
+    logError(error as Error);
     logForDebugging(
       `Failed to shutdown LSP server manager: ${errorMessage(error)}`,
-    )
+    );
   } finally {
     // Always clear state even if shutdown failed
-    lspManagerInstance = undefined
-    initializationState = 'not-started'
-    initializationError = undefined
-    initializationPromise = undefined
+    lspManagerInstance = undefined;
+    initializationState = "not-started";
+    initializationError = undefined;
+    initializationPromise = undefined;
     // Increment generation to invalidate any pending initializations
-    initializationGeneration++
+    initializationGeneration++;
   }
 }

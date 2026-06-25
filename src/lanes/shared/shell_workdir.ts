@@ -5,7 +5,7 @@
  * Background:
  * Earlier lane schemas exposed directory knobs (`workdir`, `dir_path`, `cwd`)
  * so models could recover from wrong-cwd commands. That fixed one class of
- * loop but taught models to depend on a separate execution-directory field
+ * loop but zenght models to depend on a separate execution-directory field
  * instead of putting the target path in the command. The Bash/PowerShell
  * resolvers now auto-locate common targets and bake absolute paths/native CLI
  * location flags into the command string, so the model-facing schema should not
@@ -35,7 +35,7 @@
 /** Deprecated legacy description. New model-facing shell schemas should not
  * expose a directory parameter. */
 export const SHELL_WORKDIR_PARAM_DESCRIPTION =
-  'Deprecated legacy directory parameter. Prefer absolute paths or native CLI location flags in the command.'
+  "Deprecated legacy directory parameter. Prefer absolute paths or native CLI location flags in the command.";
 
 /**
  * Legacy JSON-Schema property fragment for compatibility only. New shell tool
@@ -44,7 +44,7 @@ export const SHELL_WORKDIR_PARAM_DESCRIPTION =
 export function shellWorkdirSchemaProperty(
   description: string = SHELL_WORKDIR_PARAM_DESCRIPTION,
 ): Record<string, unknown> {
-  return { type: 'string', description }
+  return { type: "string", description };
 }
 
 /**
@@ -53,11 +53,11 @@ export function shellWorkdirSchemaProperty(
  * always wins, followed by the per-lane aliases.
  */
 export const SHELL_WORKDIR_INPUT_KEYS = [
-  'workdir',
-  'dir_path',
-  'cwd',
-  'directory',
-] as const
+  "workdir",
+  "dir_path",
+  "cwd",
+  "directory",
+] as const;
 
 /**
  * Copy the directory value from whichever native key the lane used onto
@@ -76,11 +76,11 @@ export function applyShellWorkdir(
   keys: readonly string[] = SHELL_WORKDIR_INPUT_KEYS,
 ): Record<string, unknown> {
   for (const key of keys) {
-    const value = native[key]
-    if (typeof value === 'string' && value.trim().length > 0) {
-      out.workdir = value
-      return out
+    const value = native[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      out.workdir = value;
+      return out;
     }
   }
-  return out
+  return out;
 }

@@ -1,4 +1,4 @@
-Run Tau Git Memory status now:
+Run Zen Git Memory status now:
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/git-memory.mjs" status --text 2>&1`
 

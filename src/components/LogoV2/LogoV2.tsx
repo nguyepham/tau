@@ -1,32 +1,55 @@
 import { c as _c } from "react/compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import * as React from 'react';
-import { Box, Text, color } from '../../ink.js';
-import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import { stringWidth } from '../../ink/stringWidth.js';
-import { getLayoutMode, calculateLayoutDimensions, calculateOptimalLeftWidth, formatWelcomeMessage, truncatePath, getRecentActivitySync, getRecentReleaseNotesSync, getLogoDisplayData } from '../../utils/logoV2Utils.js';
-import { truncate } from '../../utils/format.js';
-import { getDisplayPath } from '../../utils/file.js';
-import { Clawd } from './Clawd.js';
-import { TauWordmark } from '../tau-ui/TauWordmark.js';
-import { FeedColumn } from './FeedColumn.js';
-import { createRecentActivityFeed, createWhatsNewFeed, createProjectOnboardingFeed, createGuestPassesFeed } from './feedConfigs.js';
-import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js';
-import { resolveThemeSetting } from 'src/utils/systemTheme.js';
-import { getInitialSettings } from 'src/utils/settings/settings.js';
-import { isDebugMode, isDebugToStdErr, getDebugLogPath } from 'src/utils/debug.js';
-import { useEffect, useState } from 'react';
-import { getSteps, shouldShowProjectOnboarding, incrementProjectOnboardingSeenCount } from '../../projectOnboardingState.js';
-import { CondensedLogo } from './CondensedLogo.js';
-import { OffscreenFreeze } from '../OffscreenFreeze.js';
-import { checkForReleaseNotesSync } from '../../utils/releaseNotes.js';
-import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';
-import { isEnvTruthy } from 'src/utils/envUtils.js';
-import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/startupProfiler.js';
-import { EmergencyTip } from './EmergencyTip.js';
-import { VoiceModeNotice } from './VoiceModeNotice.js';
-import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';
-import { feature } from 'bun:bundle';
+import { feature } from "bun:bundle";
+import { useEffect, useState } from "react";
+import { getDumpPromptsPath } from "src/services/api/dumpPrompts.js";
+import { getGlobalConfig, saveGlobalConfig } from "src/utils/config.js";
+import {
+  getDebugLogPath,
+  isDebugMode,
+  isDebugToStdErr,
+} from "src/utils/debug.js";
+import { isEnvTruthy } from "src/utils/envUtils.js";
+import { getInitialSettings } from "src/utils/settings/settings.js";
+import {
+  getStartupPerfLogPath,
+  isDetailedProfilingEnabled,
+} from "src/utils/startupProfiler.js";
+import { resolveThemeSetting } from "src/utils/systemTheme.js";
+import { useTerminalSize } from "../../hooks/useTerminalSize.js";
+import { Box, Text, color } from "../../ink.js";
+import { stringWidth } from "../../ink/stringWidth.js";
+import {
+  getSteps,
+  incrementProjectOnboardingSeenCount,
+  shouldShowProjectOnboarding,
+} from "../../projectOnboardingState.js";
+import { getDisplayPath } from "../../utils/file.js";
+import { truncate } from "../../utils/format.js";
+import {
+  calculateLayoutDimensions,
+  calculateOptimalLeftWidth,
+  formatWelcomeMessage,
+  getLayoutMode,
+  getLogoDisplayData,
+  getRecentActivitySync,
+  getRecentReleaseNotesSync,
+  truncatePath,
+} from "../../utils/logoV2Utils.js";
+import { checkForReleaseNotesSync } from "../../utils/releaseNotes.js";
+import { OffscreenFreeze } from "../OffscreenFreeze.js";
+import { ZenWordmark } from "../zen-ui/ZenWordmark.js";
+import { CondensedLogo } from "./CondensedLogo.js";
+import { EmergencyTip } from "./EmergencyTip.js";
+import { FeedColumn } from "./FeedColumn.js";
+import {
+  createGuestPassesFeed,
+  createProjectOnboardingFeed,
+  createRecentActivityFeed,
+  createWhatsNewFeed,
+} from "./feedConfigs.js";
+import { Opus1mMergeNotice } from "./Opus1mMergeNotice.js";
+import { VoiceModeNotice } from "./VoiceModeNotice.js";
 
 // Conditional require so ChannelsNotice.tsx tree-shakes when both flags are
 // false. A module-scope helper component inside a feature() ternary does NOT
@@ -34,25 +57,32 @@ import { feature } from 'bun:bundle';
 // whole file. VoiceModeNotice uses the unsafe helper pattern but VOICE_MODE
 // is external: true so it's moot there.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const ChannelsNoticeModule = feature('KAIROS') || feature('KAIROS_CHANNELS') ? require('./ChannelsNotice.js') as typeof import('./ChannelsNotice.js') : null;
+const ChannelsNoticeModule =
+  feature("KAIROS") || feature("KAIROS_CHANNELS")
+    ? (require("./ChannelsNotice.js") as typeof import("./ChannelsNotice.js"))
+    : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
-import { useShowGuestPassesUpsell, incrementGuestPassesSeenCount } from './GuestPassesUpsell.js';
-import { useShowOverageCreditUpsell, incrementOverageCreditUpsellSeenCount, createOverageCreditFeed } from './OverageCreditUpsell.js';
-import { plural } from '../../utils/stringUtils.js';
-import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
-import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
-import { renderModelSetting } from '../../utils/model/model.js';
-import { getSurfBannerLabel } from '../../utils/surf/label.js';
+import { SandboxManager } from "src/utils/sandbox/sandbox-adapter.js";
+import { useMainLoopModel } from "../../hooks/useMainLoopModel.js";
+import { useAppState } from "../../state/AppState.js";
+import { getEffortSuffix } from "../../utils/effort.js";
+import { renderModelSetting } from "../../utils/model/model.js";
+import { getSurfBannerLabel } from "../../utils/surf/label.js";
+import {
+  incrementGuestPassesSeenCount,
+  useShowGuestPassesUpsell,
+} from "./GuestPassesUpsell.js";
+import {
+  createOverageCreditFeed,
+  incrementOverageCreditUpsellSeenCount,
+  useShowOverageCreditUpsell,
+} from "./OverageCreditUpsell.js";
 const LEFT_PANEL_MAX_WIDTH = 50;
 export function LogoV2() {
   const $ = _c(94);
   const activities = getRecentActivitySync();
   const username = getGlobalConfig().oauthAccount?.displayName ?? "";
-  const {
-    columns
-  } = useTerminalSize();
+  const { columns } = useTerminalSize();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = shouldShowProjectOnboarding();
@@ -85,11 +115,13 @@ export function LogoV2() {
     if (!announcements || announcements.length === 0) {
       return;
     }
-    return config.numStartups === 1 ? announcements[0] : announcements[Math.floor(Math.random() * announcements.length)];
+    return config.numStartups === 1
+      ? announcements[0]
+      : announcements[Math.floor(Math.random() * announcements.length)];
   });
-  const {
-    hasReleaseNotes
-  } = checkForReleaseNotesSync(config.lastReleaseNotesSeen);
+  const { hasReleaseNotes } = checkForReleaseNotesSync(
+    config.lastReleaseNotesSeen,
+  );
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = () => {
@@ -117,7 +149,10 @@ export function LogoV2() {
   useEffect(t2, t3);
   let t4;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = !hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO);
+    t4 =
+      !hasReleaseNotes &&
+      !showOnboarding &&
+      !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO);
     $[5] = t4;
   } else {
     t4 = $[5];
@@ -144,11 +179,21 @@ export function LogoV2() {
   let t8;
   if ($[9] !== showGuestPassesUpsell || $[10] !== showOverageCreditUpsell) {
     t7 = () => {
-      if (showOverageCreditUpsell && !showOnboarding && !showGuestPassesUpsell && !isCondensedMode) {
+      if (
+        showOverageCreditUpsell &&
+        !showOnboarding &&
+        !showGuestPassesUpsell &&
+        !isCondensedMode
+      ) {
         incrementOverageCreditUpsellSeenCount();
       }
     };
-    t8 = [showOverageCreditUpsell, showOnboarding, showGuestPassesUpsell, isCondensedMode];
+    t8 = [
+      showOverageCreditUpsell,
+      showOnboarding,
+      showGuestPassesUpsell,
+      isCondensedMode,
+    ];
     $[9] = showGuestPassesUpsell;
     $[10] = showOverageCreditUpsell;
     $[11] = t7;
@@ -164,7 +209,7 @@ export function LogoV2() {
     version,
     cwd,
     billingType,
-    agentName: agentNameFromSettings
+    agentName: agentNameFromSettings,
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
   const effortSuffix = getEffortSuffix(model, effortValue);
@@ -183,7 +228,11 @@ export function LogoV2() {
   const modelDisplayName = surfBanner
     ? truncate(surfBanner, LEFT_PANEL_MAX_WIDTH - 20)
     : t10;
-  if (!hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO)) {
+  if (
+    !hasReleaseNotes &&
+    !showOnboarding &&
+    !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO)
+  ) {
     let t11;
     let t12;
     let t13;
@@ -196,9 +245,27 @@ export function LogoV2() {
       t12 = <VoiceModeNotice />;
       t13 = <Opus1mMergeNotice />;
       t14 = ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />;
-      t15 = isDebugMode() && <Box paddingLeft={2} flexDirection="column"><Text color="warning">Debug mode enabled</Text><Text dimColor={true}>Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}</Text></Box>;
+      t15 = isDebugMode() && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text color="warning">Debug mode enabled</Text>
+          <Text dimColor={true}>
+            Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}
+          </Text>
+        </Box>
+      );
       t16 = <EmergencyTip />;
-      t17 = process.env.CLAUDE_CODE_TMUX_SESSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}</Text><Text dimColor={true}>{process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Tau uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})` : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}</Text></Box>;
+      t17 = process.env.CLAUDE_CODE_TMUX_SESSION && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text dimColor={true}>
+            tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}
+          </Text>
+          <Text dimColor={true}>
+            {process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS
+              ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Zen uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})`
+              : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}
+          </Text>
+        </Box>
+      );
       $[15] = t11;
       $[16] = t12;
       $[17] = t13;
@@ -217,7 +284,16 @@ export function LogoV2() {
     }
     let t18;
     if ($[22] !== announcement || $[23] !== config) {
-      t18 = announcement && <Box paddingLeft={2} flexDirection="column">{!process.env.IS_DEMO && config.oauthAccount?.organizationName && <Text dimColor={true}>Message from {config.oauthAccount.organizationName}:</Text>}<Text>{announcement}</Text></Box>;
+      t18 = announcement && (
+        <Box paddingLeft={2} flexDirection="column">
+          {!process.env.IS_DEMO && config.oauthAccount?.organizationName && (
+            <Text dimColor={true}>
+              Message from {config.oauthAccount.organizationName}:
+            </Text>
+          )}
+          <Text>{announcement}</Text>
+        </Box>
+      );
       $[22] = announcement;
       $[23] = config;
       $[24] = t18;
@@ -229,8 +305,29 @@ export function LogoV2() {
     let t21;
     let t22;
     if ($[25] === Symbol.for("react.memo_cache_sentinel")) {
-      t19 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
-      t20 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[ANT-ONLY] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
+      t19 = false && !process.env.DEMO_VERSION && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text dimColor={true}>
+            Use /issue to report model behavior issues
+          </Text>
+        </Box>
+      );
+      t20 = false && !process.env.DEMO_VERSION && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text color="warning">[ANT-ONLY] Logs:</Text>
+          <Text dimColor={true}>
+            API calls: {getDisplayPath(getDumpPromptsPath())}
+          </Text>
+          <Text dimColor={true}>
+            Debug logs: {getDisplayPath(getDebugLogPath())}
+          </Text>
+          {isDetailedProfilingEnabled() && (
+            <Text dimColor={true}>
+              Startup Perf: {getDisplayPath(getStartupPerfLogPath())}
+            </Text>
+          )}
+        </Box>
+      );
       t21 = false && <GateOverridesWarning />;
       t22 = false && <ExperimentEnrollmentNotice />;
       $[25] = t19;
@@ -245,7 +342,22 @@ export function LogoV2() {
     }
     let t23;
     if ($[29] !== t18) {
-      t23 = <>{t11}{t12}{t13}{t14}{t15}{t16}{t17}{t18}{t19}{t20}{t21}{t22}</>;
+      t23 = (
+        <>
+          {t11}
+          {t12}
+          {t13}
+          {t14}
+          {t15}
+          {t16}
+          {t17}
+          {t18}
+          {t19}
+          {t20}
+          {t21}
+          {t22}
+        </>
+      );
       $[29] = t18;
       $[30] = t23;
     } else {
@@ -255,8 +367,8 @@ export function LogoV2() {
   }
   const layoutMode = getLayoutMode(columns);
   const userTheme = resolveThemeSetting(getGlobalConfig().theme);
-  const borderTitle = ` ${color("claude", userTheme)("Tau")} ${color("inactive", userTheme)(`v${version}`)} `;
-  const compactBorderTitle = color("claude", userTheme)(" Tau ");
+  const borderTitle = ` ${color("claude", userTheme)("Zen")} ${color("inactive", userTheme)(`v${version}`)} `;
+  const compactBorderTitle = color("claude", userTheme)(" Zen ");
   if (layoutMode === "compact") {
     let welcomeMessage = formatWelcomeMessage(username);
     if (stringWidth(welcomeMessage) > columns - 4) {
@@ -269,7 +381,9 @@ export function LogoV2() {
       }
       welcomeMessage = t11;
     }
-    const cwdAvailableWidth = agentName ? columns - 4 - 1 - stringWidth(agentName) - 3 : columns - 4;
+    const cwdAvailableWidth = agentName
+      ? columns - 4 - 1 - stringWidth(agentName) - 3
+      : columns - 4;
     const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
     let t11;
     if ($[32] !== compactBorderTitle) {
@@ -277,7 +391,7 @@ export function LogoV2() {
         content: compactBorderTitle,
         position: "top",
         align: "start",
-        offset: 1
+        offset: 1,
       };
       $[32] = compactBorderTitle;
       $[33] = t11;
@@ -286,7 +400,11 @@ export function LogoV2() {
     }
     let t12;
     if ($[34] === Symbol.for("react.memo_cache_sentinel")) {
-      t12 = <Box marginY={1}><TauWordmark /></Box>;
+      t12 = (
+        <Box marginY={1}>
+          <ZenWordmark />
+        </Box>
+      );
       $[34] = t12;
     } else {
       t12 = $[34];
@@ -316,7 +434,13 @@ export function LogoV2() {
     }
     let t17;
     if ($[40] !== showSandboxStatus) {
-      t17 = showSandboxStatus && <Box marginTop={1} flexDirection="column"><Text color="warning">Your bash commands will be sandboxed. Disable with /sandbox.</Text></Box>;
+      t17 = showSandboxStatus && (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="warning">
+            Your bash commands will be sandboxed. Disable with /sandbox.
+          </Text>
+        </Box>
+      );
       $[40] = showSandboxStatus;
       $[41] = t17;
     } else {
@@ -333,18 +457,59 @@ export function LogoV2() {
       t18 = $[42];
       t19 = $[43];
     }
-    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="borderSubtle" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
+    return (
+      <>
+        <OffscreenFreeze>
+          <Box
+            flexDirection="column"
+            borderStyle="round"
+            borderColor="borderSubtle"
+            borderText={t11}
+            paddingX={1}
+            paddingY={1}
+            alignItems="center"
+            width={columns}
+          >
+            <Text bold={true}>{welcomeMessage}</Text>
+            {t12}
+            {t13}
+            <Text dimColor={true}>{billingType}</Text>
+            <Text dimColor={true}>
+              {agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}
+            </Text>
+          </Box>
+        </OffscreenFreeze>
+        {t14}
+        {t15}
+        {t16}
+        {t17}
+        {t18}
+        {t19}
+      </>
+    );
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
-  const modelLine = !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
-  const cwdAvailableWidth_0 = agentName ? LEFT_PANEL_MAX_WIDTH - 1 - stringWidth(agentName) - 3 : LEFT_PANEL_MAX_WIDTH;
+  const modelLine =
+    !process.env.IS_DEMO && config.oauthAccount?.organizationName
+      ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}`
+      : `${modelDisplayName} · ${billingType}`;
+  const cwdAvailableWidth_0 = agentName
+    ? LEFT_PANEL_MAX_WIDTH - 1 - stringWidth(agentName) - 3
+    : LEFT_PANEL_MAX_WIDTH;
   const truncatedCwd_0 = truncatePath(cwd, Math.max(cwdAvailableWidth_0, 10));
-  const cwdLine = agentName ? `@${agentName} · ${truncatedCwd_0}` : truncatedCwd_0;
-  const optimalLeftWidth = calculateOptimalLeftWidth(welcomeMessage_0, cwdLine, modelLine);
-  const {
-    leftWidth,
-    rightWidth
-  } = calculateLayoutDimensions(columns, layoutMode, optimalLeftWidth);
+  const cwdLine = agentName
+    ? `@${agentName} · ${truncatedCwd_0}`
+    : truncatedCwd_0;
+  const optimalLeftWidth = calculateOptimalLeftWidth(
+    welcomeMessage_0,
+    cwdLine,
+    modelLine,
+  );
+  const { leftWidth, rightWidth } = calculateLayoutDimensions(
+    columns,
+    layoutMode,
+    optimalLeftWidth,
+  );
   const T0 = OffscreenFreeze;
   const T1 = Box;
   const t11 = "column";
@@ -356,7 +521,7 @@ export function LogoV2() {
       content: borderTitle,
       position: "top",
       align: "start",
-      offset: 3
+      offset: 3,
     };
     $[44] = borderTitle;
     $[45] = t14;
@@ -369,7 +534,11 @@ export function LogoV2() {
   const t17 = 1;
   let t18;
   if ($[46] !== welcomeMessage_0) {
-    t18 = <Box marginTop={1}><Text bold={true}>{welcomeMessage_0}</Text></Box>;
+    t18 = (
+      <Box marginTop={1}>
+        <Text bold={true}>{welcomeMessage_0}</Text>
+      </Box>
+    );
     $[46] = welcomeMessage_0;
     $[47] = t18;
   } else {
@@ -377,7 +546,7 @@ export function LogoV2() {
   }
   let t19;
   if ($[48] === Symbol.for("react.memo_cache_sentinel")) {
-    t19 = <TauWordmark />;
+    t19 = <ZenWordmark />;
     $[48] = t19;
   } else {
     t19 = $[48];
@@ -400,7 +569,12 @@ export function LogoV2() {
   }
   let t22;
   if ($[53] !== t20 || $[54] !== t21) {
-    t22 = <Box flexDirection="column" alignItems="center">{t20}{t21}</Box>;
+    t22 = (
+      <Box flexDirection="column" alignItems="center">
+        {t20}
+        {t21}
+      </Box>
+    );
     $[53] = t20;
     $[54] = t21;
     $[55] = t22;
@@ -409,7 +583,19 @@ export function LogoV2() {
   }
   let t23;
   if ($[56] !== leftWidth || $[57] !== t18 || $[58] !== t22) {
-    t23 = <Box flexDirection="column" width={leftWidth} justifyContent="space-between" alignItems="center" minHeight={9}>{t18}{t19}{t22}</Box>;
+    t23 = (
+      <Box
+        flexDirection="column"
+        width={leftWidth}
+        justifyContent="space-between"
+        alignItems="center"
+        minHeight={9}
+      >
+        {t18}
+        {t19}
+        {t22}
+      </Box>
+    );
     $[56] = leftWidth;
     $[57] = t18;
     $[58] = t22;
@@ -419,16 +605,60 @@ export function LogoV2() {
   }
   let t24;
   if ($[60] !== layoutMode) {
-    t24 = layoutMode === "horizontal" && <Box height="100%" borderStyle="single" borderColor="borderSubtle" borderDimColor={true} borderTop={false} borderBottom={false} borderLeft={false} />;
+    t24 = layoutMode === "horizontal" && (
+      <Box
+        height="100%"
+        borderStyle="single"
+        borderColor="borderSubtle"
+        borderDimColor={true}
+        borderTop={false}
+        borderBottom={false}
+        borderLeft={false}
+      />
+    );
     $[60] = layoutMode;
     $[61] = t24;
   } else {
     t24 = $[61];
   }
-  const t25 = layoutMode === "horizontal" && <FeedColumn feeds={showOnboarding ? [createProjectOnboardingFeed(getSteps()), createRecentActivityFeed(activities)] : showGuestPassesUpsell ? [createRecentActivityFeed(activities), createGuestPassesFeed()] : showOverageCreditUpsell ? [createRecentActivityFeed(activities), createOverageCreditFeed()] : [createRecentActivityFeed(activities), createWhatsNewFeed(changelog)]} maxWidth={rightWidth} />;
+  const t25 = layoutMode === "horizontal" && (
+    <FeedColumn
+      feeds={
+        showOnboarding
+          ? [
+              createProjectOnboardingFeed(getSteps()),
+              createRecentActivityFeed(activities),
+            ]
+          : showGuestPassesUpsell
+            ? [createRecentActivityFeed(activities), createGuestPassesFeed()]
+            : showOverageCreditUpsell
+              ? [
+                  createRecentActivityFeed(activities),
+                  createOverageCreditFeed(),
+                ]
+              : [
+                  createRecentActivityFeed(activities),
+                  createWhatsNewFeed(changelog),
+                ]
+      }
+      maxWidth={rightWidth}
+    />
+  );
   let t26;
-  if ($[62] !== T2 || $[63] !== t15 || $[64] !== t23 || $[65] !== t24 || $[66] !== t25) {
-    t26 = <T2 flexDirection={t15} paddingX={t16} gap={t17}>{t23}{t24}{t25}</T2>;
+  if (
+    $[62] !== T2 ||
+    $[63] !== t15 ||
+    $[64] !== t23 ||
+    $[65] !== t24 ||
+    $[66] !== t25
+  ) {
+    t26 = (
+      <T2 flexDirection={t15} paddingX={t16} gap={t17}>
+        {t23}
+        {t24}
+        {t25}
+      </T2>
+    );
     $[62] = T2;
     $[63] = t15;
     $[64] = t23;
@@ -440,7 +670,16 @@ export function LogoV2() {
   }
   let t27;
   if ($[68] !== T1 || $[69] !== t14 || $[70] !== t26) {
-    t27 = <T1 flexDirection={t11} borderStyle={t12} borderColor={t13} borderText={t14}>{t26}</T1>;
+    t27 = (
+      <T1
+        flexDirection={t11}
+        borderStyle={t12}
+        borderColor={t13}
+        borderText={t14}
+      >
+        {t26}
+      </T1>
+    );
     $[68] = T1;
     $[69] = t14;
     $[70] = t26;
@@ -467,9 +706,27 @@ export function LogoV2() {
     t29 = <VoiceModeNotice />;
     t30 = <Opus1mMergeNotice />;
     t31 = ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />;
-    t32 = isDebugMode() && <Box paddingLeft={2} flexDirection="column"><Text color="warning">Debug mode enabled</Text><Text dimColor={true}>Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}</Text></Box>;
+    t32 = isDebugMode() && (
+      <Box paddingLeft={2} flexDirection="column">
+        <Text color="warning">Debug mode enabled</Text>
+        <Text dimColor={true}>
+          Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}
+        </Text>
+      </Box>
+    );
     t33 = <EmergencyTip />;
-    t34 = process.env.CLAUDE_CODE_TMUX_SESSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}</Text><Text dimColor={true}>{process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Tau uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})` : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}</Text></Box>;
+    t34 = process.env.CLAUDE_CODE_TMUX_SESSION && (
+      <Box paddingLeft={2} flexDirection="column">
+        <Text dimColor={true}>
+          tmux session: {process.env.CLAUDE_CODE_TMUX_SESSION}
+        </Text>
+        <Text dimColor={true}>
+          {process.env.CLAUDE_CODE_TMUX_PREFIX_CONFLICTS
+            ? `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} ${process.env.CLAUDE_CODE_TMUX_PREFIX} d (press prefix twice - Zen uses ${process.env.CLAUDE_CODE_TMUX_PREFIX})`
+            : `Detach: ${process.env.CLAUDE_CODE_TMUX_PREFIX} d`}
+        </Text>
+      </Box>
+    );
     $[75] = t29;
     $[76] = t30;
     $[77] = t31;
@@ -486,7 +743,16 @@ export function LogoV2() {
   }
   let t35;
   if ($[81] !== announcement || $[82] !== config) {
-    t35 = announcement && <Box paddingLeft={2} flexDirection="column">{!process.env.IS_DEMO && config.oauthAccount?.organizationName && <Text dimColor={true}>Message from {config.oauthAccount.organizationName}:</Text>}<Text>{announcement}</Text></Box>;
+    t35 = announcement && (
+      <Box paddingLeft={2} flexDirection="column">
+        {!process.env.IS_DEMO && config.oauthAccount?.organizationName && (
+          <Text dimColor={true}>
+            Message from {config.oauthAccount.organizationName}:
+          </Text>
+        )}
+        <Text>{announcement}</Text>
+      </Box>
+    );
     $[81] = announcement;
     $[82] = config;
     $[83] = t35;
@@ -495,7 +761,13 @@ export function LogoV2() {
   }
   let t36;
   if ($[84] !== showSandboxStatus) {
-    t36 = showSandboxStatus && <Box paddingLeft={2} flexDirection="column"><Text color="warning">Your bash commands will be sandboxed. Disable with /sandbox.</Text></Box>;
+    t36 = showSandboxStatus && (
+      <Box paddingLeft={2} flexDirection="column">
+        <Text color="warning">
+          Your bash commands will be sandboxed. Disable with /sandbox.
+        </Text>
+      </Box>
+    );
     $[84] = showSandboxStatus;
     $[85] = t36;
   } else {
@@ -506,8 +778,27 @@ export function LogoV2() {
   let t39;
   let t40;
   if ($[86] === Symbol.for("react.memo_cache_sentinel")) {
-    t37 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
-    t38 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[ANT-ONLY] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
+    t37 = false && !process.env.DEMO_VERSION && (
+      <Box paddingLeft={2} flexDirection="column">
+        <Text dimColor={true}>Use /issue to report model behavior issues</Text>
+      </Box>
+    );
+    t38 = false && !process.env.DEMO_VERSION && (
+      <Box paddingLeft={2} flexDirection="column">
+        <Text color="warning">[ANT-ONLY] Logs:</Text>
+        <Text dimColor={true}>
+          API calls: {getDisplayPath(getDumpPromptsPath())}
+        </Text>
+        <Text dimColor={true}>
+          Debug logs: {getDisplayPath(getDebugLogPath())}
+        </Text>
+        {isDetailedProfilingEnabled() && (
+          <Text dimColor={true}>
+            Startup Perf: {getDisplayPath(getStartupPerfLogPath())}
+          </Text>
+        )}
+      </Box>
+    );
     t39 = false && <GateOverridesWarning />;
     t40 = false && <ExperimentEnrollmentNotice />;
     $[86] = t37;
@@ -522,7 +813,23 @@ export function LogoV2() {
   }
   let t41;
   if ($[90] !== t28 || $[91] !== t35 || $[92] !== t36) {
-    t41 = <>{t28}{t29}{t30}{t31}{t32}{t33}{t34}{t35}{t36}{t37}{t38}{t39}{t40}</>;
+    t41 = (
+      <>
+        {t28}
+        {t29}
+        {t30}
+        {t31}
+        {t32}
+        {t33}
+        {t34}
+        {t35}
+        {t36}
+        {t37}
+        {t38}
+        {t39}
+        {t40}
+      </>
+    );
     $[90] = t28;
     $[91] = t35;
     $[92] = t36;
@@ -538,7 +845,7 @@ function _temp3(current) {
   }
   return {
     ...current,
-    lastReleaseNotesSeen: MACRO.VERSION
+    lastReleaseNotesSeen: MACRO.VERSION,
   };
 }
 function _temp2(s_0) {

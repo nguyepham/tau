@@ -1,27 +1,27 @@
-import { feature } from 'bun:bundle'
-import { logForDebugging } from '../utils/debug.js'
-import { errorMessage } from '../utils/errors.js'
-import { getDefaultSonnetModel } from '../utils/model/model.js'
-import { sideQuery } from '../utils/sideQuery.js'
-import { jsonParse } from '../utils/slowOperations.js'
+import { feature } from "bun:bundle";
+import { logForDebugging } from "../utils/debug.js";
+import { errorMessage } from "../utils/errors.js";
+import { getDefaultSonnetModel } from "../utils/model/model.js";
+import { sideQuery } from "../utils/sideQuery.js";
+import { jsonParse } from "../utils/slowOperations.js";
 import {
   formatMemoryManifest,
   type MemoryHeader,
   scanMemoryFiles,
-} from './memoryScan.js'
+} from "./memoryScan.js";
 
 export type RelevantMemory = {
-  path: string
-  mtimeMs: number
-}
+  path: string;
+  mtimeMs: number;
+};
 
-const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be useful to Tau as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
+const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be useful to Zen as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
 
-Return a list of filenames for the memories that will clearly be useful to Tau as it processes the user's query (up to 5). Only include memories that you are certain will be helpful based on their name and description.
+Return a list of filenames for the memories that will clearly be useful to Zen as it processes the user's query (up to 5). Only include memories that you are certain will be helpful based on their name and description.
 - If you are unsure if a memory will be useful in processing the user's query, then do not include it in your list. Be selective and discerning.
 - If there are no memories in the list that would clearly be useful, feel free to return an empty list.
-- If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools (Tau is already exercising them). DO still select memories containing warnings, gotchas, or known issues about those tools — active use is exactly when those matter.
-`
+- If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools (Zen is already exercising them). DO still select memories containing warnings, gotchas, or known issues about those tools — active use is exactly when those matter.
+`;
 
 /**
  * Find memory files relevant to a query by scanning memory file headers
@@ -44,10 +44,10 @@ export async function findRelevantMemories(
   alreadySurfaced: ReadonlySet<string> = new Set(),
 ): Promise<RelevantMemory[]> {
   const memories = (await scanMemoryFiles(memoryDir, signal)).filter(
-    m => !alreadySurfaced.has(m.filePath),
-  )
+    (m) => !alreadySurfaced.has(m.filePath),
+  );
   if (memories.length === 0) {
-    return []
+    return [];
   }
 
   const selectedFilenames = await selectRelevantMemories(
@@ -55,23 +55,23 @@ export async function findRelevantMemories(
     memories,
     signal,
     recentTools,
-  )
-  const byFilename = new Map(memories.map(m => [m.filename, m]))
+  );
+  const byFilename = new Map(memories.map((m) => [m.filename, m]));
   const selected = selectedFilenames
-    .map(filename => byFilename.get(filename))
-    .filter((m): m is MemoryHeader => m !== undefined)
+    .map((filename) => byFilename.get(filename))
+    .filter((m): m is MemoryHeader => m !== undefined);
 
   // Fires even on empty selection: selection-rate needs the denominator,
   // and -1 ages distinguish "ran, picked nothing" from "never ran".
-  if (feature('MEMORY_SHAPE_TELEMETRY')) {
+  if (feature("MEMORY_SHAPE_TELEMETRY")) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { logMemoryRecallShape } =
-      require('./memoryShapeTelemetry.js') as typeof import('./memoryShapeTelemetry.js')
+      require("./memoryShapeTelemetry.js") as typeof import("./memoryShapeTelemetry.js");
     /* eslint-enable @typescript-eslint/no-require-imports */
-    logMemoryRecallShape(memories, selected)
+    logMemoryRecallShape(memories, selected);
   }
 
-  return selected.map(m => ({ path: m.filePath, mtimeMs: m.mtimeMs }))
+  return selected.map((m) => ({ path: m.filePath, mtimeMs: m.mtimeMs }));
 }
 
 async function selectRelevantMemories(
@@ -80,19 +80,19 @@ async function selectRelevantMemories(
   signal: AbortSignal,
   recentTools: readonly string[],
 ): Promise<string[]> {
-  const validFilenames = new Set(memories.map(m => m.filename))
+  const validFilenames = new Set(memories.map((m) => m.filename));
 
-  const manifest = formatMemoryManifest(memories)
+  const manifest = formatMemoryManifest(memories);
 
-  // When Tau is actively using a tool (e.g. mcp__X__spawn),
+  // When Zen is actively using a tool (e.g. mcp__X__spawn),
   // surfacing that tool's reference docs is noise — the conversation
   // already contains working usage.  The selector otherwise matches
   // on keyword overlap ("spawn" in query + "spawn" in a memory
   // description → false positive).
   const toolsSection =
     recentTools.length > 0
-      ? `\n\nRecently used tools: ${recentTools.join(', ')}`
-      : ''
+      ? `\n\nRecently used tools: ${recentTools.join(", ")}`
+      : "";
 
   try {
     const result = await sideQuery({
@@ -101,41 +101,41 @@ async function selectRelevantMemories(
       skipSystemPromptPrefix: true,
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: `Query: ${query}\n\nAvailable memories:\n${manifest}${toolsSection}`,
         },
       ],
       max_tokens: 256,
       output_format: {
-        type: 'json_schema',
+        type: "json_schema",
         schema: {
-          type: 'object',
+          type: "object",
           properties: {
-            selected_memories: { type: 'array', items: { type: 'string' } },
+            selected_memories: { type: "array", items: { type: "string" } },
           },
-          required: ['selected_memories'],
+          required: ["selected_memories"],
           additionalProperties: false,
         },
       },
       signal,
-      querySource: 'memdir_relevance',
-    })
+      querySource: "memdir_relevance",
+    });
 
-    const textBlock = result.content.find(block => block.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') {
-      return []
+    const textBlock = result.content.find((block) => block.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      return [];
     }
 
-    const parsed: { selected_memories: string[] } = jsonParse(textBlock.text)
-    return parsed.selected_memories.filter(f => validFilenames.has(f))
+    const parsed: { selected_memories: string[] } = jsonParse(textBlock.text);
+    return parsed.selected_memories.filter((f) => validFilenames.has(f));
   } catch (e) {
     if (signal.aborted) {
-      return []
+      return [];
     }
     logForDebugging(
       `[memdir] selectRelevantMemories failed: ${errorMessage(e)}`,
-      { level: 'warn' },
-    )
-    return []
+      { level: "warn" },
+    );
+    return [];
   }
 }

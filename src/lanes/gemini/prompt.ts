@@ -11,31 +11,31 @@
  *   4. Tool Usage — how to use each tool effectively
  *   5. Operational Guidelines — tone, style, conventions
  *   6. Git Repository — git workflow if applicable
- *   7. Memory/Context — injected from Tau shared layer
+ *   7. Memory/Context — injected from Zen shared layer
  *   8. Environment — volatile per-turn info (cwd, date, git status)
  *
  * Sections 1-6 are STABLE (cacheable). Sections 7-8 are VOLATILE.
  * The boundary is marked so the Gemini cache manager hashes only stable content.
  */
 
-import type { SystemPromptParts } from '../types.js'
+import { WEB_SEARCH_AUTO_USE_GUIDANCE } from "../../tools/WebSearchTool/prompt.js";
 import {
   type StableSlot,
   type VolatileSlot,
-  stableFrom,
-  renderVolatileSlot,
   flatten,
-} from '../shared/system_slots.js'
-import { WEB_SEARCH_AUTO_USE_GUIDANCE } from '../../tools/WebSearchTool/prompt.js'
+  renderVolatileSlot,
+  stableFrom,
+} from "../shared/system_slots.js";
+import type { SystemPromptParts } from "../types.js";
 
 // ─── Model-Family Detection ──────────────────────────────────────
 
-type GeminiFamily = 'gemini-3' | 'default-legacy'
+type GeminiFamily = "gemini-3" | "default-legacy";
 
 function detectFamily(model: string): GeminiFamily {
-  const m = model.toLowerCase()
-  if (/gemini-3(\.|-|$)/.test(m) || /gemini-4/.test(m)) return 'gemini-3'
-  return 'default-legacy'
+  const m = model.toLowerCase();
+  if (/gemini-3(\.|-|$)/.test(m) || /gemini-4/.test(m)) return "gemini-3";
+  return "default-legacy";
 }
 
 // ─── Stable Prompt Sections ──────────────────────────────────────
@@ -44,7 +44,7 @@ function preamble(family: GeminiFamily): string {
   return `You are an interactive AI coding agent. You are pair-programming with the user to solve their coding task.
 The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.
 
-Each time the user sends a message, carefully assess what information you need. Use your tools to efficiently gather context, then provide a response.`
+Each time the user sends a message, carefully assess what information you need. Use your tools to efficiently gather context, then provide a response.`;
 }
 
 function coreMandates(): string {
@@ -60,11 +60,11 @@ function coreMandates(): string {
 - Follow existing project conventions and patterns
 - Prefer editing existing files over creating new ones
 - Test your changes when possible
-- Do not add unnecessary complexity, comments, or abstractions`
+- Do not add unnecessary complexity, comments, or abstractions`;
 }
 
 function workflows(family: GeminiFamily): string {
-  if (family === 'gemini-3') {
+  if (family === "gemini-3") {
     return `## Workflow
 
 For each task, follow this workflow:
@@ -73,7 +73,7 @@ For each task, follow this workflow:
 3. **Execute** — Make changes, test them, verify correctness
 4. **Report** — Summarize what you did and why
 
-Use \`enter_plan_mode\` for complex tasks that need careful research before implementation.`
+Use \`enter_plan_mode\` for complex tasks that need careful research before implementation.`;
   }
 
   return `## Workflow
@@ -83,7 +83,7 @@ Follow this general approach for each task:
 2. Plan your approach — think before coding
 3. Make changes — edit files, run commands
 4. Verify — test your changes work correctly
-5. Summarize — tell the user what you did`
+5. Summarize — tell the user what you did`;
 }
 
 function toolUsageGuidelines(): string {
@@ -97,7 +97,7 @@ function toolUsageGuidelines(): string {
 - **google_web_search**: ${WEB_SEARCH_AUTO_USE_GUIDANCE}
 - **web_fetch**: Use to read web pages, documentation URLs, or GitHub files.
 
-Do NOT use tools when you can answer from context. Do NOT read files you've already read in this conversation unless they may have changed.`
+Do NOT use tools when you can answer from context. Do NOT read files you've already read in this conversation unless they may have changed.`;
 }
 
 function operationalGuidelines(): string {
@@ -116,7 +116,7 @@ function operationalGuidelines(): string {
 - Skills: if \`/skill-name\` is invoked or a listed relevant skill is surfaced, use the Skill tool. Only use listed skills; don't invent names.
 - Subagents: for broad exploration, deep research, or independent parallel work, delegate with the Agent tool and matching \`subagent_type\`; don't duplicate that work.
 - MCP management (\`claude mcp add <name> <cmd>\`, \`claude mcp list\`, \`claude mcp remove\`) is normal Bash. Run it yourself; don't paste it to the user.
-- For unfamiliar CLIs, libraries, or APIs, verify the exact syntax once (\`--help\`, official docs, the tool's source) instead of guessing flags and iterating.`
+- For unfamiliar CLIs, libraries, or APIs, verify the exact syntax once (\`--help\`, official docs, the tool's source) instead of guessing flags and iterating.`;
 }
 
 function gitRepoSection(): string {
@@ -126,7 +126,7 @@ This workspace is a git repository. When working with git:
 - Read diffs and status before committing
 - Write clear, descriptive commit messages
 - Don't force push or use destructive git operations without asking
-- Prefer creating new commits over amending existing ones`
+- Prefer creating new commits over amending existing ones`;
 }
 
 // ─── Full Prompt Assembly ────────────────────────────────────────
@@ -143,7 +143,7 @@ export function assembleGeminiSystemPrompt(
   model: string,
   parts: SystemPromptParts,
 ): { stable: StableSlot; volatile: VolatileSlot; full: string } {
-  const family = detectFamily(model)
+  const family = detectFamily(model);
 
   // Lane preamble = preamble + mandates + workflow + tool-usage +
   // guidelines + git-section. Same every turn; belongs in cache key.
@@ -154,21 +154,21 @@ export function assembleGeminiSystemPrompt(
     toolUsageGuidelines(),
     operationalGuidelines(),
     gitRepoSection(),
-  ].join('\n\n')
+  ].join("\n\n");
 
   // Stable slot: lane preamble + user/project stable additions
   // (customInstructions, toolsAddendum, mcpIntro, skillsContext).
-  const stable = stableFrom(lanePreamble, parts)
+  const stable = stableFrom(lanePreamble, parts);
 
   // Volatile slot: memory + environment + git status.
-  const volatile = renderVolatileSlot(parts)
+  const volatile = renderVolatileSlot(parts);
 
   // `full` keeps the flat form for lanes/paths that can't carry the
   // split (e.g. non-cached legacy shim path). No boundary marker —
   // that was a Claude-Code leak; Gemini doesn't read it.
-  const full = flatten(stable, volatile)
+  const full = flatten(stable, volatile);
 
-  return { stable, volatile, full }
+  return { stable, volatile, full };
 }
 
 /**
@@ -181,8 +181,8 @@ export function buildGeminiSystemInstruction(
   model: string,
   parts: SystemPromptParts,
 ): { parts: Array<{ text: string }> } {
-  const { stable } = assembleGeminiSystemPrompt(model, parts)
-  return { parts: [{ text: stable }] }
+  const { stable } = assembleGeminiSystemPrompt(model, parts);
+  return { parts: [{ text: stable }] };
 }
 
 /**
@@ -193,6 +193,6 @@ export function buildFlatGeminiSystemPrompt(
   model: string,
   parts: SystemPromptParts,
 ): string {
-  const { full } = assembleGeminiSystemPrompt(model, parts)
-  return full
+  const { full } = assembleGeminiSystemPrompt(model, parts);
+  return full;
 }

@@ -1,7 +1,7 @@
 /**
  * Antigravity gray-area TOS disclosure.
  *
- * Non-negotiable per the Tau spec: before the first Antigravity
+ * Non-negotiable per the Zen spec: before the first Antigravity
  * OAuth flow on any machine, the user sees the six-line TOS risk
  * banner and has to explicitly acknowledge it. The ack is persisted
  * at ~/.claudex/antigravity-acknowledged.json with the SHA-256 of
@@ -20,10 +20,10 @@
  * etc.). This module exports the data, hash, and store only.
  */
 
-import { createHash } from 'crypto'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
+import { createHash } from "crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 
 // ─── Banner text ────────────────────────────────────────────────
 //
@@ -33,72 +33,73 @@ import { homedir } from 'os'
 //  - the acknowledgement
 //  - where to read more
 
-export const ANTIGRAVITY_BANNER_VERSION = 1
+export const ANTIGRAVITY_BANNER_VERSION = 1;
 
 export const ANTIGRAVITY_BANNER_TEXT = `
 Antigravity OAuth — Terms-of-Service disclosure
 
 Antigravity is Google's IDE OAuth that resells Gemini 3.x Pro and Claude 4.6
 through a single token. Using this credential from a non-IDE client
-(including Tau) is a GRAY-AREA use of Google's Terms of Service.
+(including Zen) is a GRAY-AREA use of Google's Terms of Service.
 Google has suspended accounts that rely on this pathway in the past.
 
 By continuing you acknowledge:
  • This is not an endorsed or supported integration.
  • Your Google account may be rate-limited, suspended, or permanently banned
    without prior notice.
- • You assume all risk. Tau has no recourse and no refund channel.
+ • You assume all risk. Zen has no recourse and no refund channel.
 
 If you do not accept this risk, cancel now and use a Gemini API key instead.
 See https://antigravity.google.com/terms for Google's current position.
-`.trim()
+`.trim();
 
 /** Stable hash of the banner text — re-ack required when this changes. */
 export function antigravityBannerHash(): string {
-  return createHash('sha256').update(ANTIGRAVITY_BANNER_TEXT).digest('hex')
+  return createHash("sha256").update(ANTIGRAVITY_BANNER_TEXT).digest("hex");
 }
 
 // ─── Storage ────────────────────────────────────────────────────
 
 interface AckRecord {
   /** SHA-256 of the banner text the user acked. */
-  sha: string
+  sha: string;
   /** Banner version number at ack time (for future forward-compat). */
-  version: number
+  version: number;
   /** ISO timestamp. */
-  acknowledgedAt: string
+  acknowledgedAt: string;
   /** "session" (local only) | "persistent" (apply across all sessions). */
-  scope: 'session' | 'persistent'
+  scope: "session" | "persistent";
 }
 
 interface AckStore {
-  version: 1
-  records: AckRecord[]
+  version: 1;
+  records: AckRecord[];
 }
 
-const ACK_DIR = join(homedir(), '.claudex')
-const ACK_FILE = join(ACK_DIR, 'antigravity-acknowledged.json')
+const ACK_DIR = join(homedir(), ".claudex");
+const ACK_FILE = join(ACK_DIR, "antigravity-acknowledged.json");
 
-let _sessionAck: AckRecord | null = null
+let _sessionAck: AckRecord | null = null;
 
 function readAckStore(): AckStore {
-  if (!existsSync(ACK_FILE)) return { version: 1, records: [] }
+  if (!existsSync(ACK_FILE)) return { version: 1, records: [] };
   try {
-    const raw = readFileSync(ACK_FILE, 'utf-8')
-    const parsed = JSON.parse(raw) as AckStore
+    const raw = readFileSync(ACK_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as AckStore;
     if (parsed.version !== 1 || !Array.isArray(parsed.records)) {
-      return { version: 1, records: [] }
+      return { version: 1, records: [] };
     }
-    return parsed
+    return parsed;
   } catch {
-    return { version: 1, records: [] }
+    return { version: 1, records: [] };
   }
 }
 
 function writeAckStore(store: AckStore): void {
   try {
-    if (!existsSync(ACK_DIR)) mkdirSync(ACK_DIR, { recursive: true, mode: 0o700 })
-    writeFileSync(ACK_FILE, JSON.stringify(store, null, 2), { mode: 0o600 })
+    if (!existsSync(ACK_DIR))
+      mkdirSync(ACK_DIR, { recursive: true, mode: 0o700 });
+    writeFileSync(ACK_FILE, JSON.stringify(store, null, 2), { mode: 0o600 });
   } catch {
     // Best-effort: session-scope ack still works even if disk save fails.
   }
@@ -111,10 +112,10 @@ function writeAckStore(store: AckStore): void {
  * Checks session scope first, then persistent (on-disk).
  */
 export function isAntigravityAcknowledged(): boolean {
-  const sha = antigravityBannerHash()
-  if (_sessionAck?.sha === sha) return true
-  const store = readAckStore()
-  return store.records.some(r => r.sha === sha)
+  const sha = antigravityBannerHash();
+  if (_sessionAck?.sha === sha) return true;
+  const store = readAckStore();
+  return store.records.some((r) => r.sha === sha);
 }
 
 /**
@@ -125,8 +126,8 @@ export function acknowledgeAntigravitySession(): void {
     sha: antigravityBannerHash(),
     version: ANTIGRAVITY_BANNER_VERSION,
     acknowledgedAt: new Date().toISOString(),
-    scope: 'session',
-  }
+    scope: "session",
+  };
 }
 
 /**
@@ -139,23 +140,23 @@ export function acknowledgeAntigravityPersistent(): void {
     sha: antigravityBannerHash(),
     version: ANTIGRAVITY_BANNER_VERSION,
     acknowledgedAt: new Date().toISOString(),
-    scope: 'persistent',
-  }
-  _sessionAck = record
-  const store = readAckStore()
+    scope: "persistent",
+  };
+  _sessionAck = record;
+  const store = readAckStore();
   // Replace any existing record with the same sha so the timestamp is current.
-  const filtered = store.records.filter(r => r.sha !== record.sha)
-  filtered.push(record)
-  writeAckStore({ version: 1, records: filtered })
+  const filtered = store.records.filter((r) => r.sha !== record.sha);
+  filtered.push(record);
+  writeAckStore({ version: 1, records: filtered });
 }
 
 /** Diagnostic: list all stored acks. */
 export function listAntigravityAcknowledgements(): AckRecord[] {
-  const store = readAckStore()
-  return store.records
+  const store = readAckStore();
+  return store.records;
 }
 
 /** Test hook — clears in-memory session ack. */
 export function _clearSessionAckForTest(): void {
-  _sessionAck = null
+  _sessionAck = null;
 }

@@ -1,12 +1,12 @@
-import type { Command } from '../../commands.js'
+import type { Command } from "../../commands.js";
 
 const status = {
-  type: 'local-jsx',
-  name: 'status',
+  type: "local-jsx",
+  name: "status",
   description:
-    'Show Tau status including version, model, account, API connectivity, and tool statuses',
+    "Show Zen status including version, model, account, API connectivity, and tool statuses",
   immediate: true,
-  load: () => import('./status.js'),
-} satisfies Command
+  load: () => import("./status.js"),
+} satisfies Command;
 
-export default status
+export default status;

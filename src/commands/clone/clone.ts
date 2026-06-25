@@ -1,17 +1,17 @@
-import { randomUUID, type UUID } from 'crypto'
-import { mkdir, readFile, writeFile } from 'fs/promises'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
-import type { LocalJSXCommandContext } from '../../commands.js'
-import { logEvent } from '../../services/analytics/index.js'
-import type { LocalJSXCommandOnDone } from '../../types/command.js'
+import { randomUUID, type UUID } from "crypto";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { getOriginalCwd, getSessionId } from "../../bootstrap/state.js";
+import type { LocalJSXCommandContext } from "../../commands.js";
+import { logEvent } from "../../services/analytics/index.js";
+import type { LocalJSXCommandOnDone } from "../../types/command.js";
 import type {
   ContentReplacementEntry,
   Entry,
   LogOption,
   SerializedMessage,
   TranscriptMessage,
-} from '../../types/logs.js'
-import { parseJSONL } from '../../utils/json.js'
+} from "../../types/logs.js";
+import { parseJSONL } from "../../utils/json.js";
 import {
   getFirstMeaningfulUserMessageTextContent,
   getProjectDir,
@@ -20,16 +20,16 @@ import {
   isTranscriptMessage,
   saveCustomTitle,
   searchSessionsByCustomTitle,
-} from '../../utils/sessionStorage.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { escapeRegExp } from '../../utils/stringUtils.js'
+} from "../../utils/sessionStorage.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
+import { escapeRegExp } from "../../utils/stringUtils.js";
 
 type TranscriptEntry = TranscriptMessage & {
   forkedFrom?: {
-    sessionId: string
-    messageUuid: UUID
-  }
-}
+    sessionId: string;
+    messageUuid: UUID;
+  };
+};
 
 /**
  * Derive a title seed from the LATEST meaningful user prompt — see the
@@ -37,19 +37,21 @@ type TranscriptEntry = TranscriptMessage & {
  * "first" when the transcript is a copy of an existing session.
  */
 function deriveFirstPrompt(transcript: SerializedMessage[]): string {
-  const reversed = [...transcript].reverse()
+  const reversed = [...transcript].reverse();
   const text =
     getFirstMeaningfulUserMessageTextContent(reversed) ??
-    getFirstMeaningfulUserMessageTextContent(transcript)
-  if (!text) return 'Cloned conversation'
-  return text.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Cloned conversation'
+    getFirstMeaningfulUserMessageTextContent(transcript);
+  if (!text) return "Cloned conversation";
+  return (
+    text.replace(/\s+/g, " ").trim().slice(0, 100) || "Cloned conversation"
+  );
 }
 
 function autoSuffix(label: string): string {
-  const now = new Date()
-  const hh = now.getHours().toString().padStart(2, '0')
-  const mm = now.getMinutes().toString().padStart(2, '0')
-  return `(${label} · ${hh}:${mm})`
+  const now = new Date();
+  const hh = now.getHours().toString().padStart(2, "0");
+  const mm = now.getMinutes().toString().padStart(2, "0");
+  return `(${label} · ${hh}:${mm})`;
 }
 
 /**
@@ -62,53 +64,53 @@ function autoSuffix(label: string): string {
  * - getUniqueCloneName uses "(Clone)" / "(Clone N)" instead of "(Branch)".
  */
 async function createClone(customTitle?: string): Promise<{
-  sessionId: UUID
-  title: string | undefined
-  clonePath: string
-  serializedMessages: SerializedMessage[]
-  contentReplacementRecords: ContentReplacementEntry['replacements']
+  sessionId: UUID;
+  title: string | undefined;
+  clonePath: string;
+  serializedMessages: SerializedMessage[];
+  contentReplacementRecords: ContentReplacementEntry["replacements"];
 }> {
-  const cloneSessionId = randomUUID() as UUID
-  const originalSessionId = getSessionId()
-  const projectDir = getProjectDir(getOriginalCwd())
-  const cloneSessionPath = getTranscriptPathForSession(cloneSessionId)
-  const currentTranscriptPath = getTranscriptPath()
+  const cloneSessionId = randomUUID() as UUID;
+  const originalSessionId = getSessionId();
+  const projectDir = getProjectDir(getOriginalCwd());
+  const cloneSessionPath = getTranscriptPathForSession(cloneSessionId);
+  const currentTranscriptPath = getTranscriptPath();
 
-  await mkdir(projectDir, { recursive: true, mode: 0o700 })
+  await mkdir(projectDir, { recursive: true, mode: 0o700 });
 
-  let transcriptContent: Buffer
+  let transcriptContent: Buffer;
   try {
-    transcriptContent = await readFile(currentTranscriptPath)
+    transcriptContent = await readFile(currentTranscriptPath);
   } catch {
-    throw new Error('No conversation to clone')
+    throw new Error("No conversation to clone");
   }
 
   if (transcriptContent.length === 0) {
-    throw new Error('No conversation to clone')
+    throw new Error("No conversation to clone");
   }
 
-  const entries = parseJSONL<Entry>(transcriptContent)
+  const entries = parseJSONL<Entry>(transcriptContent);
 
   const mainConversationEntries = entries.filter(
     (entry): entry is TranscriptMessage =>
       isTranscriptMessage(entry) && !entry.isSidechain,
-  )
+  );
 
   const contentReplacementRecords = entries
     .filter(
       (entry): entry is ContentReplacementEntry =>
-        entry.type === 'content-replacement' &&
+        entry.type === "content-replacement" &&
         entry.sessionId === originalSessionId,
     )
-    .flatMap(entry => entry.replacements)
+    .flatMap((entry) => entry.replacements);
 
   if (mainConversationEntries.length === 0) {
-    throw new Error('No messages to clone')
+    throw new Error("No messages to clone");
   }
 
-  let parentUuid: UUID | null = null
-  const lines: string[] = []
-  const serializedMessages: SerializedMessage[] = []
+  let parentUuid: UUID | null = null;
+  const lines: string[] = [];
+  const serializedMessages: SerializedMessage[] = [];
 
   for (const entry of mainConversationEntries) {
     const clonedEntry: TranscriptEntry = {
@@ -120,33 +122,33 @@ async function createClone(customTitle?: string): Promise<{
         sessionId: originalSessionId,
         messageUuid: entry.uuid,
       },
-    }
+    };
 
     const serialized: SerializedMessage = {
       ...entry,
       sessionId: cloneSessionId,
-    }
+    };
 
-    serializedMessages.push(serialized)
-    lines.push(jsonStringify(clonedEntry))
-    if (entry.type !== 'progress') {
-      parentUuid = entry.uuid
+    serializedMessages.push(serialized);
+    lines.push(jsonStringify(clonedEntry));
+    if (entry.type !== "progress") {
+      parentUuid = entry.uuid;
     }
   }
 
   if (contentReplacementRecords.length > 0) {
     const clonedReplacementEntry: ContentReplacementEntry = {
-      type: 'content-replacement',
+      type: "content-replacement",
       sessionId: cloneSessionId,
       replacements: contentReplacementRecords,
-    }
-    lines.push(jsonStringify(clonedReplacementEntry))
+    };
+    lines.push(jsonStringify(clonedReplacementEntry));
   }
 
-  await writeFile(cloneSessionPath, lines.join('\n') + '\n', {
-    encoding: 'utf8',
+  await writeFile(cloneSessionPath, lines.join("\n") + "\n", {
+    encoding: "utf8",
     mode: 0o600,
-  })
+  });
 
   return {
     sessionId: cloneSessionId,
@@ -154,35 +156,37 @@ async function createClone(customTitle?: string): Promise<{
     clonePath: cloneSessionPath,
     serializedMessages,
     contentReplacementRecords,
-  }
+  };
 }
 
 async function getUniqueCloneName(baseName: string): Promise<string> {
-  const candidateName = `${baseName} (Clone)`
+  const candidateName = `${baseName} (Clone)`;
   const existingWithExactName = await searchSessionsByCustomTitle(
     candidateName,
     { exact: true },
-  )
+  );
   if (existingWithExactName.length === 0) {
-    return candidateName
+    return candidateName;
   }
 
-  const existingClones = await searchSessionsByCustomTitle(`${baseName} (Clone`)
-  const usedNumbers = new Set<number>([1])
+  const existingClones = await searchSessionsByCustomTitle(
+    `${baseName} (Clone`,
+  );
+  const usedNumbers = new Set<number>([1]);
   const cloneNumberPattern = new RegExp(
     `^${escapeRegExp(baseName)} \\(Clone(?: (\\d+))?\\)$`,
-  )
+  );
   for (const session of existingClones) {
-    const match = session.customTitle?.match(cloneNumberPattern)
+    const match = session.customTitle?.match(cloneNumberPattern);
     if (match) {
-      if (match[1]) usedNumbers.add(parseInt(match[1], 10))
-      else usedNumbers.add(1)
+      if (match[1]) usedNumbers.add(parseInt(match[1], 10));
+      else usedNumbers.add(1);
     }
   }
 
-  let nextNumber = 2
-  while (usedNumbers.has(nextNumber)) nextNumber++
-  return `${baseName} (Clone ${nextNumber})`
+  let nextNumber = 2;
+  while (usedNumbers.has(nextNumber)) nextNumber++;
+  return `${baseName} (Clone ${nextNumber})`;
 }
 
 export async function call(
@@ -190,8 +194,8 @@ export async function call(
   context: LocalJSXCommandContext,
   args: string,
 ): Promise<React.ReactNode> {
-  const customSuffix = args?.trim() || undefined
-  const originalSessionId = getSessionId()
+  const customSuffix = args?.trim() || undefined;
+  const originalSessionId = getSessionId();
 
   try {
     const {
@@ -199,10 +203,10 @@ export async function call(
       clonePath,
       serializedMessages,
       contentReplacementRecords,
-    } = await createClone(customSuffix)
+    } = await createClone(customSuffix);
 
-    const now = new Date()
-    const firstPrompt = deriveFirstPrompt(serializedMessages)
+    const now = new Date();
+    const firstPrompt = deriveFirstPrompt(serializedMessages);
 
     // Naming policy:
     //   /clone           -> "<lastPrompt> (Clone · HH:MM)" — time stamp keeps
@@ -211,19 +215,19 @@ export async function call(
     //                       arbitrary "(Clone 2)" / "(Clone 3)" suffixes.
     //   /clone safe-x    -> "<lastPrompt> (Clone safe-x)" — explicit label
     //                       wins; the user told us what to call it.
-    const baseName = firstPrompt
+    const baseName = firstPrompt;
     const effectiveTitle = customSuffix
       ? `${baseName} (Clone ${customSuffix})`
-      : `${baseName} ${autoSuffix('Clone')}`
-    await saveCustomTitle(sessionId, effectiveTitle, clonePath)
+      : `${baseName} ${autoSuffix("Clone")}`;
+    await saveCustomTitle(sessionId, effectiveTitle, clonePath);
 
-    logEvent('tengu_conversation_forked', {
+    logEvent("tengu_conversation_forked", {
       message_count: serializedMessages.length,
       has_custom_title: !!customSuffix,
-    })
+    });
 
     const cloneLog: LogOption = {
-      date: now.toISOString().split('T')[0]!,
+      date: now.toISOString().split("T")[0]!,
       messages: serializedMessages,
       fullPath: clonePath,
       value: now.getTime(),
@@ -235,21 +239,23 @@ export async function call(
       sessionId,
       customTitle: effectiveTitle,
       contentReplacements: contentReplacementRecords,
-    }
+    };
 
-    const successMessage = `Cloned conversation. You are now in the clone — the original is preserved as a backup. Resume it with: tau -r ${originalSessionId}`
+    const successMessage = `Cloned conversation. You are now in the clone — the original is preserved as a backup. Resume it with: zen -r ${originalSessionId}`;
 
     if (context.resume) {
-      await context.resume(sessionId, cloneLog, 'fork')
-      onDone(successMessage, { display: 'system' })
+      await context.resume(sessionId, cloneLog, "fork");
+      onDone(successMessage, { display: "system" });
     } else {
-      onDone(`Cloned conversation. Resume the clone with: /resume ${sessionId}`)
+      onDone(
+        `Cloned conversation. Resume the clone with: /resume ${sessionId}`,
+      );
     }
-    return null
+    return null;
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Unknown error occurred'
-    onDone(`Failed to clone conversation: ${message}`)
-    return null
+      error instanceof Error ? error.message : "Unknown error occurred";
+    onDone(`Failed to clone conversation: ${message}`);
+    return null;
   }
 }

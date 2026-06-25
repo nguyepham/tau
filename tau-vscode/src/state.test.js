@@ -1,8 +1,8 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   chooseLaunchWorkspace,
@@ -10,97 +10,98 @@ const {
   findCommandPath,
   parseProfileFile,
   resolveCommandCheckPath,
-} = require('./state');
+} = require("./state");
 
-test('chooseLaunchWorkspace prefers the active workspace folder', () => {
+test("chooseLaunchWorkspace prefers the active workspace folder", () => {
   assert.deepEqual(
     chooseLaunchWorkspace({
-      activeWorkspacePath: '/repo-b',
-      workspacePaths: ['/repo-a', '/repo-b'],
+      activeWorkspacePath: "/repo-b",
+      workspacePaths: ["/repo-a", "/repo-b"],
     }),
-    { workspacePath: '/repo-b', source: 'active-workspace' },
+    { workspacePath: "/repo-b", source: "active-workspace" },
   );
 });
 
-test('chooseLaunchWorkspace falls back to the first workspace folder', () => {
+test("chooseLaunchWorkspace falls back to the first workspace folder", () => {
   assert.deepEqual(
     chooseLaunchWorkspace({
       activeWorkspacePath: null,
-      workspacePaths: ['/repo-a', '/repo-b'],
+      workspacePaths: ["/repo-a", "/repo-b"],
     }),
-    { workspacePath: '/repo-a', source: 'first-workspace' },
+    { workspacePath: "/repo-a", source: "first-workspace" },
   );
 });
 
-test('parseProfileFile returns null for invalid JSON', () => {
-  assert.equal(parseProfileFile('{bad json}'), null);
+test("parseProfileFile returns null for invalid JSON", () => {
+  assert.equal(parseProfileFile("{bad json}"), null);
 });
 
-test('parseProfileFile returns null for unsupported profiles', () => {
+test("parseProfileFile returns null for unsupported profiles", () => {
   assert.equal(
     parseProfileFile(
       JSON.stringify({
-        profile: 'lmstudio',
+        profile: "lmstudio",
         env: {},
-        createdAt: '2026-04-03T00:00:00.000Z',
+        createdAt: "2026-04-03T00:00:00.000Z",
       }),
     ),
     null,
   );
 });
 
-test('parseProfileFile returns null when env is missing', () => {
+test("parseProfileFile returns null when env is missing", () => {
   assert.equal(
     parseProfileFile(
       JSON.stringify({
-        profile: 'openai',
-        createdAt: '2026-04-03T00:00:00.000Z',
+        profile: "openai",
+        createdAt: "2026-04-03T00:00:00.000Z",
       }),
     ),
     null,
   );
 });
 
-test('parseProfileFile returns null when env is not an object', () => {
+test("parseProfileFile returns null when env is not an object", () => {
   assert.equal(
     parseProfileFile(
       JSON.stringify({
-        profile: 'openai',
-        env: ['OPENAI_MODEL=gpt-4o'],
-        createdAt: '2026-04-03T00:00:00.000Z',
+        profile: "openai",
+        env: ["OPENAI_MODEL=gpt-4o"],
+        createdAt: "2026-04-03T00:00:00.000Z",
       }),
     ),
     null,
   );
 });
 
-test('resolveCommandCheckPath resolves workspace-relative executables', () => {
+test("resolveCommandCheckPath resolves workspace-relative executables", () => {
   assert.equal(
-    resolveCommandCheckPath('./node_modules/.bin/tau', '/repo'),
-    require('node:path').resolve('/repo', './node_modules/.bin/tau'),
+    resolveCommandCheckPath("./node_modules/.bin/zen", "/repo"),
+    require("node:path").resolve("/repo", "./node_modules/.bin/zen"),
   );
 });
 
-test('resolveCommandCheckPath leaves bare commands alone', () => {
-  assert.equal(resolveCommandCheckPath('tau', '/repo'), null);
+test("resolveCommandCheckPath leaves bare commands alone", () => {
+  assert.equal(resolveCommandCheckPath("zen", "/repo"), null);
 });
 
-test('findCommandPath treats shell-like input as a literal executable name', t => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tau-command-'));
+test("findCommandPath treats shell-like input as a literal executable name", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "zen-command-"));
   t.after(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  const commandName = process.platform === 'win32'
-    ? 'tau & whoami'
-    : 'tau && whoami';
-  const executableName = process.platform === 'win32'
-    ? `${commandName}.cmd`
-    : commandName;
+  const commandName =
+    process.platform === "win32" ? "zen & whoami" : "zen && whoami";
+  const executableName =
+    process.platform === "win32" ? `${commandName}.cmd` : commandName;
   const executablePath = path.join(tempDir, executableName);
 
-  fs.writeFileSync(executablePath, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\n');
-  if (process.platform !== 'win32') {
+  fs.writeFileSync(
+    executablePath,
+    process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n",
+  );
+  if (process.platform !== "win32") {
     fs.chmodSync(executablePath, 0o755);
   }
 
@@ -108,7 +109,7 @@ test('findCommandPath treats shell-like input as a literal executable name', t =
     cwd: null,
     env: {
       PATH: tempDir,
-      PATHEXT: '.CMD;.EXE',
+      PATHEXT: ".CMD;.EXE",
     },
     platform: process.platform,
   });
@@ -117,67 +118,67 @@ test('findCommandPath treats shell-like input as a literal executable name', t =
   assert.equal(resolvedPath.toLowerCase(), executablePath.toLowerCase());
 });
 
-test('describeProviderState uses saved profile when present', () => {
+test("describeProviderState uses saved profile when present", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: false,
       env: {},
       profile: {
-        profile: 'ollama',
-        env: { OPENAI_MODEL: 'llama3.2' },
-        createdAt: '2026-04-03T00:00:00.000Z',
+        profile: "ollama",
+        env: { OPENAI_MODEL: "llama3.2" },
+        createdAt: "2026-04-03T00:00:00.000Z",
       },
     }),
     {
-      label: 'Ollama',
-      detail: 'llama3.2',
-      source: 'profile',
+      label: "Ollama",
+      detail: "llama3.2",
+      source: "profile",
     },
   );
 });
 
-test('describeProviderState reports LM Studio from openai profile base url', () => {
+test("describeProviderState reports LM Studio from openai profile base url", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: false,
       env: {},
       profile: {
-        profile: 'openai',
+        profile: "openai",
         env: {
-          OPENAI_BASE_URL: 'http://localhost:1234/v1',
-          OPENAI_MODEL: 'qwen2.5-coder',
+          OPENAI_BASE_URL: "http://localhost:1234/v1",
+          OPENAI_MODEL: "qwen2.5-coder",
         },
-        createdAt: '2026-04-03T00:00:00.000Z',
+        createdAt: "2026-04-03T00:00:00.000Z",
       },
     }),
     {
-      label: 'LM Studio',
-      detail: 'qwen2.5-coder',
-      source: 'profile',
+      label: "LM Studio",
+      detail: "qwen2.5-coder",
+      source: "profile",
     },
   );
 });
 
-test('describeProviderState reports environment-backed provider details', () => {
+test("describeProviderState reports environment-backed provider details", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: false,
       env: {
-        CLAUDE_CODE_USE_OPENAI: '1',
-        OPENAI_BASE_URL: 'http://localhost:11434/v1',
-        OPENAI_MODEL: 'llama3.2:3b',
+        CLAUDE_CODE_USE_OPENAI: "1",
+        OPENAI_BASE_URL: "http://localhost:11434/v1",
+        OPENAI_MODEL: "llama3.2:3b",
       },
       profile: null,
     }),
     {
-      label: 'Ollama',
-      detail: 'llama3.2:3b',
-      source: 'env',
+      label: "Ollama",
+      detail: "llama3.2:3b",
+      source: "env",
     },
   );
 });
 
-test('describeProviderState reports not-set when only the shim is enabled', () => {
+test("describeProviderState reports not-set when only the shim is enabled", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: true,
@@ -185,14 +186,14 @@ test('describeProviderState reports not-set when only the shim is enabled', () =
       profile: null,
     }),
     {
-      label: 'Provider not set',
-      detail: 'select a provider in Tau settings',
-      source: 'shim',
+      label: "Provider not set",
+      detail: "select a provider in Zen settings",
+      source: "shim",
     },
   );
 });
 
-test('describeProviderState defaults to Anthropic when nothing is configured', () => {
+test("describeProviderState defaults to Anthropic when nothing is configured", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: false,
@@ -200,25 +201,25 @@ test('describeProviderState defaults to Anthropic when nothing is configured', (
       profile: null,
     }),
     {
-      label: 'Anthropic',
-      detail: 'default provider (no override detected)',
-      source: 'unknown',
+      label: "Anthropic",
+      detail: "default provider (no override detected)",
+      source: "unknown",
     },
   );
 });
 
-test('describeProviderState respects activeProvider setting', () => {
+test("describeProviderState respects activeProvider setting", () => {
   assert.deepEqual(
     describeProviderState({
       shimEnabled: false,
       env: {},
       profile: null,
-      activeProvider: 'groq',
+      activeProvider: "groq",
     }),
     {
-      label: 'Groq',
-      detail: 'Tau setting',
-      source: 'env',
+      label: "Groq",
+      detail: "Zen setting",
+      source: "env",
     },
   );
 });

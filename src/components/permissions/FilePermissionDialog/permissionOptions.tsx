@@ -1,66 +1,85 @@
-import { homedir } from 'os';
-import { basename, join, sep } from 'path';
-import React, { type ReactNode } from 'react';
-import { getOriginalCwd } from '../../../bootstrap/state.js';
-import { Text } from '../../../ink.js';
-import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
-import type { ToolPermissionContext } from '../../../Tool.js';
-import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
-import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
-import { isBypassPermissionsModeDisabled } from '../../../utils/permissions/permissionSetup.js';
-import type { OptionWithDescription } from '../../CustomSelect/select.js';
+import { homedir } from "os";
+import { basename, join, sep } from "path";
+import { type ReactNode } from "react";
+import { getOriginalCwd } from "../../../bootstrap/state.js";
+import { Text } from "../../../ink.js";
+import { getShortcutDisplay } from "../../../keybindings/shortcutFormat.js";
+import type { ToolPermissionContext } from "../../../Tool.js";
+import { expandPath, getDirectoryForPath } from "../../../utils/path.js";
+import {
+  normalizeCaseForComparison,
+  pathInAllowedWorkingPath,
+} from "../../../utils/permissions/filesystem.js";
+import { isBypassPermissionsModeDisabled } from "../../../utils/permissions/permissionSetup.js";
+import type { OptionWithDescription } from "../../CustomSelect/select.js";
 /**
  * Check if a path is within the project's .claude/ folder.
- * This is used to determine whether to show the special ".tau folder" permission option.
+ * This is used to determine whether to show the special ".zen folder" permission option.
  */
 export function isInClaudeFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
   const claudeFolderPath = expandPath(`${getOriginalCwd()}/.claude`);
 
-  // Check if the path is within the project's .tau folder
+  // Check if the path is within the project's .zen folder
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedClaudeFolderPath = normalizeCaseForComparison(claudeFolderPath);
+  const normalizedClaudeFolderPath =
+    normalizeCaseForComparison(claudeFolderPath);
 
-  // Path must start with the .tau folder path (and be inside it, not just the folder itself)
-  return normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + sep.toLowerCase()) ||
-  // Also match case where sep is / on posix systems
-  normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + '/');
+  // Path must start with the .zen folder path (and be inside it, not just the folder itself)
+  return (
+    normalizedAbsolutePath.startsWith(
+      normalizedClaudeFolderPath + sep.toLowerCase(),
+    ) ||
+    // Also match case where sep is / on posix systems
+    normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + "/")
+  );
 }
 
 /**
  * Check if a path is within the global ~/.claude/ folder.
- * This is used to determine whether to show the special ".tau folder" permission option
+ * This is used to determine whether to show the special ".zen folder" permission option
  * for files in the user's home directory.
  */
 export function isInGlobalClaudeFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const globalClaudeFolderPath = join(homedir(), '.claude');
+  const globalClaudeFolderPath = join(homedir(), ".claude");
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(globalClaudeFolderPath);
-  return normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + '/');
+  const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(
+    globalClaudeFolderPath,
+  );
+  return (
+    normalizedAbsolutePath.startsWith(
+      normalizedGlobalClaudeFolderPath + sep.toLowerCase(),
+    ) ||
+    normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + "/")
+  );
 }
-export type PermissionOption = {
-  type: 'accept-once';
-} | {
-  type: 'accept-session';
-  scope?: 'claude-folder' | 'global-claude-folder';
-} | {
-  type: 'bypass-permissions';
-} | {
-  type: 'reject';
-};
+export type PermissionOption =
+  | {
+      type: "accept-once";
+    }
+  | {
+      type: "accept-session";
+      scope?: "claude-folder" | "global-claude-folder";
+    }
+  | {
+      type: "bypass-permissions";
+    }
+  | {
+      type: "reject";
+    };
 export type PermissionOptionWithLabel = OptionWithDescription<string> & {
   option: PermissionOption;
 };
-export type FileOperationType = 'read' | 'write' | 'create';
+export type FileOperationType = "read" | "write" | "create";
 export function getFilePermissionOptions({
   filePath,
   toolPermissionContext,
-  operationType = 'write',
+  operationType = "write",
   onRejectFeedbackChange,
   onAcceptFeedbackChange,
   yesInputMode = false,
-  noInputMode = false
+  noInputMode = false,
 }: {
   filePath: string;
   toolPermissionContext: ToolPermissionContext;
@@ -71,31 +90,38 @@ export function getFilePermissionOptions({
   noInputMode?: boolean;
 }): PermissionOptionWithLabel[] {
   const options: PermissionOptionWithLabel[] = [];
-  const modeCycleShortcut = getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab');
+  const modeCycleShortcut = getShortcutDisplay(
+    "chat:cycleMode",
+    "Chat",
+    "shift+tab",
+  );
 
   // When in input mode, show input field
   if (yesInputMode && onAcceptFeedbackChange) {
     options.push({
-      type: 'input',
-      label: 'Yes',
-      value: 'yes',
-      placeholder: 'and tell Tau what to do next',
+      type: "input",
+      label: "Yes",
+      value: "yes",
+      placeholder: "and tell Zen what to do next",
       onChange: onAcceptFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: {
-        type: 'accept-once'
-      }
+        type: "accept-once",
+      },
     });
   } else {
     options.push({
-      label: 'Yes',
-      value: 'yes',
+      label: "Yes",
+      value: "yes",
       option: {
-        type: 'accept-once'
-      }
+        type: "accept-once",
+      },
     });
   }
-  const inAllowedPath = pathInAllowedWorkingPath(filePath, toolPermissionContext);
+  const inAllowedPath = pathInAllowedWorkingPath(
+    filePath,
+    toolPermissionContext,
+  );
 
   // Check if this is a .claude/ folder path (project or global)
   const inClaudeFolder = isInClaudeFolder(filePath);
@@ -105,84 +131,92 @@ export function getFilePermissionOptions({
   // Note: Session-level options are always shown since they only affect in-memory state,
   // not persisted settings. The allowManagedPermissionRulesOnly setting only restricts
   // persisted permission rules.
-  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
+  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== "read") {
     options.push({
-      label: 'Yes, and allow Tau to edit its own settings for this session',
-      value: 'yes-claude-folder',
+      label: "Yes, and allow Zen to edit its own settings for this session",
+      value: "yes-claude-folder",
       option: {
-        type: 'accept-session',
-        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
-      }
+        type: "accept-session",
+        scope: inGlobalClaudeFolder ? "global-claude-folder" : "claude-folder",
+      },
     });
   } else {
     // Option 2: Allow all changes/reads during session
     let sessionLabel: ReactNode;
     if (inAllowedPath) {
       // Inside working directory
-      if (operationType === 'read') {
-        sessionLabel = 'Yes, during this session';
+      if (operationType === "read") {
+        sessionLabel = "Yes, during this session";
       } else {
-        sessionLabel = <Text>
-            Yes, allow all edits during this session{' '}
+        sessionLabel = (
+          <Text>
+            Yes, allow all edits during this session{" "}
             <Text bold>({modeCycleShortcut})</Text>
-          </Text>;
+          </Text>
+        );
       }
     } else {
       // Outside working directory - include directory name
       const dirPath = getDirectoryForPath(filePath);
-      const dirName = basename(dirPath) || 'this directory';
-      if (operationType === 'read') {
-        sessionLabel = <Text>
+      const dirName = basename(dirPath) || "this directory";
+      if (operationType === "read") {
+        sessionLabel = (
+          <Text>
             Yes, allow reading from <Text bold>{dirName}/</Text> during this
             session
-          </Text>;
+          </Text>
+        );
       } else {
-        sessionLabel = <Text>
+        sessionLabel = (
+          <Text>
             Yes, allow all edits in <Text bold>{dirName}/</Text> during this
             session <Text bold>({modeCycleShortcut})</Text>
-          </Text>;
+          </Text>
+        );
       }
     }
     options.push({
       label: sessionLabel,
-      value: 'yes-session',
+      value: "yes-session",
       option: {
-        type: 'accept-session'
-      }
+        type: "accept-session",
+      },
     });
   }
   const bypassPermissionsDisabled = isBypassPermissionsModeDisabled();
   options.push({
-    label: 'Yes, dangerously skip permissions for this session',
-    value: 'yes-bypass-permissions',
-    description: bypassPermissionsDisabled ? 'Disabled by settings or policy.' : 'Tau will stop asking before running tools.',
+    label: "Yes, dangerously skip permissions for this session",
+    value: "yes-bypass-permissions",
+    description: bypassPermissionsDisabled
+      ? "Disabled by settings or policy."
+      : "Zen will stop asking before running tools.",
     disabled: bypassPermissionsDisabled,
     option: {
-      type: 'bypass-permissions'
-    }
+      type: "bypass-permissions",
+    },
   });
 
   // When in input mode, show input field for reject
   if (noInputMode && onRejectFeedbackChange) {
     options.push({
-      type: 'input',
-      label: 'No',
-      value: 'no',
-      placeholder: 'and tell Tau what to do differently',
+      type: "input",
+      label: "No",
+      value: "no",
+      placeholder: "and tell Zen what to do differently",
       onChange: onRejectFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: {
-        type: 'reject'
-      }
+        type: "reject",
+      },
     });
   } else {
     // Not in input mode - simple option
     options.push({
-      label: 'No',
-      value: 'no',
+      label: "No",
+      value: "no",
       option: {
-        type: 'reject'
-      }
+        type: "reject",
+      },
     });
   }
   return options;

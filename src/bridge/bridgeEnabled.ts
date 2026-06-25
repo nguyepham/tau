@@ -1,23 +1,23 @@
-import { feature } from 'bun:bundle'
+import { feature } from "bun:bundle";
 import {
   checkGate_CACHED_OR_BLOCKING,
   getDynamicConfig_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../services/analytics/growthbook.js'
+} from "../services/analytics/growthbook.js";
 // Namespace import breaks the bridgeEnabled → auth → config → bridgeEnabled
 // cycle — authModule.foo is a live binding, so by the time the helpers below
 // call it, auth.js is fully loaded. Previously used require() for the same
 // deferral, but require() hits a CJS cache that diverges from the ESM
 // namespace after mock.module() (daemon/auth.test.ts), breaking spyOn.
-import * as authModule from '../utils/auth.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
-import { lt } from '../utils/semver.js'
+import * as authModule from "../utils/auth.js";
+import { isEnvTruthy } from "../utils/envUtils.js";
+import { lt } from "../utils/semver.js";
 
 /**
  * Runtime check for bridge mode entitlement.
  *
  * Remote Control requires a claude.ai subscription (the bridge auths to CCR
- * with the claude.ai OAuth token). isTauAISubscriber() excludes
+ * with the claude.ai OAuth token). isZenAISubscriber() excludes
  * Bedrock/Vertex/Foundry, apiKeyHelper/gateway deployments, env-var API keys,
  * and Console API logins — none of which have the OAuth token CCR needs.
  * See github.com/deshaw/anthropic-issues/issues/24.
@@ -29,10 +29,10 @@ export function isBridgeEnabled(): boolean {
   // Positive ternary pattern — see docs/feature-gating.md.
   // Negative pattern (if (!feature(...)) return) does not eliminate
   // inline string literals from external builds.
-  return feature('BRIDGE_MODE')
+  return feature("BRIDGE_MODE")
     ? isClaudeAISubscriber() &&
-        getFeatureValue_CACHED_MAY_BE_STALE('tengu_ccr_bridge', false)
-    : false
+        getFeatureValue_CACHED_MAY_BE_STALE("tengu_ccr_bridge", false)
+    : false;
 }
 
 /**
@@ -48,10 +48,10 @@ export function isBridgeEnabled(): boolean {
  * `isBridgeEnabled()` instead.
  */
 export async function isBridgeEnabledBlocking(): Promise<boolean> {
-  return feature('BRIDGE_MODE')
+  return feature("BRIDGE_MODE")
     ? isClaudeAISubscriber() &&
-        (await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))
-    : false
+        (await checkGate_CACHED_OR_BLOCKING("tengu_ccr_bridge"))
+    : false;
 }
 
 /**
@@ -68,50 +68,50 @@ export async function isBridgeEnabledBlocking(): Promise<boolean> {
  * that re-login would fix it. See CC-1165 / gh-33105.
  */
 export async function getBridgeDisabledReason(): Promise<string | null> {
-  if (feature('BRIDGE_MODE')) {
+  if (feature("BRIDGE_MODE")) {
     if (!isClaudeAISubscriber()) {
-      return 'Remote Control requires a claude.ai subscription. Run `tau auth login` to sign in with your claude.ai account.'
+      return "Remote Control requires a claude.ai subscription. Run `zen auth login` to sign in with your claude.ai account.";
     }
     if (!hasProfileScope()) {
-      return 'Remote Control requires a full-scope login token. Long-lived tokens (from `tau setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `tau auth login` to use Remote Control.'
+      return "Remote Control requires a full-scope login token. Long-lived tokens (from `zen setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `zen auth login` to use Remote Control.";
     }
     if (!getOauthAccountInfo()?.organizationUuid) {
-      return 'Unable to determine your organization for Remote Control eligibility. Run `tau auth login` to refresh your account information.'
+      return "Unable to determine your organization for Remote Control eligibility. Run `zen auth login` to refresh your account information.";
     }
-    if (!(await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))) {
-      return 'Remote Control is not yet enabled for your account.'
+    if (!(await checkGate_CACHED_OR_BLOCKING("tengu_ccr_bridge"))) {
+      return "Remote Control is not yet enabled for your account.";
     }
-    return null
+    return null;
   }
-  return 'Remote Control is not available in this build.'
+  return "Remote Control is not available in this build.";
 }
 
 // try/catch: main.tsx:5698 calls isBridgeEnabled() while defining the Commander
-// program, before enableConfigs() runs. isTauAISubscriber() → getGlobalConfig()
+// program, before enableConfigs() runs. isZenAISubscriber() → getGlobalConfig()
 // throws "Config accessed before allowed" there. Pre-config, no OAuth token can
 // exist anyway — false is correct. Same swallow getFeatureValue_CACHED_MAY_BE_STALE
 // already does at growthbook.ts:775-780.
 function isClaudeAISubscriber(): boolean {
   try {
-    return authModule.isClaudeAISubscriber()
+    return authModule.isClaudeAISubscriber();
   } catch {
-    return false
+    return false;
   }
 }
 function hasProfileScope(): boolean {
   try {
-    return authModule.hasProfileScope()
+    return authModule.hasProfileScope();
   } catch {
-    return false
+    return false;
   }
 }
 function getOauthAccountInfo(): ReturnType<
   typeof authModule.getOauthAccountInfo
 > {
   try {
-    return authModule.getOauthAccountInfo()
+    return authModule.getOauthAccountInfo();
   } catch {
-    return undefined
+    return undefined;
   }
 }
 
@@ -124,9 +124,9 @@ function getOauthAccountInfo(): ReturnType<
  * on the env-based implementation regardless of this gate.
  */
 export function isEnvLessBridgeEnabled(): boolean {
-  return feature('BRIDGE_MODE')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_bridge_repl_v2', false)
-    : false
+  return feature("BRIDGE_MODE")
+    ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_bridge_repl_v2", false)
+    : false;
 }
 
 /**
@@ -139,12 +139,12 @@ export function isEnvLessBridgeEnabled(): boolean {
  * Defaults to true — the shim stays active until explicitly disabled.
  */
 export function isCseShimEnabled(): boolean {
-  return feature('BRIDGE_MODE')
+  return feature("BRIDGE_MODE")
     ? getFeatureValue_CACHED_MAY_BE_STALE(
-        'tengu_bridge_repl_v2_cse_shim_enabled',
+        "tengu_bridge_repl_v2_cse_shim_enabled",
         true,
       )
-    : true
+    : true;
 }
 
 /**
@@ -161,15 +161,15 @@ export function checkBridgeMinVersion(): string | null {
   // Positive pattern — see docs/feature-gating.md.
   // Negative pattern (if (!feature(...)) return) does not eliminate
   // inline string literals from external builds.
-  if (feature('BRIDGE_MODE')) {
+  if (feature("BRIDGE_MODE")) {
     const config = getDynamicConfig_CACHED_MAY_BE_STALE<{
-      minVersion: string
-    }>('tengu_bridge_min_version', { minVersion: '0.0.0' })
+      minVersion: string;
+    }>("tengu_bridge_min_version", { minVersion: "0.0.0" });
     if (config.minVersion && lt(MACRO.VERSION, config.minVersion)) {
-      return `Your version of Tau (${MACRO.VERSION}) is too old for Remote Control.\nVersion ${config.minVersion} or higher is required. Run \`tau update\` to update.`
+      return `Your version of Zen (${MACRO.VERSION}) is too old for Remote Control.\nVersion ${config.minVersion} or higher is required. Run \`zen update\` to update.`;
     }
   }
-  return null
+  return null;
 }
 
 /**
@@ -183,9 +183,9 @@ export function checkBridgeMinVersion(): string | null {
  * config.ts → growthbook.ts import cycle (growthbook.ts → user.ts → config.ts).
  */
 export function getCcrAutoConnectDefault(): boolean {
-  return feature('CCR_AUTO_CONNECT')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_harbor', false)
-    : false
+  return feature("CCR_AUTO_CONNECT")
+    ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_cobalt_harbor", false)
+    : false;
 }
 
 /**
@@ -195,8 +195,8 @@ export function getCcrAutoConnectDefault(): boolean {
  * local opt-in; GrowthBook controls rollout.
  */
 export function isCcrMirrorEnabled(): boolean {
-  return feature('CCR_MIRROR')
+  return feature("CCR_MIRROR")
     ? isEnvTruthy(process.env.CLAUDE_CODE_CCR_MIRROR) ||
-        getFeatureValue_CACHED_MAY_BE_STALE('tengu_ccr_mirror', false)
-    : false
+        getFeatureValue_CACHED_MAY_BE_STALE("tengu_ccr_mirror", false)
+    : false;
 }

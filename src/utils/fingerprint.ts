@@ -1,11 +1,11 @@
-import { createHash } from 'crypto'
-import type { AssistantMessage, UserMessage } from '../types/message.js'
+import { createHash } from "crypto";
+import type { AssistantMessage, UserMessage } from "../types/message.js";
 
 /**
  * Hardcoded salt from backend validation.
  * Must match exactly for fingerprint validation to pass.
  */
-export const FINGERPRINT_SALT = '59cf53e54c78'
+export const FINGERPRINT_SALT = "59cf53e54c78";
 
 /**
  * Extracts text content from the first user message.
@@ -16,29 +16,29 @@ export const FINGERPRINT_SALT = '59cf53e54c78'
 export function extractFirstMessageText(
   messages: (UserMessage | AssistantMessage)[],
 ): string {
-  const firstUserMessage = messages.find(msg => msg.type === 'user')
+  const firstUserMessage = messages.find((msg) => msg.type === "user");
   if (!firstUserMessage) {
-    return ''
+    return "";
   }
 
-  const content = firstUserMessage.message.content
+  const content = firstUserMessage.message.content;
 
-  if (typeof content === 'string') {
-    return content
+  if (typeof content === "string") {
+    return content;
   }
 
   if (Array.isArray(content)) {
-    const textBlock = content.find(block => block.type === 'text')
-    if (textBlock && textBlock.type === 'text') {
-      return textBlock.text
+    const textBlock = content.find((block) => block.type === "text");
+    if (textBlock && textBlock.type === "text") {
+      return textBlock.text;
     }
   }
 
-  return ''
+  return "";
 }
 
 /**
- * Computes 3-character fingerprint for Tau attribution.
+ * Computes 3-character fingerprint for Zen attribution.
  * Algorithm: SHA256(SALT + msg[4] + msg[7] + msg[20] + version)[:3]
  * IMPORTANT: Do not change this method without careful coordination with
  * 1P and 3P (Bedrock, Vertex, Azure) APIs.
@@ -52,14 +52,14 @@ export function computeFingerprint(
   version: string,
 ): string {
   // Extract chars at indices [4, 7, 20], use "0" if index not found
-  const indices = [4, 7, 20]
-  const chars = indices.map(i => messageText[i] || '0').join('')
+  const indices = [4, 7, 20];
+  const chars = indices.map((i) => messageText[i] || "0").join("");
 
-  const fingerprintInput = `${FINGERPRINT_SALT}${chars}${version}`
+  const fingerprintInput = `${FINGERPRINT_SALT}${chars}${version}`;
 
   // SHA256 hash, return first 3 hex chars
-  const hash = createHash('sha256').update(fingerprintInput).digest('hex')
-  return hash.slice(0, 3)
+  const hash = createHash("sha256").update(fingerprintInput).digest("hex");
+  return hash.slice(0, 3);
 }
 
 /**
@@ -71,6 +71,6 @@ export function computeFingerprint(
 export function computeFingerprintFromMessages(
   messages: (UserMessage | AssistantMessage)[],
 ): string {
-  const firstMessageText = extractFirstMessageText(messages)
-  return computeFingerprint(firstMessageText, MACRO.VERSION)
+  const firstMessageText = extractFirstMessageText(messages);
+  return computeFingerprint(firstMessageText, MACRO.VERSION);
 }

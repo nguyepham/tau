@@ -5,8 +5,8 @@
  * dedicated lane module" exercise is genuinely simpler to defer: the
  * existing `src/services/api/claude.ts` already speaks the Anthropic
  * Messages API natively (cache markers, streaming, tool_use IR shape,
- * thinking blocks — all of it) exactly as Tau upstream does.
- * Tau WAS the native Claude lane; the legacy path IS the
+ * thinking blocks — all of it) exactly as Zen upstream does.
+ * Zen WAS the native Claude lane; the legacy path IS the
  * native path.
  *
  * This module exists for three specific reasons:
@@ -29,15 +29,15 @@
  * via its `isAnthropicModel` early return. Zero behavioral risk.
  */
 
-export { claudeLane, ClaudeLane } from './loop.js'
+export { claudeLane, ClaudeLane } from "./loop.js";
 
-import { claudeLane } from './loop.js'
-import { registerLane } from '../dispatcher.js'
+import { registerLane } from "../dispatcher.js";
+import { claudeLane } from "./loop.js";
 
 export function initClaudeLane(): void {
-  registerLane(claudeLane)
+  registerLane(claudeLane);
   // Unhealthy on purpose — see the module doc above. Dispatcher's
   // isAnthropicModel special case means no Claude request ever enters
   // this lane; we're registered purely for the /lane / /models UX.
-  claudeLane.setHealthy(false)
+  claudeLane.setHealthy(false);
 }

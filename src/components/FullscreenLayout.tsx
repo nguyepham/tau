@@ -1,20 +1,36 @@
+import figures from "figures";
+import React, {
+  createContext,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { c as _c } from "react/compiler-runtime";
-import figures from 'figures';
-import React, { createContext, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { fileURLToPath } from 'url';
-import { ModalContext } from '../context/modalContext.js';
-import { PromptOverlayProvider, usePromptOverlay, usePromptOverlayDialog } from '../context/promptOverlayContext.js';
-import { useTerminalSize } from '../hooks/useTerminalSize.js';
-import ScrollBox, { type ScrollBoxHandle } from '../ink/components/ScrollBox.js';
-import instances from '../ink/instances.js';
-import { Box, Text, useAnimationFrame } from '../ink.js';
-import type { Message } from '../types/message.js';
-import { openBrowser, openPath } from '../utils/browser.js';
-import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
-import { plural } from '../utils/stringUtils.js';
-import { isNullRenderingAttachment } from './messages/nullRenderingAttachments.js';
-import PromptInputFooterSuggestions from './PromptInput/PromptInputFooterSuggestions.js';
-import type { StickyPrompt } from './VirtualMessageList.js';
+import { fileURLToPath } from "url";
+import { ModalContext } from "../context/modalContext.js";
+import {
+  PromptOverlayProvider,
+  usePromptOverlay,
+  usePromptOverlayDialog,
+} from "../context/promptOverlayContext.js";
+import { useTerminalSize } from "../hooks/useTerminalSize.js";
+import { Box, Text, useAnimationFrame } from "../ink.js";
+import ScrollBox, {
+  type ScrollBoxHandle,
+} from "../ink/components/ScrollBox.js";
+import instances from "../ink/instances.js";
+import type { Message } from "../types/message.js";
+import { openBrowser, openPath } from "../utils/browser.js";
+import { isFullscreenEnvEnabled } from "../utils/fullscreen.js";
+import { plural } from "../utils/stringUtils.js";
+import { isNullRenderingAttachment } from "./messages/nullRenderingAttachments.js";
+import PromptInputFooterSuggestions from "./PromptInput/PromptInputFooterSuggestions.js";
+import type { StickyPrompt } from "./VirtualMessageList.js";
 
 /** Rows of transcript context kept visible above the modal pane's ▔ divider. */
 const MODAL_TRANSCRIPT_PEEK = 2;
@@ -26,7 +42,7 @@ const MODAL_TRANSCRIPT_PEEK = 2;
 export const ScrollChromeContext = createContext<{
   setStickyPrompt: (p: StickyPrompt | null) => void;
 }>({
-  setStickyPrompt: () => {}
+  setStickyPrompt: () => {},
 });
 type Props = {
   /** Content that scrolls (messages, tool output) */
@@ -134,7 +150,10 @@ export function useUnseenDivider(messageCount: number): {
     //   at max (Sarah Deaton, #claude-code-feedback 2026-03-15)
     // pendingDelta: scrollBy accumulates without updating scrollTop. Without
     // it, wheeling up from max would see scrollTop==max and suppress the pill.
-    const max = Math.max(0, handle.getScrollHeight() - handle.getViewportHeight());
+    const max = Math.max(
+      0,
+      handle.getScrollHeight() - handle.getViewportHeight(),
+    );
     if (handle.getScrollTop() + handle.getPendingDelta() >= max) return;
     // Snapshot only on the FIRST scroll-away. onScrollAway fires on EVERY
     // scroll action (not just the initial break from sticky) — this guard
@@ -175,56 +194,62 @@ export function useUnseenDivider(messageCount: number): {
       setDividerIndex(null);
     }
   }, [messageCount, dividerIndex]);
-  const shiftDivider = useCallback((indexDelta: number, heightDelta: number) => {
-    setDividerIndex(idx => idx === null ? null : idx + indexDelta);
-    if (dividerYRef.current !== null) {
-      dividerYRef.current += heightDelta;
-    }
-  }, []);
+  const shiftDivider = useCallback(
+    (indexDelta: number, heightDelta: number) => {
+      setDividerIndex((idx) => (idx === null ? null : idx + indexDelta));
+      if (dividerYRef.current !== null) {
+        dividerYRef.current += heightDelta;
+      }
+    },
+    [],
+  );
   return {
     dividerIndex,
     dividerYRef,
     onScrollAway,
     onRepin,
     jumpToNew,
-    shiftDivider
+    shiftDivider,
   };
 }
 
 /**
  * Counts assistant turns in messages[dividerIndex..end). A "turn" is what
- * users think of as "a new message from Tau" — not raw assistant entries
+ * users think of as "a new message from Zen" — not raw assistant entries
  * (one turn yields multiple entries: tool_use blocks + text blocks). We count
  * non-assistant→assistant transitions, but only for entries that actually
  * carry text — tool-use-only entries are skipped (like progress messages)
  * so "⏺ Searched for 13 patterns, read 6 files" doesn't tick the pill.
  */
-export function countUnseenAssistantTurns(messages: readonly Message[], dividerIndex: number): number {
+export function countUnseenAssistantTurns(
+  messages: readonly Message[],
+  dividerIndex: number,
+): number {
   let count = 0;
   let prevWasAssistant = false;
   for (let i = dividerIndex; i < messages.length; i++) {
     const m = messages[i]!;
-    if (m.type === 'progress') continue;
+    if (m.type === "progress") continue;
     // Tool-use-only assistant entries aren't "new messages" to the user —
     // skip them the same way we skip progress. prevWasAssistant is NOT
     // updated, so a text block immediately following still counts as the
     // same turn (tool_use + text from one API response = 1).
-    if (m.type === 'assistant' && !assistantHasVisibleText(m)) continue;
-    const isAssistant = m.type === 'assistant';
+    if (m.type === "assistant" && !assistantHasVisibleText(m)) continue;
+    const isAssistant = m.type === "assistant";
     if (isAssistant && !prevWasAssistant) count++;
     prevWasAssistant = isAssistant;
   }
   return count;
 }
 function assistantHasVisibleText(m: Message): boolean {
-  if (m.type !== 'assistant') return false;
+  if (m.type !== "assistant") return false;
   for (const b of m.message.content) {
-    if (b.type === 'text' && b.text.trim() !== '') return true;
+    if (b.type === "text" && b.text.trim() !== "") return true;
   }
   return false;
 }
 export type UnseenDivider = {
-  firstUnseenUuid: Message['uuid'];
+  firstUnseenUuid: Message["uuid"];
   count: number;
 };
 
@@ -236,16 +261,23 @@ export type UnseenDivider = {
  * that countUnseenAssistantTurns skips — count floors at 1 so the pill
  * flips from "Jump to bottom" to "1 new message". Without the floor,
  * the pill stays "Jump to bottom" through an entire tool-call sequence
- * until Tau's text response lands.
+ * until Zen's text response lands.
  */
-export function computeUnseenDivider(messages: readonly Message[], dividerIndex: number | null): UnseenDivider | undefined {
+export function computeUnseenDivider(
+  messages: readonly Message[],
+  dividerIndex: number | null,
+): UnseenDivider | undefined {
   if (dividerIndex === null) return undefined;
   // Skip progress and null-rendering attachments when picking the divider
   // anchor — Messages.tsx filters these out of renderableMessages before the
   // dividerBeforeIndex search, so their UUID wouldn't be found (CC-724).
   // Hook attachments use randomUUID() so nothing shares their 24-char prefix.
   let anchorIdx = dividerIndex;
-  while (anchorIdx < messages.length && (messages[anchorIdx]?.type === 'progress' || isNullRenderingAttachment(messages[anchorIdx]!))) {
+  while (
+    anchorIdx < messages.length &&
+    (messages[anchorIdx]?.type === "progress" ||
+      isNullRenderingAttachment(messages[anchorIdx]!))
+  ) {
     anchorIdx++;
   }
   const uuid = messages[anchorIdx]?.uuid;
@@ -253,7 +285,7 @@ export function computeUnseenDivider(messages: readonly Message[], dividerIndex:
   const count = countUnseenAssistantTurns(messages, dividerIndex);
   return {
     firstUnseenUuid: uuid,
-    count: Math.max(1, count)
+    count: Math.max(1, count),
   };
 }
 
@@ -283,21 +315,18 @@ export function FullscreenLayout(t0) {
     hidePill: t1,
     hideSticky: t2,
     newMessageCount: t3,
-    onPillClick
+    onPillClick,
   } = t0;
   const hidePill = t1 === undefined ? false : t1;
   const hideSticky = t2 === undefined ? false : t2;
   const newMessageCount = t3 === undefined ? 0 : t3;
   const centerBottom = t0.centerBottom === undefined ? false : t0.centerBottom;
-  const {
-    rows: terminalRows,
-    columns
-  } = useTerminalSize();
+  const { rows: terminalRows, columns } = useTerminalSize();
   const [stickyPrompt, setStickyPrompt] = useState(null);
   let t4;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = {
-      setStickyPrompt
+      setStickyPrompt,
     };
     $[0] = t4;
   } else {
@@ -306,7 +335,7 @@ export function FullscreenLayout(t0) {
   const chromeCtx = t4;
   let t5;
   if ($[1] !== scrollRef) {
-    t5 = listener => scrollRef?.current?.subscribe(listener) ?? _temp;
+    t5 = (listener) => scrollRef?.current?.subscribe(listener) ?? _temp;
     $[1] = scrollRef;
     $[2] = t5;
   } else {
@@ -321,7 +350,10 @@ export function FullscreenLayout(t0) {
       if (!s || dividerY == null) {
         return false;
       }
-      return s.getScrollTop() + s.getPendingDelta() + s.getViewportHeight() < dividerY;
+      return (
+        s.getScrollTop() + s.getPendingDelta() + s.getViewportHeight() <
+        dividerY
+      );
     };
     $[3] = dividerYRef;
     $[4] = scrollRef;
@@ -340,11 +372,17 @@ export function FullscreenLayout(t0) {
   useLayoutEffect(_temp3, t7);
   if (isFullscreenEnvEnabled()) {
     const sticky = hideSticky ? null : stickyPrompt;
-    const headerPrompt = sticky != null && sticky !== "clicked" && overlay == null ? sticky : null;
+    const headerPrompt =
+      sticky != null && sticky !== "clicked" && overlay == null ? sticky : null;
     const padCollapsed = sticky != null && overlay == null;
     let t8;
     if ($[7] !== headerPrompt) {
-      t8 = headerPrompt && <StickyPromptHeader text={headerPrompt.text} onClick={headerPrompt.scrollTo} />;
+      t8 = headerPrompt && (
+        <StickyPromptHeader
+          text={headerPrompt.text}
+          onClick={headerPrompt.scrollTo}
+        />
+      );
       $[7] = headerPrompt;
       $[8] = t8;
     } else {
@@ -353,15 +391,35 @@ export function FullscreenLayout(t0) {
     const t9 = padCollapsed ? 0 : 1;
     let t10;
     if ($[9] !== scrollable) {
-      t10 = <ScrollChromeContext value={chromeCtx}>{scrollable}</ScrollChromeContext>;
+      t10 = (
+        <ScrollChromeContext value={chromeCtx}>
+          {scrollable}
+        </ScrollChromeContext>
+      );
       $[9] = scrollable;
       $[10] = t10;
     } else {
       t10 = $[10];
     }
     let t11;
-    if ($[11] !== overlay || $[12] !== scrollRef || $[13] !== t10 || $[14] !== t9) {
-      t11 = <ScrollBox ref={scrollRef} flexGrow={1} flexDirection="column" paddingTop={t9} stickyScroll={true}>{t10}{overlay}</ScrollBox>;
+    if (
+      $[11] !== overlay ||
+      $[12] !== scrollRef ||
+      $[13] !== t10 ||
+      $[14] !== t9
+    ) {
+      t11 = (
+        <ScrollBox
+          ref={scrollRef}
+          flexGrow={1}
+          flexDirection="column"
+          paddingTop={t9}
+          stickyScroll={true}
+        >
+          {t10}
+          {overlay}
+        </ScrollBox>
+      );
       $[11] = overlay;
       $[12] = scrollRef;
       $[13] = t10;
@@ -371,8 +429,16 @@ export function FullscreenLayout(t0) {
       t11 = $[15];
     }
     let t12;
-    if ($[16] !== hidePill || $[17] !== newMessageCount || $[18] !== onPillClick || $[19] !== overlay || $[20] !== pillVisible) {
-      t12 = !hidePill && pillVisible && overlay == null && <NewMessagesPill count={newMessageCount} onClick={onPillClick} />;
+    if (
+      $[16] !== hidePill ||
+      $[17] !== newMessageCount ||
+      $[18] !== onPillClick ||
+      $[19] !== overlay ||
+      $[20] !== pillVisible
+    ) {
+      t12 = !hidePill && pillVisible && overlay == null && (
+        <NewMessagesPill count={newMessageCount} onClick={onPillClick} />
+      );
       $[16] = hidePill;
       $[17] = newMessageCount;
       $[18] = onPillClick;
@@ -384,7 +450,11 @@ export function FullscreenLayout(t0) {
     }
     let t13;
     if ($[22] !== bottomFloat) {
-      t13 = bottomFloat != null && <Box position="absolute" bottom={0} right={0} opaque={true}>{bottomFloat}</Box>;
+      t13 = bottomFloat != null && (
+        <Box position="absolute" bottom={0} right={0} opaque={true}>
+          {bottomFloat}
+        </Box>
+      );
       $[22] = bottomFloat;
       $[23] = t13;
     } else {
@@ -392,7 +462,14 @@ export function FullscreenLayout(t0) {
     }
     let t14;
     if ($[24] !== t11 || $[25] !== t12 || $[26] !== t13 || $[27] !== t8) {
-      t14 = <Box flexGrow={1} flexDirection="column" overflow="hidden">{t8}{t11}{t12}{t13}</Box>;
+      t14 = (
+        <Box flexGrow={1} flexDirection="column" overflow="hidden">
+          {t8}
+          {t11}
+          {t12}
+          {t13}
+        </Box>
+      );
       $[24] = t11;
       $[25] = t12;
       $[26] = t13;
@@ -412,14 +489,55 @@ export function FullscreenLayout(t0) {
       t15 = $[29];
       t16 = $[30];
     }
-    const t17 = <BottomSlot bottom={bottom} centered={centerBottom} columns={columns} rows={terminalRows} suggestionsOverlay={t15} dialogOverlay={t16} />;
+    const t17 = (
+      <BottomSlot
+        bottom={bottom}
+        centered={centerBottom}
+        columns={columns}
+        rows={terminalRows}
+        suggestionsOverlay={t15}
+        dialogOverlay={t16}
+      />
+    );
     let t18;
-    if ($[33] !== columns || $[34] !== modal || $[35] !== modalScrollRef || $[36] !== terminalRows) {
-      t18 = modal != null && <ModalContext value={{
-        rows: terminalRows - MODAL_TRANSCRIPT_PEEK - 1,
-        columns: columns - 4,
-        scrollRef: modalScrollRef ?? null
-      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(columns)}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
+    if (
+      $[33] !== columns ||
+      $[34] !== modal ||
+      $[35] !== modalScrollRef ||
+      $[36] !== terminalRows
+    ) {
+      t18 = modal != null && (
+        <ModalContext
+          value={{
+            rows: terminalRows - MODAL_TRANSCRIPT_PEEK - 1,
+            columns: columns - 4,
+            scrollRef: modalScrollRef ?? null,
+          }}
+        >
+          <Box
+            position="absolute"
+            bottom={0}
+            left={0}
+            right={0}
+            maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK}
+            flexDirection="column"
+            overflow="hidden"
+            opaque={true}
+          >
+            <Box flexShrink={0}>
+              <Text color="permission">{"\u2594".repeat(columns)}</Text>
+            </Box>
+            <Box
+              flexDirection="column"
+              paddingX={2}
+              flexShrink={0}
+              overflow="hidden"
+            >
+              {modal}
+            </Box>
+          </Box>
+        </ModalContext>
+      );
       $[33] = columns;
       $[34] = modal;
       $[35] = modalScrollRef;
@@ -430,7 +548,13 @@ export function FullscreenLayout(t0) {
     }
     let t19;
     if ($[38] !== t14 || $[39] !== t17 || $[40] !== t18) {
-      t19 = <PromptOverlayProvider>{t14}{t17}{t18}</PromptOverlayProvider>;
+      t19 = (
+        <PromptOverlayProvider>
+          {t14}
+          {t17}
+          {t18}
+        </PromptOverlayProvider>
+      );
       $[38] = t14;
       $[39] = t17;
       $[40] = t18;
@@ -441,8 +565,20 @@ export function FullscreenLayout(t0) {
     return t19;
   }
   let t8;
-  if ($[42] !== bottom || $[43] !== modal || $[44] !== overlay || $[45] !== scrollable) {
-    t8 = <>{scrollable}{bottom}{overlay}{modal}</>;
+  if (
+    $[42] !== bottom ||
+    $[43] !== modal ||
+    $[44] !== overlay ||
+    $[45] !== scrollable
+  ) {
+    t8 = (
+      <>
+        {scrollable}
+        {bottom}
+        {overlay}
+        {modal}
+      </>
+    );
     $[42] = bottom;
     $[43] = modal;
     $[44] = overlay;
@@ -467,11 +603,20 @@ const CENTERED_BOTTOM_LIFT_RATIO = 0.4;
 const CENTERED_BOTTOM_FRAME_MS = 36;
 function getCenteredBottomWidth(columns: number): number {
   if (columns < CENTERED_BOTTOM_MIN_WIDTH + 8) return columns;
-  return Math.min(columns - 4, Math.max(CENTERED_BOTTOM_MIN_WIDTH, Math.floor(columns * CENTERED_BOTTOM_WIDTH_RATIO)));
+  return Math.min(
+    columns - 4,
+    Math.max(
+      CENTERED_BOTTOM_MIN_WIDTH,
+      Math.floor(columns * CENTERED_BOTTOM_WIDTH_RATIO),
+    ),
+  );
 }
 function getCenteredBottomLift(rows: number, centered: boolean): number {
   if (!centered || rows < 16) return 0;
-  return Math.max(4, Math.min(Math.floor(rows * CENTERED_BOTTOM_LIFT_RATIO), rows - 12));
+  return Math.max(
+    4,
+    Math.min(Math.floor(rows * CENTERED_BOTTOM_LIFT_RATIO), rows - 12),
+  );
 }
 function BottomSlot(t0: {
   bottom: ReactNode;
@@ -481,52 +626,62 @@ function BottomSlot(t0: {
   suggestionsOverlay: ReactNode;
   dialogOverlay: ReactNode;
 }): React.ReactNode {
-  const {
-    bottom,
-    centered,
-    columns,
-    rows,
-    suggestionsOverlay,
-    dialogOverlay
-} = t0;
+  const { bottom, centered, columns, rows, suggestionsOverlay, dialogOverlay } =
+    t0;
   const targetLift = getCenteredBottomLift(rows, centered);
   const targetWidth = centered ? getCenteredBottomWidth(columns) : columns;
   const [lift, setLift] = useState(targetLift);
   const [width, setWidth] = useState(targetWidth);
-  const [ref, time] = useAnimationFrame(lift !== targetLift || width !== targetWidth ? CENTERED_BOTTOM_FRAME_MS : null);
+  const [ref, time] = useAnimationFrame(
+    lift !== targetLift || width !== targetWidth
+      ? CENTERED_BOTTOM_FRAME_MS
+      : null,
+  );
   useEffect(() => {
     if (lift === targetLift && width === targetWidth) return;
 
-    setLift(current => {
+    setLift((current) => {
       const delta = targetLift - current;
       if (delta === 0) return current;
 
       const step = Math.max(1, Math.ceil(Math.abs(delta) * 0.36));
       const next = current + Math.sign(delta) * step;
-      return Math.sign(targetLift - next) !== Math.sign(delta) ? targetLift : next;
+      return Math.sign(targetLift - next) !== Math.sign(delta)
+        ? targetLift
+        : next;
     });
-    setWidth(current => {
+    setWidth((current) => {
       const delta = targetWidth - current;
       if (delta === 0) return current;
 
       const step = Math.max(1, Math.ceil(Math.abs(delta) * 0.32));
       const next = current + Math.sign(delta) * step;
-      return Math.sign(targetWidth - next) !== Math.sign(delta) ? targetWidth : next;
+      return Math.sign(targetWidth - next) !== Math.sign(delta)
+        ? targetWidth
+        : next;
     });
   }, [lift, targetLift, targetWidth, width, time]);
 
-  return <Box ref={ref} flexDirection="column" flexShrink={0} width="100%">
+  return (
+    <Box ref={ref} flexDirection="column" flexShrink={0} width="100%">
       <Box flexDirection="column" width="100%" maxHeight="50%">
         {suggestionsOverlay}
         {dialogOverlay}
-        <Box flexDirection="column" width="100%" flexGrow={1} overflowY="hidden" alignItems={width < columns ? "center" : undefined}>
+        <Box
+          flexDirection="column"
+          width="100%"
+          flexGrow={1}
+          overflowY="hidden"
+          alignItems={width < columns ? "center" : undefined}
+        >
           <Box flexDirection="column" width={width}>
             {bottom}
           </Box>
         </Box>
       </Box>
       {lift > 0 ? <Box height={lift} flexShrink={0} /> : null}
-    </Box>;
+    </Box>
+  );
 }
 function _temp3() {
   if (!isFullscreenEnvEnabled()) {
@@ -553,10 +708,7 @@ function _temp2(url) {
 function _temp() {}
 function NewMessagesPill(t0) {
   const $ = _c(10);
-  const {
-    count,
-    onClick
-  } = t0;
+  const { count, onClick } = t0;
   const [hover, setHover] = useState(false);
   let t1;
   let t2;
@@ -572,7 +724,8 @@ function NewMessagesPill(t0) {
   const t3 = hover ? "userMessageBackgroundHover" : "userMessageBackground";
   let t4;
   if ($[2] !== count) {
-    t4 = count > 0 ? `${count} new ${plural(count, "message")}` : "Jump to bottom";
+    t4 =
+      count > 0 ? `${count} new ${plural(count, "message")}` : "Jump to bottom";
     $[2] = count;
     $[3] = t4;
   } else {
@@ -580,7 +733,12 @@ function NewMessagesPill(t0) {
   }
   let t5;
   if ($[4] !== t3 || $[5] !== t4) {
-    t5 = <Text backgroundColor={t3} dimColor={true}>{" "}{t4}{" "}{figures.arrowDown}{" "}</Text>;
+    t5 = (
+      <Text backgroundColor={t3} dimColor={true}>
+        {" "}
+        {t4} {figures.arrowDown}{" "}
+      </Text>
+    );
     $[4] = t3;
     $[5] = t4;
     $[6] = t5;
@@ -589,7 +747,19 @@ function NewMessagesPill(t0) {
   }
   let t6;
   if ($[7] !== onClick || $[8] !== t5) {
-    t6 = <Box position="absolute" bottom={0} left={0} right={0} justifyContent="center"><Box onClick={onClick} onMouseEnter={t1} onMouseLeave={t2}>{t5}</Box></Box>;
+    t6 = (
+      <Box
+        position="absolute"
+        bottom={0}
+        left={0}
+        right={0}
+        justifyContent="center"
+      >
+        <Box onClick={onClick} onMouseEnter={t1} onMouseLeave={t2}>
+          {t5}
+        </Box>
+      </Box>
+    );
     $[7] = onClick;
     $[8] = t5;
     $[9] = t6;
@@ -600,7 +770,7 @@ function NewMessagesPill(t0) {
 }
 
 // Context breadcrumb: when scrolled up into history, pin the current
-// conversation turn's prompt above the viewport so you know what Tau was
+// conversation turn's prompt above the viewport so you know what Zen was
 // responding to. Normal-flow sibling BEFORE the ScrollBox (mirrors the pill
 // below it) — shrinks the ScrollBox by exactly 1 row via flex, stays outside
 // the DECSTBM scroll region. Click jumps back to the prompt.
@@ -613,10 +783,7 @@ function NewMessagesPill(t0) {
 // keeps the ScrollBox anchored; only the header TEXT changes, not its box.
 function StickyPromptHeader(t0) {
   const $ = _c(8);
-  const {
-    text,
-    onClick
-  } = t0;
+  const { text, onClick } = t0;
   const [hover, setHover] = useState(false);
   const t1 = hover ? "userMessageBackgroundHover" : "userMessageBackground";
   let t2;
@@ -632,7 +799,11 @@ function StickyPromptHeader(t0) {
   }
   let t4;
   if ($[2] !== text) {
-    t4 = <Text color="subtle" wrap="truncate-end">{figures.pointer} {text}</Text>;
+    t4 = (
+      <Text color="subtle" wrap="truncate-end">
+        {figures.pointer} {text}
+      </Text>
+    );
     $[2] = text;
     $[3] = t4;
   } else {
@@ -640,7 +811,20 @@ function StickyPromptHeader(t0) {
   }
   let t5;
   if ($[4] !== onClick || $[5] !== t1 || $[6] !== t4) {
-    t5 = <Box flexShrink={0} width="100%" height={1} paddingRight={1} backgroundColor={t1} onClick={onClick} onMouseEnter={t2} onMouseLeave={t3}>{t4}</Box>;
+    t5 = (
+      <Box
+        flexShrink={0}
+        width="100%"
+        height={1}
+        paddingRight={1}
+        backgroundColor={t1}
+        onClick={onClick}
+        onMouseEnter={t2}
+        onMouseLeave={t3}
+      >
+        {t4}
+      </Box>
+    );
     $[4] = onClick;
     $[5] = t1;
     $[6] = t4;
@@ -666,8 +850,30 @@ function SuggestionsOverlay() {
     return null;
   }
   let t0;
-  if ($[0] !== data.maxColumnWidth || $[1] !== data.selectedSuggestion || $[2] !== data.suggestions) {
-    t0 = <Box position="absolute" bottom="100%" left={0} right={0} paddingX={2} paddingTop={1} flexDirection="column" opaque={true}><PromptInputFooterSuggestions suggestions={data.suggestions} selectedSuggestion={data.selectedSuggestion} maxColumnWidth={data.maxColumnWidth} overlay={true} /></Box>;
+  if (
+    $[0] !== data.maxColumnWidth ||
+    $[1] !== data.selectedSuggestion ||
+    $[2] !== data.suggestions
+  ) {
+    t0 = (
+      <Box
+        position="absolute"
+        bottom="100%"
+        left={0}
+        right={0}
+        paddingX={2}
+        paddingTop={1}
+        flexDirection="column"
+        opaque={true}
+      >
+        <PromptInputFooterSuggestions
+          suggestions={data.suggestions}
+          selectedSuggestion={data.selectedSuggestion}
+          maxColumnWidth={data.maxColumnWidth}
+          overlay={true}
+        />
+      </Box>
+    );
     $[0] = data.maxColumnWidth;
     $[1] = data.selectedSuggestion;
     $[2] = data.suggestions;
@@ -689,7 +895,11 @@ function DialogOverlay() {
   }
   let t0;
   if ($[0] !== node) {
-    t0 = <Box position="absolute" bottom="100%" left={0} right={0} opaque={true}>{node}</Box>;
+    t0 = (
+      <Box position="absolute" bottom="100%" left={0} right={0} opaque={true}>
+        {node}
+      </Box>
+    );
     $[0] = node;
     $[1] = t0;
   } else {

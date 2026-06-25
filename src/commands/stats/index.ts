@@ -1,10 +1,10 @@
-import type { Command } from '../../commands.js'
+import type { Command } from "../../commands.js";
 
 const stats = {
-  type: 'local-jsx',
-  name: 'stats',
-  description: 'Show your Tau usage statistics and activity',
-  load: () => import('./stats.js'),
-} satisfies Command
+  type: "local-jsx",
+  name: "stats",
+  description: "Show your Zen usage statistics and activity",
+  load: () => import("./stats.js"),
+} satisfies Command;
 
-export default stats
+export default stats;

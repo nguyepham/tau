@@ -1,10 +1,10 @@
 // VS Code's diagnostic severity values are 0–3 (Error, Warning, Info, Hint).
 // We translate to short strings so the CLI's prompt formatter stays
-// implementation-agnostic — matches Tau's own getDiagnostics shape.
-const SEVERITY_LABELS = ['Error', 'Warning', 'Information', 'Hint'];
+// implementation-agnostic — matches Zen's own getDiagnostics shape.
+const SEVERITY_LABELS = ["Error", "Warning", "Information", "Hint"];
 
 function severityLabel(severity) {
-  return SEVERITY_LABELS[severity] || 'Information';
+  return SEVERITY_LABELS[severity] || "Information";
 }
 
 function rangeToObject(range) {
@@ -20,7 +20,7 @@ function diagnosticToWire(diag) {
     message: diag.message,
     source: diag.source || undefined,
     code:
-      typeof diag.code === 'object' && diag.code !== null
+      typeof diag.code === "object" && diag.code !== null
         ? String(diag.code.value)
         : diag.code !== undefined
           ? String(diag.code)
@@ -33,7 +33,7 @@ function diagnosticToWire(diag) {
  * Build the getDiagnostics handler. `vscodeApi` is injected so the unit tests
  * can run without spinning up a VS Code extension host.
  *
- * Args contract (matches Tau's MCP IDE tool):
+ * Args contract (matches Zen's MCP IDE tool):
  *   { uri?: string }  — file URI to scope to. Omit for all workspace diagnostics.
  *
  * Return shape: a single text content block whose JSON body is an array of
@@ -42,7 +42,7 @@ function diagnosticToWire(diag) {
  */
 function createGetDiagnosticsHandler(vscodeApi) {
   return async function getDiagnostics(args) {
-    const targetUri = args && typeof args.uri === 'string' ? args.uri : null;
+    const targetUri = args && typeof args.uri === "string" ? args.uri : null;
 
     let entries;
     if (targetUri) {
@@ -65,7 +65,7 @@ function createGetDiagnosticsHandler(vscodeApi) {
     return {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: JSON.stringify(entries),
         },
       ],

@@ -1,31 +1,39 @@
+import { homedir } from "os";
+import React from "react";
 import { c as _c } from "react/compiler-runtime";
-import { homedir } from 'os';
-import React from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
-import { setSessionTrustAccepted } from '../../bootstrap/state.js';
-import type { Command } from '../../commands.js';
-import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
-import { Box, Link, Text } from '../../ink.js';
-import { useKeybinding } from '../../keybindings/useKeybinding.js';
-import { getMcpConfigsByScope } from '../../services/mcp/config.js';
-import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js';
-import { checkHasTrustDialogAccepted, saveCurrentProjectConfig } from '../../utils/config.js';
-import { getCwd } from '../../utils/cwd.js';
-import { getFsImplementation } from '../../utils/fsOperations.js';
-import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
-import { Select } from '../CustomSelect/index.js';
-import { PermissionDialog } from '../permissions/PermissionDialog.js';
-import { getApiKeyHelperSources, getAwsCommandsSources, getBashPermissionSources, getDangerousEnvVarsSources, getGcpCommandsSources, getHooksSources, getOtelHeadersHelperSources } from './utils.js';
+import { logEvent } from "src/services/analytics/index.js";
+import { setSessionTrustAccepted } from "../../bootstrap/state.js";
+import type { Command } from "../../commands.js";
+import { useExitOnCtrlCDWithKeybindings } from "../../hooks/useExitOnCtrlCDWithKeybindings.js";
+import { Box, Link, Text } from "../../ink.js";
+import { useKeybinding } from "../../keybindings/useKeybinding.js";
+import { getMcpConfigsByScope } from "../../services/mcp/config.js";
+import { BASH_TOOL_NAME } from "../../tools/BashTool/toolName.js";
+import {
+  checkHasTrustDialogAccepted,
+  saveCurrentProjectConfig,
+} from "../../utils/config.js";
+import { getCwd } from "../../utils/cwd.js";
+import { getFsImplementation } from "../../utils/fsOperations.js";
+import { gracefulShutdownSync } from "../../utils/gracefulShutdown.js";
+import { Select } from "../CustomSelect/index.js";
+import { PermissionDialog } from "../permissions/PermissionDialog.js";
+import {
+  getApiKeyHelperSources,
+  getAwsCommandsSources,
+  getBashPermissionSources,
+  getDangerousEnvVarsSources,
+  getGcpCommandsSources,
+  getHooksSources,
+  getOtelHeadersHelperSources,
+} from "./utils.js";
 type Props = {
   onDone(): void;
   commands?: Command[];
 };
 export function TrustDialog(t0) {
   const $ = _c(33);
-  const {
-    onDone,
-    commands
-  } = t0;
+  const { onDone, commands } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getMcpConfigsByScope("project");
@@ -33,9 +41,7 @@ export function TrustDialog(t0) {
   } else {
     t1 = $[0];
   }
-  const {
-    servers: projectServers
-  } = t1;
+  const { servers: projectServers } = t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = Object.keys(projectServers);
@@ -124,7 +130,8 @@ export function TrustDialog(t0) {
     t11 = $[12];
   }
   const hasSkillsBash = t11;
-  const hasAnyBashExecution = bashSettingSources.length > 0 || hasSlashCommandBash || hasSkillsBash;
+  const hasAnyBashExecution =
+    bashSettingSources.length > 0 || hasSlashCommandBash || hasSkillsBash;
   const hasTrustDialogAccepted = checkHasTrustDialogAccepted();
   let t12;
   let t13;
@@ -140,10 +147,19 @@ export function TrustDialog(t0) {
         hasAwsCommands,
         hasGcpCommands,
         hasOtelHeadersHelper,
-        hasDangerousEnvVars
+        hasDangerousEnvVars,
       });
     };
-    t13 = [hasMcpServers, hasHooks, hasAnyBashExecution, hasApiKeyHelper, hasAwsCommands, hasGcpCommands, hasOtelHeadersHelper, hasDangerousEnvVars];
+    t13 = [
+      hasMcpServers,
+      hasHooks,
+      hasAnyBashExecution,
+      hasApiKeyHelper,
+      hasAwsCommands,
+      hasGcpCommands,
+      hasOtelHeadersHelper,
+      hasDangerousEnvVars,
+    ];
     $[13] = hasAnyBashExecution;
     $[14] = t12;
     $[15] = t13;
@@ -169,7 +185,7 @@ export function TrustDialog(t0) {
         hasAwsCommands,
         hasGcpCommands,
         hasOtelHeadersHelper,
-        hasDangerousEnvVars
+        hasDangerousEnvVars,
       });
       if (isHomeDir_0) {
         setSessionTrustAccepted(true);
@@ -189,7 +205,7 @@ export function TrustDialog(t0) {
   let t15;
   if ($[19] === Symbol.for("react.memo_cache_sentinel")) {
     t15 = {
-      context: "Confirmation"
+      context: "Confirmation",
     };
     $[19] = t15;
   } else {
@@ -205,8 +221,16 @@ export function TrustDialog(t0) {
   let t18;
   if ($[20] === Symbol.for("react.memo_cache_sentinel")) {
     t16 = <Text bold={true}>{getFsImplementation().cwd()}</Text>;
-    t17 = <Text>Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what{"'"}s in this folder first.</Text>;
-    t18 = <Text>Tau{"'"}ll be able to read, edit, and execute files here.</Text>;
+    t17 = (
+      <Text>
+        Quick safety check: Is this a project you created or one you trust?
+        (Like your own code, a well-known open source project, or work from your
+        team). If not, take a moment to review what{"'"}s in this folder first.
+      </Text>
+    );
+    t18 = (
+      <Text>Zen{"'"}ll be able to read, edit, and execute files here.</Text>
+    );
     $[20] = t16;
     $[21] = t17;
     $[22] = t18;
@@ -217,27 +241,42 @@ export function TrustDialog(t0) {
   }
   let t19;
   if ($[23] === Symbol.for("react.memo_cache_sentinel")) {
-    t19 = <Text dimColor={true}><Link url="https://code.claude.com/docs/en/security">Security guide</Link></Text>;
+    t19 = (
+      <Text dimColor={true}>
+        <Link url="https://code.claude.com/docs/en/security">
+          Security guide
+        </Link>
+      </Text>
+    );
     $[23] = t19;
   } else {
     t19 = $[23];
   }
   let t20;
   if ($[24] === Symbol.for("react.memo_cache_sentinel")) {
-    t20 = [{
-      label: "Yes, I trust this folder",
-      value: "enable_all"
-    }, {
-      label: "No, exit",
-      value: "exit"
-    }];
+    t20 = [
+      {
+        label: "Yes, I trust this folder",
+        value: "enable_all",
+      },
+      {
+        label: "No, exit",
+        value: "exit",
+      },
+    ];
     $[24] = t20;
   } else {
     t20 = $[24];
   }
   let t21;
   if ($[25] !== onChange) {
-    t21 = <Select options={t20} onChange={value_0 => onChange(value_0 as 'enable_all' | 'exit')} onCancel={() => onChange("exit")} />;
+    t21 = (
+      <Select
+        options={t20}
+        onChange={(value_0) => onChange(value_0 as "enable_all" | "exit")}
+        onCancel={() => onChange("exit")}
+      />
+    );
     $[25] = onChange;
     $[26] = t21;
   } else {
@@ -245,7 +284,15 @@ export function TrustDialog(t0) {
   }
   let t22;
   if ($[27] !== exitState.keyName || $[28] !== exitState.pending) {
-    t22 = <Text dimColor={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to cancel</>}</Text>;
+    t22 = (
+      <Text dimColor={true}>
+        {exitState.pending ? (
+          <>Press {exitState.keyName} again to exit</>
+        ) : (
+          <>Enter to confirm · Esc to cancel</>
+        )}
+      </Text>
+    );
     $[27] = exitState.keyName;
     $[28] = exitState.pending;
     $[29] = t22;
@@ -254,7 +301,22 @@ export function TrustDialog(t0) {
   }
   let t23;
   if ($[30] !== t21 || $[31] !== t22) {
-    t23 = <PermissionDialog color="warning" titleColor="warning" title="Accessing workspace:"><Box flexDirection="column" gap={1} paddingTop={1}>{t16}{t17}{t18}{t19}{t21}{t22}</Box></PermissionDialog>;
+    t23 = (
+      <PermissionDialog
+        color="warning"
+        titleColor="warning"
+        title="Accessing workspace:"
+      >
+        <Box flexDirection="column" gap={1} paddingTop={1}>
+          {t16}
+          {t17}
+          {t18}
+          {t19}
+          {t21}
+          {t22}
+        </Box>
+      </PermissionDialog>
+    );
     $[30] = t21;
     $[31] = t22;
     $[32] = t23;
@@ -272,17 +334,30 @@ function _temp6() {
 function _temp5(current) {
   return {
     ...current,
-    hasTrustDialogAccepted: true
+    hasTrustDialogAccepted: true,
   };
 }
 function _temp4(command_0) {
-  return command_0.type === "prompt" && (command_0.loadedFrom === "skills" || command_0.loadedFrom === "plugin") && (command_0.source === "projectSettings" || command_0.source === "localSettings" || command_0.source === "plugin") && command_0.allowedTools?.some(_temp3);
+  return (
+    command_0.type === "prompt" &&
+    (command_0.loadedFrom === "skills" || command_0.loadedFrom === "plugin") &&
+    (command_0.source === "projectSettings" ||
+      command_0.source === "localSettings" ||
+      command_0.source === "plugin") &&
+    command_0.allowedTools?.some(_temp3)
+  );
 }
 function _temp3(tool_0) {
   return tool_0 === BASH_TOOL_NAME || tool_0.startsWith(BASH_TOOL_NAME + "(");
 }
 function _temp2(command) {
-  return command.type === "prompt" && command.loadedFrom === "commands_DEPRECATED" && (command.source === "projectSettings" || command.source === "localSettings") && command.allowedTools?.some(_temp);
+  return (
+    command.type === "prompt" &&
+    command.loadedFrom === "commands_DEPRECATED" &&
+    (command.source === "projectSettings" ||
+      command.source === "localSettings") &&
+    command.allowedTools?.some(_temp)
+  );
 }
 function _temp(tool) {
   return tool === BASH_TOOL_NAME || tool.startsWith(BASH_TOOL_NAME + "(");

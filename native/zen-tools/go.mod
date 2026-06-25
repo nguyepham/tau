@@ -1,4 +1,4 @@
-module github.com/abdoknbgit/tau/native/tau-tools
+module github.com/abdoknbgit/zen/native/zen-tools
 
 go 1.25.8
 

@@ -1,4 +1,4 @@
-import { getAutoMemLearnedPath, getAutoMemPath } from '../../memdir/paths.js'
+import { getAutoMemLearnedPath, getAutoMemPath } from "../../memdir/paths.js";
 
 /**
  * Agent instructions for each /learned action. The native /learned menu
@@ -16,11 +16,11 @@ import { getAutoMemLearnedPath, getAutoMemPath } from '../../memdir/paths.js'
  * fixes.
  */
 
-export const ACTIONS = ['view', 'learn', 'edit', 'delete'] as const
-export type LearnedAction = (typeof ACTIONS)[number]
+export const ACTIONS = ["view", "learn", "edit", "delete"] as const;
+export type LearnedAction = (typeof ACTIONS)[number];
 
 export function isLearnedAction(s: string): s is LearnedAction {
-  return (ACTIONS as readonly string[]).includes(s)
+  return (ACTIONS as readonly string[]).includes(s);
 }
 
 /** The bar every lesson must clear. Shared by the menu actions and the
@@ -37,34 +37,34 @@ Save things like:
 
 Do NOT save: project-specific trivia, one-off fixes, routine implementation steps, anything obvious from reading the code, or a restatement of the task. When in doubt, save nothing — a junk lesson is worse than no lesson.
 
-A good lesson is **portable**: no file paths, symbol names, or line numbers — phrase it as a general rule. Pick \`type\`: \`user\`/\`feedback\` for preferences, \`project\`/\`reference\` for technical principles.`
+A good lesson is **portable**: no file paths, symbol names, or line numbers — phrase it as a general rule. Pick \`type\`: \`user\`/\`feedback\` for preferences, \`project\`/\`reference\` for technical principles.`;
 
 /** Shared header with the live active-memory path. */
 function header(): string {
-  const activeDir = getAutoMemPath()
+  const activeDir = getAutoMemPath();
   return `# Self-Learning
 
 Approved lessons live in the active memory dir: \`${activeDir}\` — as topic files marked \`origin: learned\` in their frontmatter, each with a one-line pointer in \`MEMORY.md\`. They are loaded and used from the NEXT session on (writing one mid-session never affects the current session's cache).
 
-This command is **only** about managing learned lessons. Do NOT resume, continue, or offer to continue any other task from the conversation — even if one is pending. Do exactly the one action below, then stop.`
+This command is **only** about managing learned lessons. Do NOT resume, continue, or offer to continue any other task from the conversation — even if one is pending. Do exactly the one action below, then stop.`;
 }
 
 const SHARED_RULES = `## Rules
 - Always confirm before deleting or overwriting.
 - An approved lesson = a topic file in the active memory dir carrying \`origin: learned\` + a one-line \`MEMORY.md\` pointer (\`- [Title](file.md) — short hook\`, under ~150 chars). That pointer is what makes it active next session — never skip it.
-- Only ever touch \`origin: learned\` files and their \`MEMORY.md\` pointer lines. Never modify the user's own (non-\`origin: learned\`) memories unless they explicitly ask.`
+- Only ever touch \`origin: learned\` files and their \`MEMORY.md\` pointer lines. Never modify the user's own (non-\`origin: learned\`) memories unless they explicitly ask.`;
 
 const PROMPTS: Record<LearnedAction, () => string> = {
   view: () => {
-    const stagingDir = getAutoMemLearnedPath()
+    const stagingDir = getAutoMemLearnedPath();
     return `${header()}
 
 ## Task: show what I've learned
-List every active lesson — the \`origin: learned\` files in the active memory dir — as concise bullet points (one per lesson, its general takeaway). These are what Tau actually uses. If there are none, say so.
+List every active lesson — the \`origin: learned\` files in the active memory dir — as concise bullet points (one per lesson, its general takeaway). These are what Zen actually uses. If there are none, say so.
 
 Then check \`${stagingDir}\` for any leftover staged proposals from the old two-step flow. If any exist, list them separately under **Leftover proposals** and offer to either **activate** them (move the file into the active dir + add a \`MEMORY.md\` pointer) or **delete** them. If the dir is empty or missing, ignore it. Otherwise change nothing.
 
-${SHARED_RULES}`
+${SHARED_RULES}`;
   },
 
   learn: () => `${header()}
@@ -98,9 +98,9 @@ ${SHARED_RULES}`,
 List the active lessons (\`origin: learned\` files) as a **numbered list**, one bullet each. Do NOT use the AskUserQuestion tool for this list — there may be more than 4 lessons, and AskUserQuestion is capped at 4 options. Ask the user which one(s) are not worth keeping. Confirm, then delete the file(s) AND remove their matching \`MEMORY.md\` pointer line(s).
 
 ${SHARED_RULES}`,
-}
+};
 
-export const HELP_TEXT = `/learned — review and manage what Tau learns automatically.
+export const HELP_TEXT = `/learned — review and manage what Zen learns automatically.
 
 Usage:
   /learned            open the menu (navigate with ↑/↓, Enter to pick, Esc to cancel)
@@ -111,13 +111,13 @@ Usage:
   /learned toggle     turn self-learning on/off (on|off also work)
 
 Approve a lesson and it's saved and used from the next session — no extra promote step.
-Lessons are always a single critical, general, reusable bullet — never specific code or file paths.`
+Lessons are always a single critical, general, reusable bullet — never specific code or file paths.`;
 
 /** Build the agent prompt for a given action, or help text for an unknown one. */
 export function buildLearnedPrompt(action: string): string {
-  const key = action.trim().toLowerCase()
+  const key = action.trim().toLowerCase();
   if (isLearnedAction(key)) {
-    return PROMPTS[key]()
+    return PROMPTS[key]();
   }
-  return `Unknown /learned action: \`${action}\`.\n\n${HELP_TEXT}`
+  return `Unknown /learned action: \`${action}\`.\n\n${HELP_TEXT}`;
 }
