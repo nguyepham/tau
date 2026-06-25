@@ -1,7 +1,7 @@
 export const PTY_TOOL_NAME = 'Pty'
 
 export const DESCRIPTION =
-  'Run a command inside a real pseudoterminal (PTY) for TUIs, REPLs, password prompts, and other interactive shells. Captures output until the command exits or the timeout fires.'
+  'Run a command inside a real pseudoterminal (PTY) for TUIs, REPLs, password prompts, and other interactive shells. Captures output until the command exits or timeout fires.'
 
 export const PTY_TOOL_PROMPT = `Run a command inside a pseudoterminal (PTY). Use this when a command requires a real TTY — e.g. full-screen TUIs (top, htop, vim opened non-interactively for one-shot ops), REPLs, interactive installers, or programs that detect "is a tty" and change behavior.
 

@@ -149,9 +149,7 @@ export const getSystemContext = memoize(
   },
 )
 
-/**
- * This context is prepended to each conversation, and cached for the duration of the conversation.
- */
+/** Cached context prepended to each conversation. */
 export const getUserContext = memoize(
   async (): Promise<{
     [k: string]: string
@@ -161,18 +159,16 @@ export const getUserContext = memoize(
 
     // CLAUDE_CODE_DISABLE_CLAUDE_MDS: hard off, always.
     // --bare: skip auto-discovery (cwd walk), BUT honor explicit --add-dir.
-    // --bare means "skip what I didn't ask for", not "ignore what I asked for".
     const shouldDisableClaudeMd =
       isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS) ||
       (isBareMode() && getAdditionalDirectoriesForClaudeMd().length === 0)
-    // Await the async I/O (readFile/readdir directory walk) so the event
-    // loop yields naturally at the first fs.readFile.
+    // Await async I/O so the event loop yields at first fs.readFile.
     const claudeMd = shouldDisableClaudeMd
       ? null
       : getClaudeMds(filterInjectedMemoryFiles(await getMemoryFiles()))
-    // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing claudemd.ts directly, which would create a
-    // cycle through permissions/filesystem → permissions → yoloClassifier).
+    // Cache for auto-mode classifier (yoloClassifier.ts reads this
+    // instead of importing claudemd.ts directly, avoiding a cycle
+    // through permissions/filesystem → permissions → yoloClassifier).
     setCachedClaudeMdContent(claudeMd || null)
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {
