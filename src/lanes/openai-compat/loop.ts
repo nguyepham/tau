@@ -16,247 +16,283 @@
  * litellm/llms/<provider>/chat/transformation.py.
  */
 
+import { providerUsesStableRequestSession } from "../../services/api/cacheAffinity.js";
 import type {
   AnthropicStreamEvent,
   ModelInfo,
   ProviderMessage,
   ProviderTool,
-} from '../../services/api/providers/base_provider.js'
-import type {
-  Lane,
-  LaneRunContext,
-  LaneRunResult,
-  LaneProviderCallParams,
-  NormalizedUsage,
-} from '../types.js'
-import { OPENAI_COMPAT_TOOL_REGISTRY, selectEditToolSet } from './tools.js'
-import { getCompatShellDescription } from './shell_descriptions.js'
-import { filterToSingleShell } from './single_shell.js'
-import { getPlatform } from '../../utils/platform.js'
-import { getPowerShellEdition } from '../../utils/shell/powershellDetection.js'
-import {
-  appendStrictParamsHint,
-  OPENAI_COMPAT_TOOL_USAGE_RULES,
-} from '../shared/mcp_bridge.js'
-import { getTransformer, type ProviderId } from './transformers/index.js'
-import { resolveEditFormat } from './capabilities.js'
+} from "../../services/api/providers/base_provider.js";
+import { recordProviderModelContextWindows } from "../../utils/model/contextWindows.js";
 import {
   formatCopilotModelUnsupportedMessage,
   formatCopilotQuotaExceededMessage,
   isCopilotModelUnsupportedError,
   isCopilotQuotaExceededError,
-} from '../../utils/model/copilotAccount.js'
+} from "../../utils/model/copilotAccount.js";
+import { isMoonshotThinkingModel } from "../../utils/model/moonshotCatalog.js";
+import {
+  getOpencodeEffort,
+  supportsOpencodeThinkingSelection,
+} from "../../utils/model/opencodeThinking.js";
 import {
   toOpenRouterModelInfo,
   type OpenRouterCatalogModel,
-} from '../../utils/model/openrouterCatalog.js'
-import { isMoonshotThinkingModel } from '../../utils/model/moonshotCatalog.js'
+} from "../../utils/model/openrouterCatalog.js";
+import { getPlatform } from "../../utils/platform.js";
+import { getPowerShellEdition } from "../../utils/shell/powershellDetection.js";
 import {
-  getOpencodeEffort,
-  isOpencodeThinkingModel,
-  supportsOpencodeThinkingSelection,
-} from '../../utils/model/opencodeThinking.js'
-import { recordProviderModelContextWindows } from '../../utils/model/contextWindows.js'
-import { providerUsesStableRequestSession } from '../../services/api/cacheAffinity.js'
+  appendStrictParamsHint,
+  OPENAI_COMPAT_TOOL_USAGE_RULES,
+} from "../shared/mcp_bridge.js";
+import type {
+  Lane,
+  LaneProviderCallParams,
+  LaneRunContext,
+  LaneRunResult,
+  NormalizedUsage,
+} from "../types.js";
+import { getCompatShellDescription } from "./shell_descriptions.js";
+import { filterToSingleShell } from "./single_shell.js";
+import { OPENAI_COMPAT_TOOL_REGISTRY } from "./tools.js";
+import { getTransformer, type ProviderId } from "./transformers/index.js";
 
 // ─── Provider Detection ──────────────────────────────────────────
 
 type ProviderType =
-  | 'deepseek'
-  | 'groq'
-  | 'glm'
-  | 'moonshot'
-  | 'minimax'
-  | 'mistral'
-  | 'nim'
-  | 'ollama'
-  | 'lmstudio'
-  | 'openrouter'
-  | 'agentrouter'
-  | 'modelrouter'
-  | 'vercel'
-  | 'requesty'
-  | 'opencode'
-  | 'opencodego'
-  | 'fireworks'
-  | 'cline'
-  | 'iflow'
-  | 'kilocode'
-  | 'copilot'
-  | 'generic'
+  | "deepseek"
+  | "groq"
+  | "glm"
+  | "moonshot"
+  | "minimax"
+  | "mistral"
+  | "nim"
+  | "ollama"
+  | "lmstudio"
+  | "openrouter"
+  | "agentrouter"
+  | "modelrouter"
+  | "vercel"
+  | "requesty"
+  | "opencode"
+  | "opencodego"
+  | "fireworks"
+  | "cline"
+  | "iflow"
+  | "kilocode"
+  | "copilot"
+  | "generic";
 
 function detectProvider(model: string, baseUrl: string): ProviderType {
-  const b = baseUrl.toLowerCase()
-  const m = model.toLowerCase()
-  if (b.includes('deepseek')) return 'deepseek'
-  if (b.includes('bigmodel') || b.includes('zhipu')) return 'glm'
-  if (b.includes('moonshot') || b.includes('kimi')) return 'moonshot'
-  if (b.includes('minimax')) return 'minimax'
-  if (b.includes('groq')) return 'groq'
-  if (b.includes('mistral')) return 'mistral'
-  if (b.includes('integrate.api.nvidia')) return 'nim'
-  if (b.includes('lmstudio') || b.includes('lm-studio')) return 'lmstudio'
-  if (b.includes('localhost') || b.includes('127.0.0.1') || b.includes('0.0.0.0') || b.includes(':11434')) return 'ollama'
-  if (b.includes('agentrouter.org')) return 'agentrouter'
-  if (b.includes('lxg2it') || b.includes('modelrouter')) return 'modelrouter'
-  if (b.includes('ai-gateway.vercel') || b.includes('vercel')) return 'vercel'
-  if (b.includes('requesty')) return 'requesty'
-  if (b.includes('fireworks.ai')) return 'fireworks'
+  const b = baseUrl.toLowerCase();
+  const m = model.toLowerCase();
+  if (b.includes("deepseek")) return "deepseek";
+  if (b.includes("bigmodel") || b.includes("zhipu")) return "glm";
+  if (b.includes("moonshot") || b.includes("kimi")) return "moonshot";
+  if (b.includes("minimax")) return "minimax";
+  if (b.includes("groq")) return "groq";
+  if (b.includes("mistral")) return "mistral";
+  if (b.includes("integrate.api.nvidia")) return "nim";
+  if (b.includes("lmstudio") || b.includes("lm-studio")) return "lmstudio";
+  if (
+    b.includes("localhost") ||
+    b.includes("127.0.0.1") ||
+    b.includes("0.0.0.0") ||
+    b.includes(":11434")
+  )
+    return "ollama";
+  if (b.includes("agentrouter.org")) return "agentrouter";
+  if (b.includes("lxg2it") || b.includes("modelrouter")) return "modelrouter";
+  if (b.includes("ai-gateway.vercel") || b.includes("vercel")) return "vercel";
+  if (b.includes("requesty")) return "requesty";
+  if (b.includes("fireworks.ai")) return "fireworks";
   // Go shares the opencode.ai host — match the `/zen/go` path first so it
   // doesn't fall through to the Zen branch below.
-  if (b.includes('opencode.ai/zen/go')) return 'opencodego'
-  if (b.includes('opencode.ai/zen') || b.includes('opencode.ai')) return 'opencode'
-  if (b.includes('openrouter')) return 'openrouter'
-  if (b.includes('cline.bot')) return 'cline'
-  if (b.includes('iflow.cn') || b.includes('apis.iflow')) return 'iflow'
-  if (b.includes('kilocode.ai') || b.includes('kilo.ai')) return 'kilocode'
-  if (b.includes('githubcopilot.com')) return 'copilot'
-  if (m.includes('deepseek')) return 'deepseek'
-  if (m.startsWith('glm-')) return 'glm'
-  if (m.startsWith('kimi-') || m.includes('moonshot')) return 'moonshot'
-  if (m.startsWith('minimax-') || m.includes('minimax')) return 'minimax'
-  if (m.startsWith('llama') || m.startsWith('mixtral') || m.startsWith('gemma')) return 'groq'
-  if (m.startsWith('mistral-') || m.startsWith('magistral-') || m.startsWith('codestral-')) return 'mistral'
+  if (b.includes("opencode.ai/zen/go")) return "opencodego";
+  if (b.includes("opencode.ai/zen") || b.includes("opencode.ai"))
+    return "opencode";
+  if (b.includes("openrouter")) return "openrouter";
+  if (b.includes("cline.bot")) return "cline";
+  if (b.includes("iflow.cn") || b.includes("apis.iflow")) return "iflow";
+  if (b.includes("kilocode.ai") || b.includes("kilo.ai")) return "kilocode";
+  if (b.includes("githubcopilot.com")) return "copilot";
+  if (m.includes("deepseek")) return "deepseek";
+  if (m.startsWith("glm-")) return "glm";
+  if (m.startsWith("kimi-") || m.includes("moonshot")) return "moonshot";
+  if (m.startsWith("minimax-") || m.includes("minimax")) return "minimax";
+  if (m.startsWith("llama") || m.startsWith("mixtral") || m.startsWith("gemma"))
+    return "groq";
+  if (
+    m.startsWith("mistral-") ||
+    m.startsWith("magistral-") ||
+    m.startsWith("codestral-")
+  )
+    return "mistral";
   // qwen removed — handled by the dedicated Qwen lane (src/lanes/qwen/).
-  return 'generic'
+  return "generic";
 }
 
 function isLocalBaseUrl(baseUrl: string): boolean {
-  const b = baseUrl.toLowerCase()
-  return b.includes('localhost') || b.includes('127.0.0.1') || b.includes('0.0.0.0') || b.includes(':11434')
+  const b = baseUrl.toLowerCase();
+  return (
+    b.includes("localhost") ||
+    b.includes("127.0.0.1") ||
+    b.includes("0.0.0.0") ||
+    b.includes(":11434")
+  );
 }
 
 // ─── OpenAI Chat Completions Message Shape ───────────────────────
 
 interface OpenAIChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string | null | Array<{ type: string; text?: string; image_url?: unknown; cache_control?: { type: string } }>
-  reasoning_content?: string
+  role: "system" | "user" | "assistant" | "tool";
+  content?:
+    | string
+    | null
+    | Array<{
+        type: string;
+        text?: string;
+        image_url?: unknown;
+        cache_control?: { type: string };
+      }>;
+  reasoning_content?: string;
   tool_calls?: Array<{
-    id: string
-    type: 'function'
-    function: { name: string; arguments: string }
-  }>
-  tool_call_id?: string
-  name?: string
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+  name?: string;
   // OpenRouter / DeepSeek reasoning fields come back on the delta; no input field.
 }
 
 interface OpenAIChatRequest {
-  model: string
-  messages: OpenAIChatMessage[]
-  stream?: boolean
-  stream_options?: { include_usage?: boolean }
-  tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }>
-  tool_choice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } }
-  max_tokens?: number
-  temperature?: number
-  top_p?: number
-  stop?: string[]
+  model: string;
+  messages: OpenAIChatMessage[];
+  stream?: boolean;
+  stream_options?: { include_usage?: boolean };
+  tools?: Array<{
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
+  tool_choice?:
+    | "auto"
+    | "required"
+    | "none"
+    | { type: "function"; function: { name: string } };
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  stop?: string[];
   // Reasoning knobs — provider-specific. Passed through when supported.
-  reasoning_effort?: 'low' | 'medium' | 'high'
-  reasoning?: { effort?: string }
-  thinking?: { type: 'enabled' } | { type: 'disabled' }
-  extra_body?: Record<string, unknown>
+  reasoning_effort?: "low" | "medium" | "high";
+  reasoning?: { effort?: string };
+  thinking?: { type: "enabled" } | { type: "disabled" };
+  extra_body?: Record<string, unknown>;
   // OpenRouter extensions:
-  transforms?: string[]
-  models?: string[]
-  route?: string
-  prompt_cache_key?: string
-  prompt_cache_retention?: '24h'
+  transforms?: string[];
+  models?: string[];
+  route?: string;
+  prompt_cache_key?: string;
+  prompt_cache_retention?: "24h";
   // Fireworks: include perf_metrics (incl. cached-prompt-tokens) in the body.
-  perf_metrics_in_response?: boolean
+  perf_metrics_in_response?: boolean;
   providerOptions?: {
     gateway?: {
-      caching?: 'auto'
-      [key: string]: unknown
-    }
-    [key: string]: unknown
-  }
+      caching?: "auto";
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
   requesty?: {
-    auto_cache?: boolean
-    [key: string]: unknown
-  }
+    auto_cache?: boolean;
+    [key: string]: unknown;
+  };
   /**
    * OpenRouter-native detailed-usage flag. When set, the gateway returns
    * cache_discount and per-breakpoint hit counts on the final stream
    * chunk so implicit-cache hits (DeepSeek, OpenAI gpt-5/4.1 on OR) are
    * actually visible in our usage parsing instead of looking like 0.
    */
-  usage?: { include?: boolean }
+  usage?: { include?: boolean };
 }
 
 interface CompatCatalogModel extends OpenRouterCatalogModel {
-  owned_by?: string
-  max_context_length?: number
-  context_window?: number
-  max_tokens?: number
-  api?: string
-  type?: string
-  tags?: string[]
-  supports_caching?: boolean
-  supports_reasoning?: boolean
-  supports_tool_calling?: boolean
-  supports_vision?: boolean
+  owned_by?: string;
+  max_context_length?: number;
+  context_window?: number;
+  max_tokens?: number;
+  api?: string;
+  type?: string;
+  tags?: string[];
+  supports_caching?: boolean;
+  supports_reasoning?: boolean;
+  supports_tool_calling?: boolean;
+  supports_vision?: boolean;
   capabilities?: {
-    completion_chat?: boolean
-    function_calling?: boolean
-    vision?: boolean
-  }
+    completion_chat?: boolean;
+    function_calling?: boolean;
+    vision?: boolean;
+  };
 }
 
 interface LmStudioNativeModel {
-  type?: string
-  key?: string
-  display_name?: string
-  context_length?: number
-  max_context_length?: number
-  selected_variant?: string
-  variants?: string[]
+  type?: string;
+  key?: string;
+  display_name?: string;
+  context_length?: number;
+  max_context_length?: number;
+  selected_variant?: string;
+  variants?: string[];
   loaded_instances?: Array<{
-    id?: string
+    id?: string;
     config?: {
-      context_length?: number
-    }
-  }>
+      context_length?: number;
+    };
+  }>;
   capabilities?: {
-    trained_for_tool_use?: boolean
-    vision?: boolean
-  }
+    trained_for_tool_use?: boolean;
+    vision?: boolean;
+  };
 }
 
 type LmStudioModelInfo = ModelInfo & {
-  lmStudioAliases?: string[]
-  lmStudioLoadedContextWindow?: number
-  lmStudioMaxContextWindow?: number
-}
+  lmStudioAliases?: string[];
+  lmStudioLoadedContextWindow?: number;
+  lmStudioMaxContextWindow?: number;
+};
 
 // ─── Lane Implementation ─────────────────────────────────────────
 
 export class OpenAICompatLane implements Lane {
-  readonly name = 'openai-compat'
-  readonly displayName = 'OpenAI-Compatible (DeepSeek, GLM, Moonshot, MiniMax, Groq, Mistral, NIM, Ollama, LM Studio, OpenRouter, ...)'
+  readonly name = "openai-compat";
+  readonly displayName =
+    "OpenAI-Compatible (DeepSeek, GLM, Moonshot, MiniMax, Groq, Mistral, NIM, Ollama, LM Studio, OpenRouter, ...)";
 
-  private configs = new Map<string, { apiKey: string; baseUrl: string }>()
-  private _healthy = true
+  private configs = new Map<string, { apiKey: string; baseUrl: string }>();
+  private _healthy = true;
 
   registerProvider(name: string, apiKey: string, baseUrl: string): void {
-    this.configs.set(name, { apiKey, baseUrl })
-    this.invalidateModelCache(name)
+    this.configs.set(name, { apiKey, baseUrl });
+    this.invalidateModelCache(name);
   }
 
   unregisterProvider(name: string): void {
-    this.configs.delete(name)
-    this.invalidateModelCache(name)
+    this.configs.delete(name);
+    this.invalidateModelCache(name);
   }
 
   invalidateModelCache(providerFilter?: string): void {
     if (providerFilter) {
-      _modelsCacheByProvider.delete(providerFilter)
-      _modelsCacheByProvider.delete('__all__')
-      return
+      _modelsCacheByProvider.delete(providerFilter);
+      _modelsCacheByProvider.delete("__all__");
+      return;
     }
-    _modelsCacheByProvider.clear()
+    _modelsCacheByProvider.clear();
   }
 
   private getConfigForModel(
@@ -269,37 +305,53 @@ export class OpenAICompatLane implements Lane {
     // Groq and OpenRouter). When the hint names a registered config, use
     // it directly — don't fall through to the model-name heuristics.
     if (providerHint) {
-      if (!this.configs.has(providerHint)) return null
-      const c = this.configs.get(providerHint)!
-      return { ...c, provider: providerHint as ProviderType }
+      if (!this.configs.has(providerHint)) return null;
+      const c = this.configs.get(providerHint)!;
+      return { ...c, provider: providerHint as ProviderType };
     }
 
-    const m = model.toLowerCase()
+    const m = model.toLowerCase();
 
     // Explicit routing: model prefix → provider config
-    if (m.includes('deepseek') && this.configs.has('deepseek')) {
-      const c = this.configs.get('deepseek')!
-      return { ...c, provider: 'deepseek' }
+    if (m.includes("deepseek") && this.configs.has("deepseek")) {
+      const c = this.configs.get("deepseek")!;
+      return { ...c, provider: "deepseek" };
     }
-    if (m.startsWith('glm-') && this.configs.has('glm')) {
-      const c = this.configs.get('glm')!
-      return { ...c, provider: 'glm' }
+    if (m.startsWith("glm-") && this.configs.has("glm")) {
+      const c = this.configs.get("glm")!;
+      return { ...c, provider: "glm" };
     }
-    if ((m.startsWith('kimi-') || m.includes('moonshot')) && this.configs.has('moonshot')) {
-      const c = this.configs.get('moonshot')!
-      return { ...c, provider: 'moonshot' }
+    if (
+      (m.startsWith("kimi-") || m.includes("moonshot")) &&
+      this.configs.has("moonshot")
+    ) {
+      const c = this.configs.get("moonshot")!;
+      return { ...c, provider: "moonshot" };
     }
-    if ((m.startsWith('minimax-') || m.includes('minimax')) && this.configs.has('minimax')) {
-      const c = this.configs.get('minimax')!
-      return { ...c, provider: 'minimax' }
+    if (
+      (m.startsWith("minimax-") || m.includes("minimax")) &&
+      this.configs.has("minimax")
+    ) {
+      const c = this.configs.get("minimax")!;
+      return { ...c, provider: "minimax" };
     }
-    if ((m.startsWith('llama') || m.startsWith('mixtral') || m.startsWith('gemma')) && this.configs.has('groq')) {
-      const c = this.configs.get('groq')!
-      return { ...c, provider: 'groq' }
+    if (
+      (m.startsWith("llama") ||
+        m.startsWith("mixtral") ||
+        m.startsWith("gemma")) &&
+      this.configs.has("groq")
+    ) {
+      const c = this.configs.get("groq")!;
+      return { ...c, provider: "groq" };
     }
-    if ((m.startsWith('mistral-') || m.startsWith('magistral-') || m.startsWith('codestral-')) && this.configs.has('mistral')) {
-      const c = this.configs.get('mistral')!
-      return { ...c, provider: 'mistral' }
+    if (
+      (m.startsWith("mistral-") ||
+        m.startsWith("magistral-") ||
+        m.startsWith("codestral-")) &&
+      this.configs.has("mistral")
+    ) {
+      const c = this.configs.get("mistral")!;
+      return { ...c, provider: "mistral" };
     }
     // Qwen routing moved to the dedicated Qwen lane. Compat never sees qwen-*.
     // `openai/gpt-oss-*` is intentionally NOT pinned to Groq here —
@@ -307,40 +359,47 @@ export class OpenAICompatLane implements Lane {
     // hint above is the authoritative signal for picking one. This
     // slash-qualified fallback only fires when the hint didn't match
     // any registered config (e.g. a direct call without a shim).
-    if (this.configs.has('openrouter') && m.includes('/')) {
-      const c = this.configs.get('openrouter')!
-      return { ...c, provider: 'openrouter' }
+    if (this.configs.has("openrouter") && m.includes("/")) {
+      const c = this.configs.get("openrouter")!;
+      return { ...c, provider: "openrouter" };
     }
-    if (this.configs.has('nim') && this.configs.has('nim')) {
-      const c = this.configs.get('nim')!
-      return { ...c, provider: 'nim' }
+    if (this.configs.has("nim") && this.configs.has("nim")) {
+      const c = this.configs.get("nim")!;
+      return { ...c, provider: "nim" };
     }
-    if (this.configs.has('ollama')) {
-      const c = this.configs.get('ollama')!
-      return { ...c, provider: 'ollama' }
+    if (this.configs.has("ollama")) {
+      const c = this.configs.get("ollama")!;
+      return { ...c, provider: "ollama" };
     }
-    if (this.configs.has('lmstudio')) {
-      const c = this.configs.get('lmstudio')!
-      return { ...c, provider: 'lmstudio' }
+    if (this.configs.has("lmstudio")) {
+      const c = this.configs.get("lmstudio")!;
+      return { ...c, provider: "lmstudio" };
     }
     // Fallback: first registered config.
-    const first = this.configs.values().next().value
-    if (!first) return null
-    return { ...first, provider: detectProvider(model, first.baseUrl) }
+    const first = this.configs.values().next().value;
+    if (!first) return null;
+    return { ...first, provider: detectProvider(model, first.baseUrl) };
   }
 
   supportsModel(model: string): boolean {
-    const m = model.toLowerCase()
+    const m = model.toLowerCase();
     // Everything that isn't Claude, Gemini, Qwen, or native OpenAI
     // (each handled by its own dedicated lane).
     return !(
-      m.startsWith('claude-') || m.includes('anthropic') ||
-      m.startsWith('gemini-') || m.startsWith('gemma-') ||
-      m.startsWith('qwen') || m === 'coder-model' ||
-      m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3') ||
-      m.startsWith('o4') || m.startsWith('o5') || m.startsWith('codex-') ||
-      m.startsWith('gpt-5-codex')
-    )
+      m.startsWith("claude-") ||
+      m.includes("anthropic") ||
+      m.startsWith("gemini-") ||
+      m.startsWith("gemma-") ||
+      m.startsWith("qwen") ||
+      m === "coder-model" ||
+      m.startsWith("gpt-") ||
+      m.startsWith("o1") ||
+      m.startsWith("o3") ||
+      m.startsWith("o4") ||
+      m.startsWith("o5") ||
+      m.startsWith("codex-") ||
+      m.startsWith("gpt-5-codex")
+    );
   }
 
   // ── Provider-shim-compatible single-turn entry ──────────────────
@@ -348,15 +407,29 @@ export class OpenAICompatLane implements Lane {
   async *streamAsProvider(
     params: LaneProviderCallParams,
   ): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
-    const { model, messages, system, tools, max_tokens, thinking, temperature, stop_sequences, signal, sessionId, providerHint } = params
+    const {
+      model,
+      messages,
+      system,
+      tools,
+      max_tokens,
+      thinking,
+      temperature,
+      stop_sequences,
+      signal,
+      sessionId,
+      providerHint,
+    } = params;
 
-    const cfg = this.getConfigForModel(model, providerHint)
+    const cfg = this.getConfigForModel(model, providerHint);
     if (!cfg) {
-      throw new Error(`No provider configured for model "${model}". Run /provider to connect a provider, or /models to pick a different model.`)
+      throw new Error(
+        `No provider configured for model "${model}". Run /provider to connect a provider, or /models to pick a different model.`,
+      );
     }
 
-    const provider = cfg.provider
-    const isLocal = isLocalBaseUrl(cfg.baseUrl)
+    const provider = cfg.provider;
+    const isLocal = isLocalBaseUrl(cfg.baseUrl);
     // A loopback base URL means one of two very different things:
     //   • a bare/unknown local OpenAI server (provider 'generic') that may
     //     not implement function-calling — keep the protective gate; or
@@ -364,19 +437,22 @@ export class OpenAICompatLane implements Lane {
     //     proxy via *_BASE_URL. That proxy forwards to the real upstream,
     //     which fully supports tools + standard params, so it must NOT be
     //     degraded. ollama/lmstudio are first-class local model servers too.
-    const isBareLocalServer = isLocal && provider === 'generic'
+    const isBareLocalServer = isLocal && provider === "generic";
     const isLocalModelServer =
-      isLocal && (provider === 'ollama' || provider === 'lmstudio' || provider === 'generic')
+      isLocal &&
+      (provider === "ollama" ||
+        provider === "lmstudio" ||
+        provider === "generic");
     const cacheSessionId = providerUsesStableRequestSession(provider)
       ? sessionId
-      : undefined
+      : undefined;
 
     // OpenCode Go exposes Qwen3.7 Max only on its Anthropic-compatible
     // `/messages` endpoint. The `/chat/completions` route identifies itself as
     // `oa-compat` and rejects this model before the request reaches an upstream.
     // This model has no selectable reasoning variants, so the native request
     // intentionally omits `thinking` and lets the model use its server default.
-    if (provider === 'opencodego' && isOpenCodeGoAnthropicModel(model)) {
+    if (provider === "opencodego" && isOpenCodeGoAnthropicModel(model)) {
       return yield* streamOpenCodeGoAnthropic(
         cfg,
         {
@@ -390,31 +466,33 @@ export class OpenAICompatLane implements Lane {
           signal,
         },
         cacheSessionId,
-      )
+      );
     }
 
     // Assemble system text. We keep it simple for Phase-1 (caller's text).
-    const rawSystemText = typeof system === 'string'
-      ? system
-      : (system ?? []).map(b => b.text).join('\n\n')
+    const rawSystemText =
+      typeof system === "string"
+        ? system
+        : (system ?? []).map((b) => b.text).join("\n\n");
 
     // Per-model tool filter: small-tier models (e.g. Groq Llama on free
     // TPM) get a curated subset so the request fits the budget.
-    const transformerForTools = getTransformer(provider as ProviderId)
-    const perModelFilteredTools = transformerForTools.filterTools?.(model, tools) ?? tools
+    const transformerForTools = getTransformer(provider as ProviderId);
+    const perModelFilteredTools =
+      transformerForTools.filterTools?.(model, tools) ?? tools;
 
     // Drop the non-preferred shell when BOTH Bash and PowerShell are
     // exposed (Windows + ant-default or CLAUDE_CODE_USE_POWERSHELL_TOOL=1
     // + git-bash). Frontier lanes handle two shells fine; weak compat
     // models routinely pick the wrong one and emit cross-shell syntax,
     // so the lane picks for them. See single_shell.ts for selection.
-    const filteredTools = filterToSingleShell(perModelFilteredTools)
+    const filteredTools = filterToSingleShell(perModelFilteredTools);
 
     // Resolve the PowerShell edition once per request (memoized in
     // powershellDetection.ts; subsequent requests hit the cache). We
     // need it sync for shell-description rendering — `await` here, NOT
     // inside buildOpenAITools.
-    const psEdition = await getPowerShellEdition()
+    const psEdition = await getPowerShellEdition();
 
     // Tool conversion → OpenAI function tools with per-provider schema
     // cleanup (strip $schema / $id / additionalProperties / strict etc.).
@@ -424,24 +502,31 @@ export class OpenAICompatLane implements Lane {
     // example-driven versions for weak compat-lane models — see
     // shell_descriptions.ts.
     const openaiTools = buildOpenAITools(filteredTools, provider, model, {
-      platform: getPlatform() === 'windows' ? 'win32' : (process.platform),
+      platform: getPlatform() === "windows" ? "win32" : process.platform,
       psEdition,
-    })
+    });
 
     // Prepend OPENAI_COMPAT_TOOL_USAGE_RULES to the system message when
     // tools are present — in-context reminder of schema authority for
     // providers that don't enforce `strict: true` server-side (Mistral,
     // generic long-tail). Small-tier models (Groq Llama free TPM) can
     // opt out via `skipToolUsagePreamble` to save input tokens.
-    const skipPreamble = transformerForTools.skipToolUsagePreamble?.(model) ?? false
-    const systemText = openaiTools.length > 0 && !skipPreamble
-      ? (rawSystemText
+    const skipPreamble =
+      transformerForTools.skipToolUsagePreamble?.(model) ?? false;
+    const systemText =
+      openaiTools.length > 0 && !skipPreamble
+        ? rawSystemText
           ? `${OPENAI_COMPAT_TOOL_USAGE_RULES}\n${rawSystemText}`
-          : OPENAI_COMPAT_TOOL_USAGE_RULES)
-      : rawSystemText
+          : OPENAI_COMPAT_TOOL_USAGE_RULES
+        : rawSystemText;
 
     // History conversion → OpenAI Chat Completions messages.
-    const chatMessages = convertHistoryToOpenAI(messages, systemText, provider, model)
+    const chatMessages = convertHistoryToOpenAI(
+      messages,
+      systemText,
+      provider,
+      model,
+    );
 
     // Build request body with per-provider quirks applied.
     const body = applyProviderRequestQuirks(
@@ -455,12 +540,18 @@ export class OpenAICompatLane implements Lane {
         // this flag the cache_read / cache_write fields aren't populated
         // on those gateways, which is what made every call look like a
         // cold miss even when the upstream actually had a cache hit.
-        ...((provider === 'openrouter' || provider === 'agentrouter' || provider === 'opencode') && { usage: { include: true } }),
+        ...((provider === "openrouter" ||
+          provider === "agentrouter" ||
+          provider === "opencode") && { usage: { include: true } }),
         // Only bare/unknown local servers get tools stripped (they may not
         // implement function-calling). Named providers behind a local dev
         // proxy — and ollama/lmstudio — keep full tool calling.
-        tools: openaiTools.length > 0 && !isBareLocalServer ? openaiTools : undefined,
-        tool_choice: openaiTools.length > 0 && !isBareLocalServer ? 'auto' : undefined,
+        tools:
+          openaiTools.length > 0 && !isBareLocalServer
+            ? openaiTools
+            : undefined,
+        tool_choice:
+          openaiTools.length > 0 && !isBareLocalServer ? "auto" : undefined,
         max_tokens: clampMaxTokens(provider, max_tokens),
         temperature: temperature ?? (isLocalModelServer ? 0.7 : undefined),
         stop: stop_sequences?.length ? stop_sequences : undefined,
@@ -468,7 +559,7 @@ export class OpenAICompatLane implements Lane {
       provider,
       thinking,
       cacheSessionId,
-    )
+    );
 
     // Ollama branch: skip the OpenAI-compat /v1 path entirely and use
     // the native /api/chat endpoint so we can set num_ctx + keep_alive.
@@ -476,47 +567,55 @@ export class OpenAICompatLane implements Lane {
     // context (everything beyond gets truncated and prefilled fresh each
     // turn — that was the latency cancer). Other providers stay on /v1
     // unchanged.
-    if (provider === 'ollama') {
-      const ollamaUsage = yield* streamOllamaNative(cfg, body, model, signal)
-      return ollamaUsage
+    if (provider === "ollama") {
+      const ollamaUsage = yield* streamOllamaNative(cfg, body, model, signal);
+      return ollamaUsage;
     }
 
     // Headers per-provider.
-    const headers = buildRequestHeaders(provider, cfg.apiKey, model, cacheSessionId)
+    const headers = buildRequestHeaders(
+      provider,
+      cfg.apiKey,
+      model,
+      cacheSessionId,
+    );
 
     // Fire request.
-    const url = normalizeBaseUrl(cfg.baseUrl) + '/chat/completions'
+    const url = normalizeBaseUrl(cfg.baseUrl) + "/chat/completions";
 
-    const messageId = `compat-${Date.now()}`
-    let messageStartEmitted = false
-    let inputTokens = 0
-    let outputTokens = 0
-    let reportedCachedInputTokens = 0
-    let cacheWriteTokens = 0
-    let reasoningTokens = 0
+    const messageId = `compat-${Date.now()}`;
+    let messageStartEmitted = false;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let reportedCachedInputTokens = 0;
+    let cacheWriteTokens = 0;
+    let reasoningTokens = 0;
 
     const cacheReadTokens = () =>
       cacheWriteTokens > 0
         ? Math.max(0, reportedCachedInputTokens - cacheWriteTokens)
-        : reportedCachedInputTokens
+        : reportedCachedInputTokens;
 
     // Content-block state.
-    let currentBlockIndex = 0
-    let inTextBlock = false
-    let inThinkingBlock = false
-    const toolCallBuffers = new Map<number, { id: string; name: string; args: string; anthropicIndex: number }>()
-    let emittedAnyToolUse = false
-    let emittedAnyAssistantOutput = false
+    let currentBlockIndex = 0;
+    let inTextBlock = false;
+    let inThinkingBlock = false;
+    const toolCallBuffers = new Map<
+      number,
+      { id: string; name: string; args: string; anthropicIndex: number }
+    >();
+    let emittedAnyToolUse = false;
+    let emittedAnyAssistantOutput = false;
 
     const emitMessageStart = () => {
-      if (messageStartEmitted) return undefined
-      messageStartEmitted = true
+      if (messageStartEmitted) return undefined;
+      messageStartEmitted = true;
       return {
-        type: 'message_start' as const,
+        type: "message_start" as const,
         message: {
           id: messageId,
-          type: 'message' as const,
-          role: 'assistant' as const,
+          type: "message" as const,
+          role: "assistant" as const,
           content: [],
           model,
           stop_reason: null,
@@ -524,75 +623,120 @@ export class OpenAICompatLane implements Lane {
           usage: {
             input_tokens: inputTokens,
             output_tokens: 0,
-            ...(cacheReadTokens() > 0 && { cache_read_input_tokens: cacheReadTokens() }),
-            ...(cacheWriteTokens > 0 && { cache_creation_input_tokens: cacheWriteTokens }),
+            ...(cacheReadTokens() > 0 && {
+              cache_read_input_tokens: cacheReadTokens(),
+            }),
+            ...(cacheWriteTokens > 0 && {
+              cache_creation_input_tokens: cacheWriteTokens,
+            }),
           },
         },
-      }
-    }
+      };
+    };
 
-    if (provider === 'lmstudio') {
-      const contextMessage = await getLmStudioContextPreflightMessage(cfg, model, body).catch(() => null)
+    if (provider === "lmstudio") {
+      const contextMessage = await getLmStudioContextPreflightMessage(
+        cfg,
+        model,
+        body,
+      ).catch(() => null);
       if (contextMessage) {
-        const mst = emitMessageStart()
-        if (mst) yield mst
-        yield* emitErrorText(contextMessage)
-        yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-        yield { type: 'message_stop' }
-        return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+        const mst = emitMessageStart();
+        if (mst) yield mst;
+        yield* emitErrorText(contextMessage);
+        yield {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
+          usage: { output_tokens: outputTokens },
+        };
+        yield { type: "message_stop" };
+        return blankUsage(
+          inputTokens,
+          outputTokens,
+          cacheReadTokens(),
+          reasoningTokens,
+        );
       }
     }
 
-    let response: Response
+    let response: Response;
     try {
       response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify(body),
         signal,
-      })
+      });
     } catch (err: any) {
       if (!messageStartEmitted) {
-        const mst = emitMessageStart()
-        if (mst) yield mst
+        const mst = emitMessageStart();
+        if (mst) yield mst;
       }
-      const message = err?.message ?? String(err)
-      const detail = provider === 'lmstudio'
-        ? `LM Studio server unreachable at ${normalizeBaseUrl(cfg.baseUrl)} (${message}). Start the LM Studio local server and retry.`
-        : message
-      yield* emitErrorText(`${provider} API connection error: ${detail}`)
-      yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-      yield { type: 'message_stop' }
-      return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+      const message = err?.message ?? String(err);
+      const detail =
+        provider === "lmstudio"
+          ? `LM Studio server unreachable at ${normalizeBaseUrl(cfg.baseUrl)} (${message}). Start the LM Studio local server and retry.`
+          : message;
+      yield* emitErrorText(`${provider} API connection error: ${detail}`);
+      yield {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: outputTokens },
+      };
+      yield { type: "message_stop" };
+      return blankUsage(
+        inputTokens,
+        outputTokens,
+        cacheReadTokens(),
+        reasoningTokens,
+      );
     }
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '')
+      const errText = await response.text().catch(() => "");
       if (!messageStartEmitted) {
-        const mst = emitMessageStart()
-        if (mst) yield mst
+        const mst = emitMessageStart();
+        if (mst) yield mst;
       }
       const isCopilotModelUnsupported =
-        provider === 'copilot'
-        && response.status === 400
-        && isCopilotModelUnsupportedError(errText)
+        provider === "copilot" &&
+        response.status === 400 &&
+        isCopilotModelUnsupportedError(errText);
       const isCopilotQuotaExceeded =
-        provider === 'copilot'
-        && response.status === 402
-        && isCopilotQuotaExceededError(errText)
+        provider === "copilot" &&
+        response.status === 402 &&
+        isCopilotQuotaExceededError(errText);
 
       if (isCopilotModelUnsupported) {
-        yield* emitErrorText(formatCopilotModelUnsupportedMessage(model))
-        yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-        yield { type: 'message_stop' }
-        return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+        yield* emitErrorText(formatCopilotModelUnsupportedMessage(model));
+        yield {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
+          usage: { output_tokens: outputTokens },
+        };
+        yield { type: "message_stop" };
+        return blankUsage(
+          inputTokens,
+          outputTokens,
+          cacheReadTokens(),
+          reasoningTokens,
+        );
       }
 
       if (isCopilotQuotaExceeded) {
-        yield* emitErrorText(formatCopilotQuotaExceededMessage())
-        yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-        yield { type: 'message_stop' }
-        return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+        yield* emitErrorText(formatCopilotQuotaExceededMessage());
+        yield {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
+          usage: { output_tokens: outputTokens },
+        };
+        yield { type: "message_stop" };
+        return blankUsage(
+          inputTokens,
+          outputTokens,
+          cacheReadTokens(),
+          reasoningTokens,
+        );
       }
 
       // Detect prompt-too-long / context-window-exceeded per the
@@ -600,71 +744,97 @@ export class OpenAICompatLane implements Lane {
       // prefix claude.ts reactive-compact text-matches against —
       // otherwise Flash / smaller models 400 on oversized turns and
       // the user has to `/compact` manually.
-      const transformer = getTransformer(provider as ProviderId)
-      const markers = transformer.contextExceededMarkers()
-      const lowered = errText.toLowerCase()
-      const isPromptTooLong = markers.some(m => lowered.includes(m.toLowerCase()))
-      yield* emitErrorText(formatProviderHttpError(provider, response.status, errText, isPromptTooLong))
-      yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-      yield { type: 'message_stop' }
-      return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+      const transformer = getTransformer(provider as ProviderId);
+      const markers = transformer.contextExceededMarkers();
+      const lowered = errText.toLowerCase();
+      const isPromptTooLong = markers.some((m) =>
+        lowered.includes(m.toLowerCase()),
+      );
+      yield* emitErrorText(
+        formatProviderHttpError(
+          provider,
+          response.status,
+          errText,
+          isPromptTooLong,
+        ),
+      );
+      yield {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: outputTokens },
+      };
+      yield { type: "message_stop" };
+      return blankUsage(
+        inputTokens,
+        outputTokens,
+        cacheReadTokens(),
+        reasoningTokens,
+      );
     }
 
     if (!response.body) {
-      throw new Error('OpenAI-compat: empty response body')
+      throw new Error("OpenAI-compat: empty response body");
     }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
     try {
       reading: while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
         if (!done) {
-          buffer += decoder.decode(value, { stream: true })
+          buffer += decoder.decode(value, { stream: true });
         } else {
-          buffer += decoder.decode()
+          buffer += decoder.decode();
         }
 
-        const lines = buffer.split('\n')
-        buffer = done ? '' : (lines.pop() ?? '')
+        const lines = buffer.split("\n");
+        buffer = done ? "" : (lines.pop() ?? "");
 
         for (const rawLine of lines) {
-          const line = rawLine.trim()
-          if (!line) continue
-          if (!line.startsWith('data:')) continue
-          const payload = line.slice(5).trim()
-          if (payload === '[DONE]') break reading
-          if (!payload) continue
+          const line = rawLine.trim();
+          if (!line) continue;
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") break reading;
+          if (!payload) continue;
 
-          let chunk: any
+          let chunk: any;
           try {
-            chunk = JSON.parse(payload)
-          } catch { continue }
+            chunk = JSON.parse(payload);
+          } catch {
+            continue;
+          }
 
           // Apply per-provider response normalization (reasoning field
           // renames etc.) so downstream IR emission is uniform.
-          chunk = applyProviderResponseQuirks(chunk, provider)
+          chunk = applyProviderResponseQuirks(chunk, provider);
 
           // Stream-level usage (present on final chunk for most providers).
           if (chunk.usage) {
-            inputTokens = chunk.usage.prompt_tokens ?? inputTokens
-            outputTokens = chunk.usage.completion_tokens ?? outputTokens
+            inputTokens = chunk.usage.prompt_tokens ?? inputTokens;
+            outputTokens = chunk.usage.completion_tokens ?? outputTokens;
             reportedCachedInputTokens =
-              chunk.usage.prompt_tokens_details?.cached_tokens
-              ?? (provider === 'moonshot' ? chunk.usage.cached_tokens : undefined)
-              ?? chunk.usage.prompt_cache_hit_tokens
-              ?? reportedCachedInputTokens
+              chunk.usage.prompt_tokens_details?.cached_tokens ??
+              (provider === "moonshot"
+                ? chunk.usage.cached_tokens
+                : undefined) ??
+              chunk.usage.prompt_cache_hit_tokens ??
+              reportedCachedInputTokens;
             cacheWriteTokens =
-              provider === 'copilot' || provider === 'openrouter' || provider === 'agentrouter' || provider === 'modelrouter' || provider === 'opencode'
-                ? (
-                    chunk.usage.prompt_tokens_details?.cache_write_tokens
-                    ?? chunk.usage.cache_write_tokens
-                    ?? cacheWriteTokens
-                  )
-                : 0
-            reasoningTokens = chunk.usage.completion_tokens_details?.reasoning_tokens ?? reasoningTokens
+              provider === "copilot" ||
+              provider === "openrouter" ||
+              provider === "agentrouter" ||
+              provider === "modelrouter" ||
+              provider === "opencode"
+                ? (chunk.usage.prompt_tokens_details?.cache_write_tokens ??
+                  chunk.usage.cache_write_tokens ??
+                  cacheWriteTokens)
+                : 0;
+            reasoningTokens =
+              chunk.usage.completion_tokens_details?.reasoning_tokens ??
+              reasoningTokens;
 
             // Some routers forward Anthropic responses verbatim, so the
             // usage block on Claude rows often arrives in Anthropic-native
@@ -681,19 +851,25 @@ export class OpenAICompatLane implements Lane {
             // OpenCode Zen also routes Claude rows through Anthropic's
             // native /v1/messages internally, so its usage block on
             // Claude turns matches this same shape — fold it in.
-            if (provider === 'agentrouter' || provider === 'modelrouter' || provider === 'opencode') {
-              const arRead = typeof chunk.usage.cache_read_input_tokens === 'number'
-                ? chunk.usage.cache_read_input_tokens
-                : undefined
-              const arWrite = typeof chunk.usage.cache_creation_input_tokens === 'number'
-                ? chunk.usage.cache_creation_input_tokens
-                : undefined
+            if (
+              provider === "agentrouter" ||
+              provider === "modelrouter" ||
+              provider === "opencode"
+            ) {
+              const arRead =
+                typeof chunk.usage.cache_read_input_tokens === "number"
+                  ? chunk.usage.cache_read_input_tokens
+                  : undefined;
+              const arWrite =
+                typeof chunk.usage.cache_creation_input_tokens === "number"
+                  ? chunk.usage.cache_creation_input_tokens
+                  : undefined;
               if (arRead !== undefined || arWrite !== undefined) {
                 // Re-encode into the OpenAI subtractive convention the rest
                 // of the lane assumes: cached_total = read + write, and
                 // cache_write is its own bucket.
-                cacheWriteTokens = arWrite ?? 0
-                reportedCachedInputTokens = (arRead ?? 0) + (arWrite ?? 0)
+                cacheWriteTokens = arWrite ?? 0;
+                reportedCachedInputTokens = (arRead ?? 0) + (arWrite ?? 0);
               }
             }
           }
@@ -705,20 +881,35 @@ export class OpenAICompatLane implements Lane {
           // value into the cache-read count. Fireworks-only — no other
           // provider's usage/billing path is touched. perf_metrics may ride
           // on a chunk without `usage`, so it lives outside the block above.
-          if (provider === 'fireworks' && chunk.perf_metrics && typeof chunk.perf_metrics === 'object') {
-            const cached = (chunk.perf_metrics as Record<string, unknown>)['cached-prompt-tokens']
-            if (typeof cached === 'number' && cached > reportedCachedInputTokens) {
-              reportedCachedInputTokens = cached
+          if (
+            provider === "fireworks" &&
+            chunk.perf_metrics &&
+            typeof chunk.perf_metrics === "object"
+          ) {
+            const cached = (chunk.perf_metrics as Record<string, unknown>)[
+              "cached-prompt-tokens"
+            ];
+            if (
+              typeof cached === "number" &&
+              cached > reportedCachedInputTokens
+            ) {
+              reportedCachedInputTokens = cached;
             }
           }
 
-          const choice = chunk.choices?.[0]
-          if (!choice) continue
-          const delta = choice.delta ?? {}
+          const choice = chunk.choices?.[0];
+          if (!choice) continue;
+          const delta = choice.delta ?? {};
 
-          if (!messageStartEmitted && (delta.content || delta.tool_calls || delta.reasoning_content || delta.thinking)) {
-            const mst = emitMessageStart()
-            if (mst) yield mst
+          if (
+            !messageStartEmitted &&
+            (delta.content ||
+              delta.tool_calls ||
+              delta.reasoning_content ||
+              delta.thinking)
+          ) {
+            const mst = emitMessageStart();
+            if (mst) yield mst;
           }
 
           // Reasoning / thinking content. We normalize into a thinking
@@ -727,266 +918,324 @@ export class OpenAICompatLane implements Lane {
           // reasoning (Groq / OpenRouter), some stream thinking (already
           // normalized).
           const thinkingDelta: string | undefined =
-            delta.thinking ?? delta.reasoning_content ?? delta.reasoning
-          if (typeof thinkingDelta === 'string' && thinkingDelta.length > 0) {
-            emittedAnyAssistantOutput = true
+            delta.thinking ?? delta.reasoning_content ?? delta.reasoning;
+          if (typeof thinkingDelta === "string" && thinkingDelta.length > 0) {
+            emittedAnyAssistantOutput = true;
             if (inTextBlock) {
-              yield { type: 'content_block_stop', index: currentBlockIndex }
-              currentBlockIndex++
-              inTextBlock = false
+              yield { type: "content_block_stop", index: currentBlockIndex };
+              currentBlockIndex++;
+              inTextBlock = false;
             }
             if (!inThinkingBlock) {
               yield {
-                type: 'content_block_start',
+                type: "content_block_start",
                 index: currentBlockIndex,
-                content_block: { type: 'thinking', thinking: '' },
-              }
-              inThinkingBlock = true
+                content_block: { type: "thinking", thinking: "" },
+              };
+              inThinkingBlock = true;
             }
             yield {
-              type: 'content_block_delta',
+              type: "content_block_delta",
               index: currentBlockIndex,
-              delta: { type: 'thinking_delta', thinking: thinkingDelta },
-            }
+              delta: { type: "thinking_delta", thinking: thinkingDelta },
+            };
           }
 
           // Text content.
-          if (typeof delta.content === 'string' && delta.content.length > 0) {
-            emittedAnyAssistantOutput = true
+          if (typeof delta.content === "string" && delta.content.length > 0) {
+            emittedAnyAssistantOutput = true;
             if (inThinkingBlock) {
-              yield { type: 'content_block_stop', index: currentBlockIndex }
-              currentBlockIndex++
-              inThinkingBlock = false
+              yield { type: "content_block_stop", index: currentBlockIndex };
+              currentBlockIndex++;
+              inThinkingBlock = false;
             }
             if (!inTextBlock) {
               yield {
-                type: 'content_block_start',
+                type: "content_block_start",
                 index: currentBlockIndex,
-                content_block: { type: 'text', text: '' },
-              }
-              inTextBlock = true
+                content_block: { type: "text", text: "" },
+              };
+              inTextBlock = true;
             }
             yield {
-              type: 'content_block_delta',
+              type: "content_block_delta",
               index: currentBlockIndex,
-              delta: { type: 'text_delta', text: delta.content },
-            }
+              delta: { type: "text_delta", text: delta.content },
+            };
           }
 
           // Tool-call deltas. OpenAI-style tool_calls arrive piece-by-piece
           // indexed by position. We accumulate args until finish_reason
           // signals completion.
           if (Array.isArray(delta.tool_calls)) {
-            if (delta.tool_calls.length > 0) emittedAnyAssistantOutput = true
+            if (delta.tool_calls.length > 0) emittedAnyAssistantOutput = true;
             for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 0
-              let buf = toolCallBuffers.get(idx)
+              const idx = tc.index ?? 0;
+              let buf = toolCallBuffers.get(idx);
               if (!buf) {
                 // Close any currently-open text/thinking block.
                 if (inTextBlock || inThinkingBlock) {
-                  yield { type: 'content_block_stop', index: currentBlockIndex }
-                  currentBlockIndex++
-                  inTextBlock = false
-                  inThinkingBlock = false
+                  yield {
+                    type: "content_block_stop",
+                    index: currentBlockIndex,
+                  };
+                  currentBlockIndex++;
+                  inTextBlock = false;
+                  inThinkingBlock = false;
                 }
                 buf = {
                   id: tc.id ?? `call_${idx}`,
-                  name: tc.function?.name ?? '',
-                  args: '',
+                  name: tc.function?.name ?? "",
+                  args: "",
                   anthropicIndex: currentBlockIndex,
-                }
-                currentBlockIndex++
-                toolCallBuffers.set(idx, buf)
-                emittedAnyToolUse = true
+                };
+                currentBlockIndex++;
+                toolCallBuffers.set(idx, buf);
+                emittedAnyToolUse = true;
               }
-              if (tc.id) buf.id = tc.id
-              if (tc.function?.name) buf.name = tc.function.name
-              if (typeof tc.function?.arguments === 'string') buf.args += tc.function.arguments
+              if (tc.id) buf.id = tc.id;
+              if (tc.function?.name) buf.name = tc.function.name;
+              if (typeof tc.function?.arguments === "string")
+                buf.args += tc.function.arguments;
             }
           }
 
           // finish_reason signals completion of this choice's output.
-          const finishReason = choice.finish_reason
+          const finishReason = choice.finish_reason;
           if (finishReason) {
             // Close open text / thinking blocks.
             if (inTextBlock || inThinkingBlock) {
-              yield { type: 'content_block_stop', index: currentBlockIndex }
-              inTextBlock = false
-              inThinkingBlock = false
+              yield { type: "content_block_stop", index: currentBlockIndex };
+              inTextBlock = false;
+              inThinkingBlock = false;
             }
 
             // Emit final tool_use blocks with the accumulated arguments.
             for (const buf of toolCallBuffers.values()) {
-              const implId = normalizeToolName(buf.name)
-              let input: Record<string, unknown>
+              const implId = normalizeToolName(buf.name);
+              let input: Record<string, unknown>;
               try {
-                input = buf.args ? JSON.parse(buf.args) : {}
+                input = buf.args ? JSON.parse(buf.args) : {};
               } catch {
-                input = { _raw: buf.args }
+                input = { _raw: buf.args };
               }
-              const anthropicToolUseId = buf.id.startsWith('toolu_') ? buf.id : `toolu_compat_${buf.id}`
+              const anthropicToolUseId = buf.id.startsWith("toolu_")
+                ? buf.id
+                : `toolu_compat_${buf.id}`;
               // Three-event sequence: start (empty input) + input_json_delta
               // (args as JSON string) + stop. claude.ts's accumulator reads
               // partial_json, not the inline input field — inline input gets
               // dropped and every tool sees `{}`.
               yield {
-                type: 'content_block_start',
+                type: "content_block_start",
                 index: buf.anthropicIndex,
                 content_block: {
-                  type: 'tool_use',
+                  type: "tool_use",
                   id: anthropicToolUseId,
                   name: implId,
                   input: {},
                 },
-              }
+              };
               yield {
-                type: 'content_block_delta',
+                type: "content_block_delta",
                 index: buf.anthropicIndex,
                 delta: {
-                  type: 'input_json_delta',
+                  type: "input_json_delta",
                   partial_json: JSON.stringify(input ?? {}),
                 },
-              }
-              yield { type: 'content_block_stop', index: buf.anthropicIndex }
+              };
+              yield { type: "content_block_stop", index: buf.anthropicIndex };
             }
-            toolCallBuffers.clear()
+            toolCallBuffers.clear();
           }
         }
 
-        if (done) break
+        if (done) break;
       }
     } finally {
-      reader.releaseLock()
+      reader.releaseLock();
     }
 
-    if (provider === 'lmstudio' && !emittedAnyAssistantOutput) {
-      const fallback = await fetchLmStudioNonStreamingCompletion(cfg, body, model, signal).catch(() => null)
-      const textOnlyFallback = !fallback?.text?.trim() && !fallback?.thinking?.trim() && !(fallback?.toolCalls?.length)
-        ? await fetchLmStudioNonStreamingCompletion(cfg, body, model, signal, true).catch(() => null)
-        : null
-      const recovered = textOnlyFallback ?? fallback
-      const fallbackText = recovered?.text?.trim()
-      const fallbackThinking = recovered?.thinking?.trim()
-      const fallbackToolCalls = recovered?.toolCalls ?? []
+    if (provider === "lmstudio" && !emittedAnyAssistantOutput) {
+      const fallback = await fetchLmStudioNonStreamingCompletion(
+        cfg,
+        body,
+        model,
+        signal,
+      ).catch(() => null);
+      const textOnlyFallback =
+        !fallback?.text?.trim() &&
+        !fallback?.thinking?.trim() &&
+        !fallback?.toolCalls?.length
+          ? await fetchLmStudioNonStreamingCompletion(
+              cfg,
+              body,
+              model,
+              signal,
+              true,
+            ).catch(() => null)
+          : null;
+      const recovered = textOnlyFallback ?? fallback;
+      const fallbackText = recovered?.text?.trim();
+      const fallbackThinking = recovered?.thinking?.trim();
+      const fallbackToolCalls = recovered?.toolCalls ?? [];
       if (fallbackText || fallbackThinking || fallbackToolCalls.length > 0) {
-        inputTokens = recovered?.usage?.prompt_tokens ?? inputTokens
-        outputTokens = recovered?.usage?.completion_tokens ?? outputTokens
-        reasoningTokens = recovered?.usage?.completion_tokens_details?.reasoning_tokens ?? reasoningTokens
+        inputTokens = recovered?.usage?.prompt_tokens ?? inputTokens;
+        outputTokens = recovered?.usage?.completion_tokens ?? outputTokens;
+        reasoningTokens =
+          recovered?.usage?.completion_tokens_details?.reasoning_tokens ??
+          reasoningTokens;
 
         if (!messageStartEmitted) {
-          const mst = emitMessageStart()
-          if (mst) yield mst
+          const mst = emitMessageStart();
+          if (mst) yield mst;
         }
 
         if (fallbackThinking) {
           yield {
-            type: 'content_block_start',
+            type: "content_block_start",
             index: currentBlockIndex,
-            content_block: { type: 'thinking', thinking: '' },
-          }
+            content_block: { type: "thinking", thinking: "" },
+          };
           yield {
-            type: 'content_block_delta',
+            type: "content_block_delta",
             index: currentBlockIndex,
-            delta: { type: 'thinking_delta', thinking: fallbackThinking },
-          }
-          yield { type: 'content_block_stop', index: currentBlockIndex }
-          currentBlockIndex++
+            delta: { type: "thinking_delta", thinking: fallbackThinking },
+          };
+          yield { type: "content_block_stop", index: currentBlockIndex };
+          currentBlockIndex++;
         }
 
         if (fallbackText) {
           yield {
-            type: 'content_block_start',
+            type: "content_block_start",
             index: currentBlockIndex,
-            content_block: { type: 'text', text: '' },
-          }
+            content_block: { type: "text", text: "" },
+          };
           yield {
-            type: 'content_block_delta',
+            type: "content_block_delta",
             index: currentBlockIndex,
-            delta: { type: 'text_delta', text: fallbackText },
-          }
-          yield { type: 'content_block_stop', index: currentBlockIndex }
-          currentBlockIndex++
+            delta: { type: "text_delta", text: fallbackText },
+          };
+          yield { type: "content_block_stop", index: currentBlockIndex };
+          currentBlockIndex++;
         }
 
         for (const toolCall of fallbackToolCalls) {
-          const toolName = toolCall.function?.name
-          if (!toolName) continue
-          const implId = normalizeToolName(toolName)
-          let input: Record<string, unknown>
+          const toolName = toolCall.function?.name;
+          if (!toolName) continue;
+          const implId = normalizeToolName(toolName);
+          let input: Record<string, unknown>;
           try {
-            input = toolCall.function?.arguments ? JSON.parse(toolCall.function.arguments) : {}
+            input = toolCall.function?.arguments
+              ? JSON.parse(toolCall.function.arguments)
+              : {};
           } catch {
-            input = { _raw: toolCall.function?.arguments ?? '' }
+            input = { _raw: toolCall.function?.arguments ?? "" };
           }
-          const toolId = toolCall.id?.startsWith('toolu_') ? toolCall.id : `toolu_compat_${toolCall.id ?? `lmstudio_${currentBlockIndex}`}`
+          const toolId = toolCall.id?.startsWith("toolu_")
+            ? toolCall.id
+            : `toolu_compat_${toolCall.id ?? `lmstudio_${currentBlockIndex}`}`;
           yield {
-            type: 'content_block_start',
+            type: "content_block_start",
             index: currentBlockIndex,
             content_block: {
-              type: 'tool_use',
+              type: "tool_use",
               id: toolId,
               name: implId,
               input: {},
             },
-          }
+          };
           yield {
-            type: 'content_block_delta',
+            type: "content_block_delta",
             index: currentBlockIndex,
             delta: {
-              type: 'input_json_delta',
+              type: "input_json_delta",
               partial_json: JSON.stringify(input ?? {}),
             },
-          }
-          yield { type: 'content_block_stop', index: currentBlockIndex }
-          currentBlockIndex++
-          emittedAnyToolUse = true
+          };
+          yield { type: "content_block_stop", index: currentBlockIndex };
+          currentBlockIndex++;
+          emittedAnyToolUse = true;
         }
 
-        const stopReason: 'tool_use' | 'end_turn' = emittedAnyToolUse ? 'tool_use' : 'end_turn'
+        const stopReason: "tool_use" | "end_turn" = emittedAnyToolUse
+          ? "tool_use"
+          : "end_turn";
         yield {
-          type: 'message_delta',
+          type: "message_delta",
           delta: { stop_reason: stopReason },
           usage: {
             output_tokens: outputTokens,
             input_tokens: inputTokens,
           },
-        }
-        yield { type: 'message_stop' }
-        return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+        };
+        yield { type: "message_stop" };
+        return blankUsage(
+          inputTokens,
+          outputTokens,
+          cacheReadTokens(),
+          reasoningTokens,
+        );
       }
 
       if (!signal?.aborted) {
         if (!messageStartEmitted) {
-          const mst = emitMessageStart()
-          if (mst) yield mst
+          const mst = emitMessageStart();
+          if (mst) yield mst;
         }
-        const contextMessage = await getLmStudioContextPreflightMessage(cfg, model, body).catch(() => null)
-        yield* emitErrorText(contextMessage ?? 'LM Studio returned an empty response. Check LM Studio logs for the selected local model and retry.')
-        yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: outputTokens } }
-        yield { type: 'message_stop' }
-        return blankUsage(inputTokens, outputTokens, cacheReadTokens(), reasoningTokens)
+        const contextMessage = await getLmStudioContextPreflightMessage(
+          cfg,
+          model,
+          body,
+        ).catch(() => null);
+        yield* emitErrorText(
+          contextMessage ??
+            "LM Studio returned an empty response. Check LM Studio logs for the selected local model and retry.",
+        );
+        yield {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
+          usage: { output_tokens: outputTokens },
+        };
+        yield { type: "message_stop" };
+        return blankUsage(
+          inputTokens,
+          outputTokens,
+          cacheReadTokens(),
+          reasoningTokens,
+        );
       }
     }
 
     if (!messageStartEmitted) {
-      const mst = emitMessageStart()
-      if (mst) yield mst
+      const mst = emitMessageStart();
+      if (mst) yield mst;
     }
 
-    const stopReason: 'tool_use' | 'end_turn' = emittedAnyToolUse ? 'tool_use' : 'end_turn'
+    const stopReason: "tool_use" | "end_turn" = emittedAnyToolUse
+      ? "tool_use"
+      : "end_turn";
     yield {
-      type: 'message_delta',
+      type: "message_delta",
       delta: { stop_reason: stopReason },
       usage: {
         output_tokens: outputTokens,
         // OpenAI-style `prompt_tokens` is total (fresh + cached). Split
         // into fresh + cache_read to match Anthropic's additive buckets.
-        input_tokens: Math.max(0, inputTokens - cacheReadTokens() - cacheWriteTokens),
-        ...(cacheReadTokens() > 0 && { cache_read_input_tokens: cacheReadTokens() }),
-        ...(cacheWriteTokens > 0 && { cache_creation_input_tokens: cacheWriteTokens }),
+        input_tokens: Math.max(
+          0,
+          inputTokens - cacheReadTokens() - cacheWriteTokens,
+        ),
+        ...(cacheReadTokens() > 0 && {
+          cache_read_input_tokens: cacheReadTokens(),
+        }),
+        ...(cacheWriteTokens > 0 && {
+          cache_creation_input_tokens: cacheWriteTokens,
+        }),
       },
-    }
-    yield { type: 'message_stop' }
+    };
+    yield { type: "message_stop" };
 
     return {
       input_tokens: inputTokens,
@@ -994,13 +1243,17 @@ export class OpenAICompatLane implements Lane {
       cache_read_tokens: cacheReadTokens(),
       cache_write_tokens: cacheWriteTokens,
       thinking_tokens: reasoningTokens,
-    }
+    };
   }
 
   // ── Lane-owns-loop (Phase-2, not wired yet) ─────────────────────
 
-  async *run(_context: LaneRunContext): AsyncGenerator<AnthropicStreamEvent, LaneRunResult> {
-    throw new Error('OpenAICompatLane.run (lane-owns-loop) is not wired yet — use streamAsProvider via LaneBackedProvider.')
+  async *run(
+    _context: LaneRunContext,
+  ): AsyncGenerator<AnthropicStreamEvent, LaneRunResult> {
+    throw new Error(
+      "OpenAICompatLane.run (lane-owns-loop) is not wired yet — use streamAsProvider via LaneBackedProvider.",
+    );
   }
 
   async listModels(providerFilter?: string): Promise<ModelInfo[]> {
@@ -1011,80 +1264,91 @@ export class OpenAICompatLane implements Lane {
     // When `providerFilter` is given, only that sub-provider is queried
     // and returned, so /models groq only shows Groq models (not the
     // union of every compat provider's catalog).
-    const now = Date.now()
-    const cacheKey = providerFilter ?? '__all__'
-    const cached = _modelsCacheByProvider.get(cacheKey)
+    const now = Date.now();
+    const cacheKey = providerFilter ?? "__all__";
+    const cached = _modelsCacheByProvider.get(cacheKey);
     if (cached && now - cached.at < MODELS_CACHE_TTL_MS) {
-      return cached.models
+      return cached.models;
     }
-    const entries = Array.from(this.configs.entries())
-      .filter(([name]) => !providerFilter || name === providerFilter)
-    const results = await Promise.allSettled(entries.map(async ([providerName, cfg]) => {
-      if (providerName === 'lmstudio') {
-        const openAIModels = await listLmStudioOpenAIModels(cfg)
-        if (openAIModels.length > 0) return openAIModels
-        const nativeModels = await listLmStudioNativeModels(cfg)
-        if (nativeModels.length > 0) return nativeModels
-      }
+    const entries = Array.from(this.configs.entries()).filter(
+      ([name]) => !providerFilter || name === providerFilter,
+    );
+    const results = await Promise.allSettled(
+      entries.map(async ([providerName, cfg]) => {
+        if (providerName === "lmstudio") {
+          const openAIModels = await listLmStudioOpenAIModels(cfg);
+          if (openAIModels.length > 0) return openAIModels;
+          const nativeModels = await listLmStudioNativeModels(cfg);
+          if (nativeModels.length > 0) return nativeModels;
+        }
 
-      const transformer = getTransformer(providerName as ProviderId)
-      // Most compat providers either want a fully-curated catalog or a
-      // direct pass-through from `/models`. Copilot is the main exception:
-      // its live catalog changes often enough that we want fresh data, but
-      // still need a fallback when `/models` is unavailable.
-      const fixed = transformer.staticCatalog?.() ?? []
-      const preferLiveCatalog = transformer.preferLiveModelCatalog?.() ?? false
-      if (!preferLiveCatalog && fixed.length > 0) return fixed
-      try {
-        const url = `${normalizeBaseUrl(cfg.baseUrl)}/models`
-        const headers: Record<string, string> = { 'Accept': 'application/json' }
-        if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`
-        const extra = transformer.buildHeaders?.(cfg.apiKey) ?? {}
-        for (const [k, v] of Object.entries(extra)) {
-          // Reuse provider-specific auth/catalog headers (e.g. Copilot's
-          // editor-version / integration-id) but keep the GET request's
-          // Accept as JSON rather than the streaming default.
-          if (k.toLowerCase() === 'accept') continue
-          headers[k] = v
+        const transformer = getTransformer(providerName as ProviderId);
+        // Most compat providers either want a fully-curated catalog or a
+        // direct pass-through from `/models`. Copilot is the main exception:
+        // its live catalog changes often enough that we want fresh data, but
+        // still need a fallback when `/models` is unavailable.
+        const fixed = transformer.staticCatalog?.() ?? [];
+        const preferLiveCatalog =
+          transformer.preferLiveModelCatalog?.() ?? false;
+        if (!preferLiveCatalog && fixed.length > 0) return fixed;
+        try {
+          const url = `${normalizeBaseUrl(cfg.baseUrl)}/models`;
+          const headers: Record<string, string> = {
+            Accept: "application/json",
+          };
+          if (cfg.apiKey) headers["Authorization"] = `Bearer ${cfg.apiKey}`;
+          const extra = transformer.buildHeaders?.(cfg.apiKey) ?? {};
+          for (const [k, v] of Object.entries(extra)) {
+            // Reuse provider-specific auth/catalog headers (e.g. Copilot's
+            // editor-version / integration-id) but keep the GET request's
+            // Accept as JSON rather than the streaming default.
+            if (k.toLowerCase() === "accept") continue;
+            headers[k] = v;
+          }
+          const resp = await fetch(url, { headers, method: "GET" });
+          if (resp.ok) {
+            const data = (await resp.json()) as { data?: CompatCatalogModel[] };
+            const raw = (data.data ?? [])
+              .map((m) => toCompatCatalogModel(providerName, m))
+              .filter((model): model is ModelInfo => model !== null);
+            // Per-provider catalog filter: e.g. Groq hides whisper/preview
+            // models so `/models` only shows chat-capable production IDs.
+            const filtered = (transformer.filterModelCatalog?.(raw) ??
+              raw) as ModelInfo[];
+            const visible =
+              providerName === "opencode" && cfg.apiKey === "public"
+                ? filtered.filter(isOpencodeAnonymousCatalogModel)
+                : filtered;
+            if (visible.length > 0) return visible;
+          }
+        } catch {
+          // Fall back to the curated list below.
         }
-        const resp = await fetch(url, { headers, method: 'GET' })
-        if (resp.ok) {
-          const data = await resp.json() as { data?: CompatCatalogModel[] }
-          const raw = (data.data ?? [])
-            .map(m => toCompatCatalogModel(providerName, m))
-            .filter((model): model is ModelInfo => model !== null)
-          // Per-provider catalog filter: e.g. Groq hides whisper/preview
-          // models so `/models` only shows chat-capable production IDs.
-          const filtered = (transformer.filterModelCatalog?.(raw) ?? raw) as ModelInfo[]
-          const visible = providerName === 'opencode' && cfg.apiKey === 'public'
-            ? filtered.filter(isOpencodeAnonymousCatalogModel)
-            : filtered
-          if (visible.length > 0) return visible
-        }
-      } catch {
-        // Fall back to the curated list below.
-      }
-      return fixed
-    }))
-    const out: ModelInfo[] = []
+        return fixed;
+      }),
+    );
+    const out: ModelInfo[] = [];
     for (const r of results) {
-      if (r.status !== 'fulfilled') continue
+      if (r.status !== "fulfilled") continue;
       // filterModelCatalog declares `name?: string` so the union with
       // staticCatalog widens; backfill from id when the upstream omitted it.
-      for (const m of r.value) out.push({ ...m, name: m.name ?? m.id })
+      for (const m of r.value) out.push({ ...m, name: m.name ?? m.id });
     }
     const hasIncompleteLmStudioContext =
-      providerFilter === 'lmstudio'
-      && out.length > 0
-      && out.some(model => typeof model.contextWindow !== 'number' || model.contextWindow <= 0)
+      providerFilter === "lmstudio" &&
+      out.length > 0 &&
+      out.some(
+        (model) =>
+          typeof model.contextWindow !== "number" || model.contextWindow <= 0,
+      );
     if (!hasIncompleteLmStudioContext) {
-      _modelsCacheByProvider.set(cacheKey, { models: out, at: now })
+      _modelsCacheByProvider.set(cacheKey, { models: out, at: now });
     }
-    return out
+    return out;
   }
 
   resolveModel(model: string): string {
-    return model
+    return model;
   }
 
   smallFastModel(): string | null {
@@ -1092,110 +1356,135 @@ export class OpenAICompatLane implements Lane {
     // live in each transformer. The caller passes the currently-
     // configured model to resolveSmallFastModel() below to get a
     // provider-appropriate fast model when present.
-    return null
+    return null;
   }
 
   isHealthy(): boolean {
-    return this._healthy
+    return this._healthy;
   }
 
   setHealthy(healthy: boolean): void {
-    this._healthy = healthy
+    this._healthy = healthy;
   }
 
   dispose(): void {}
 }
 
 function isOpencodeAnonymousCatalogModel(model: ModelInfo): boolean {
-  return isOpencodeAnonymousModelId(model.id)
-    || model.tags?.some(tag => tag.toLowerCase() === 'free') === true
+  return (
+    isOpencodeAnonymousModelId(model.id) ||
+    model.tags?.some((tag) => tag.toLowerCase() === "free") === true
+  );
 }
 
 function isOpencodeAnonymousModelId(id: string): boolean {
-  const normalized = id.toLowerCase()
-  return normalized.endsWith('-free')
-    || normalized === 'big-pickle'
-    || normalized === 'gpt-5-nano'
-    || normalized === 'gpt-5.4-nano'
+  const normalized = id.toLowerCase();
+  return (
+    normalized.endsWith("-free") ||
+    normalized === "big-pickle" ||
+    normalized === "gpt-5-nano" ||
+    normalized === "gpt-5.4-nano"
+  );
 }
 
 function toCompatCatalogModel(
   providerName: string,
   model: CompatCatalogModel,
 ): ModelInfo | null {
-  if (providerName === 'openrouter') {
-    return toOpenRouterModelInfo(model)
+  if (providerName === "openrouter") {
+    return toOpenRouterModelInfo(model);
   }
 
-  if (providerName === 'mistral') {
-    return toMistralCatalogModel(model)
+  if (providerName === "mistral") {
+    return toMistralCatalogModel(model);
   }
 
-  if (typeof model.id !== 'string' || model.id.length === 0) {
-    return null
+  if (typeof model.id !== "string" || model.id.length === 0) {
+    return null;
   }
 
-  if (typeof model.api === 'string' && model.api.length > 0 && model.api.toLowerCase() !== 'chat') {
-    return null
+  if (
+    typeof model.api === "string" &&
+    model.api.length > 0 &&
+    model.api.toLowerCase() !== "chat"
+  ) {
+    return null;
   }
 
   if (!isTextGenerationCatalogType(model.type)) {
-    return null
+    return null;
   }
 
-  const tags = normalizeCompatCatalogTags(model)
-  if (providerName === 'opencode' && isOpencodeAnonymousModelId(model.id) && !tags.includes('free')) {
-    tags.push('free')
+  const tags = normalizeCompatCatalogTags(model);
+  if (
+    providerName === "opencode" &&
+    isOpencodeAnonymousModelId(model.id) &&
+    !tags.includes("free")
+  ) {
+    tags.push("free");
   }
   const provider =
-    typeof model.owned_by === 'string'
-    && model.owned_by.length > 0
-    && model.owned_by.toLowerCase() !== 'system'
+    typeof model.owned_by === "string" &&
+    model.owned_by.length > 0 &&
+    model.owned_by.toLowerCase() !== "system"
       ? model.owned_by
-      : undefined
+      : undefined;
   const contextWindow =
-    model.context_length
-    ?? model.context_window
-    ?? model.max_context_length
+    model.context_length ?? model.context_window ?? model.max_context_length;
 
   return {
     id: model.id,
-    name: typeof model.name === 'string' && model.name.length > 0
-      ? model.name
-      : model.id,
+    name:
+      typeof model.name === "string" && model.name.length > 0
+        ? model.name
+        : model.id,
     contextWindow,
     ...(provider ? { provider } : {}),
     ...(tags.length > 0 ? { tags } : {}),
-    ...(model.supports_tool_calling === true || model.capabilities?.function_calling === true
+    ...(model.supports_tool_calling === true ||
+    model.capabilities?.function_calling === true
       ? { supportsToolCalling: true }
       : {}),
-  }
+  };
 }
 
 function isTextGenerationCatalogType(type: string | undefined): boolean {
-  if (!type) return true
-  const normalized = type.toLowerCase()
-  return normalized === 'language' || normalized === 'text' || normalized === 'chat'
+  if (!type) return true;
+  const normalized = type.toLowerCase();
+  return (
+    normalized === "language" || normalized === "text" || normalized === "chat"
+  );
 }
 
 function normalizeCompatCatalogTags(model: CompatCatalogModel): string[] {
-  const tags = new Set<string>()
+  const tags = new Set<string>();
   for (const tag of model.tags ?? []) {
-    if (typeof tag === 'string' && tag.length > 0) tags.add(tag)
+    if (typeof tag === "string" && tag.length > 0) tags.add(tag);
   }
-  if (model.supports_tool_calling === true || model.capabilities?.function_calling === true) {
-    tags.add('tools')
+  if (
+    model.supports_tool_calling === true ||
+    model.capabilities?.function_calling === true
+  ) {
+    tags.add("tools");
   }
-  if (model.supports_reasoning === true || tags.has('reasoning')) {
-    tags.add('reasoning')
+  if (model.supports_reasoning === true || tags.has("reasoning")) {
+    tags.add("reasoning");
   }
-  if (model.supports_vision === true || model.capabilities?.vision === true || tags.has('vision')) {
-    tags.add('vision')
+  if (
+    model.supports_vision === true ||
+    model.capabilities?.vision === true ||
+    tags.has("vision")
+  ) {
+    tags.add("vision");
   }
-  if (model.supports_caching === true || tags.has('implicit-caching') || tags.has('explicit-caching')) {
-    tags.add('caching')
+  if (
+    model.supports_caching === true ||
+    tags.has("implicit-caching") ||
+    tags.has("explicit-caching")
+  ) {
+    tags.add("caching");
   }
-  return [...tags]
+  return [...tags];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -1204,8 +1493,11 @@ function normalizeCompatCatalogTags(model: CompatCatalogModel): string[] {
 // Keyed by provider filter so `/models groq` doesn't share state with
 // `/models openrouter`. Unfiltered calls use the `__all__` key.
 
-const _modelsCacheByProvider = new Map<string, { models: ModelInfo[]; at: number }>()
-const MODELS_CACHE_TTL_MS = 5 * 60_000
+const _modelsCacheByProvider = new Map<
+  string,
+  { models: ModelInfo[]; at: number }
+>();
+const MODELS_CACHE_TTL_MS = 5 * 60_000;
 
 /**
  * Resolve a small/fast model for a given main-loop model by delegating
@@ -1216,35 +1508,54 @@ export function resolveCompatSmallFastModel(
   provider: ProviderType,
   model: string,
 ): string | null {
-  return getTransformer(provider as ProviderId).smallFastModel(model)
+  return getTransformer(provider as ProviderId).smallFastModel(model);
 }
 
-function blankUsage(i: number, o: number, c: number, r: number): NormalizedUsage {
+function blankUsage(
+  i: number,
+  o: number,
+  c: number,
+  r: number,
+): NormalizedUsage {
   return {
     input_tokens: i,
     output_tokens: o,
     cache_read_tokens: c,
     cache_write_tokens: 0,
     thinking_tokens: r,
-  }
+  };
 }
 
 function* emitErrorText(text: string): Generator<AnthropicStreamEvent> {
-  yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }
-  yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }
-  yield { type: 'content_block_stop', index: 0 }
+  yield {
+    type: "content_block_start",
+    index: 0,
+    content_block: { type: "text", text: "" },
+  };
+  yield {
+    type: "content_block_delta",
+    index: 0,
+    delta: { type: "text_delta", text },
+  };
+  yield { type: "content_block_stop", index: 0 };
 }
 
 function isOpenCodeGoAnthropicModel(model: string): boolean {
-  return model.trim().toLowerCase() === 'qwen3.7-max'
+  return model.trim().toLowerCase() === "qwen3.7-max";
 }
 
 async function* streamOpenCodeGoAnthropic(
   cfg: { apiKey: string; baseUrl: string },
   params: Pick<
     LaneProviderCallParams,
-    'model' | 'messages' | 'system' | 'tools' | 'max_tokens'
-    | 'temperature' | 'stop_sequences' | 'signal'
+    | "model"
+    | "messages"
+    | "system"
+    | "tools"
+    | "max_tokens"
+    | "temperature"
+    | "stop_sequences"
+    | "signal"
   >,
   sessionId?: string,
 ): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
@@ -1253,197 +1564,213 @@ async function* streamOpenCodeGoAnthropic(
     messages: params.messages,
     max_tokens: params.max_tokens,
     stream: true,
-  }
+  };
 
-  if (typeof params.system === 'string') {
-    if (params.system.trim()) body.system = params.system
+  if (typeof params.system === "string") {
+    if (params.system.trim()) body.system = params.system;
   } else if (params.system.length > 0) {
-    body.system = params.system
+    body.system = params.system;
   }
-  if (params.tools.length > 0) body.tools = params.tools
-  if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stop_sequences?.length) body.stop_sequences = params.stop_sequences
+  if (params.tools.length > 0) body.tools = params.tools;
+  if (params.temperature !== undefined) body.temperature = params.temperature;
+  if (params.stop_sequences?.length)
+    body.stop_sequences = params.stop_sequences;
 
   // `/messages` authenticates with x-api-key. Keep the same OpenCode
-  // affinity/rate-limit headers as the compat route, but never send a Tau
+  // affinity/rate-limit headers as the compat route, but never send a Zen
   // thinking/effort field: this model has no supported reasoning variants.
-  const headers = buildRequestHeaders('opencodego', cfg.apiKey, params.model, sessionId)
-  delete headers.Authorization
-  headers['x-api-key'] = cfg.apiKey
-  headers['anthropic-version'] = '2023-06-01'
+  const headers = buildRequestHeaders(
+    "opencodego",
+    cfg.apiKey,
+    params.model,
+    sessionId,
+  );
+  delete headers.Authorization;
+  headers["x-api-key"] = cfg.apiKey;
+  headers["anthropic-version"] = "2023-06-01";
 
-  const url = `${normalizeBaseUrl(cfg.baseUrl)}/messages`
-  const messageId = `compat-${Date.now()}`
-  let sawMessageStart = false
-  let sawMessageStop = false
-  let inputTokens = 0
-  let outputTokens = 0
-  let cacheReadTokens = 0
-  let cacheWriteTokens = 0
+  const url = `${normalizeBaseUrl(cfg.baseUrl)}/messages`;
+  const messageId = `compat-${Date.now()}`;
+  let sawMessageStart = false;
+  let sawMessageStop = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
 
   const emitSyntheticStart = (): AnthropicStreamEvent => ({
-    type: 'message_start',
+    type: "message_start",
     message: {
       id: messageId,
-      type: 'message',
-      role: 'assistant',
+      type: "message",
+      role: "assistant",
       content: [],
       model: params.model,
       stop_reason: null,
       stop_sequence: null,
       usage: { input_tokens: 0, output_tokens: 0 },
     },
-  })
+  });
 
-  let response: Response
+  let response: Response;
   try {
     response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify(body),
       signal: params.signal,
-    })
+    });
   } catch (error) {
-    yield emitSyntheticStart()
+    yield emitSyntheticStart();
     yield* emitErrorText(
       `opencodego API connection error: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    );
     yield {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn' },
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
       usage: { output_tokens: 0 },
-    }
-    yield { type: 'message_stop' }
-    return blankUsage(0, 0, 0, 0)
+    };
+    yield { type: "message_stop" };
+    return blankUsage(0, 0, 0, 0);
   }
 
   if (!response.ok) {
-    const errText = await response.text().catch(() => '')
-    yield emitSyntheticStart()
-    yield* emitErrorText(formatProviderHttpError('opencodego', response.status, errText, false))
+    const errText = await response.text().catch(() => "");
+    yield emitSyntheticStart();
+    yield* emitErrorText(
+      formatProviderHttpError("opencodego", response.status, errText, false),
+    );
     yield {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn' },
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
       usage: { output_tokens: 0 },
-    }
-    yield { type: 'message_stop' }
-    return blankUsage(0, 0, 0, 0)
+    };
+    yield { type: "message_stop" };
+    return blankUsage(0, 0, 0, 0);
   }
 
   if (!response.body) {
-    yield emitSyntheticStart()
-    yield* emitErrorText('opencodego API error: empty response body')
+    yield emitSyntheticStart();
+    yield* emitErrorText("opencodego API error: empty response body");
     yield {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn' },
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
       usage: { output_tokens: 0 },
-    }
-    yield { type: 'message_stop' }
-    return blankUsage(0, 0, 0, 0)
+    };
+    yield { type: "message_stop" };
+    return blankUsage(0, 0, 0, 0);
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
 
   try {
     while (true) {
-      const { done, value } = await reader.read()
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
-      buffer = buffer.replace(/\r\n/g, '\n')
+      const { done, value } = await reader.read();
+      buffer += done
+        ? decoder.decode()
+        : decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, "\n");
 
-      let boundary: number
-      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-        const rawEvent = buffer.slice(0, boundary)
-        buffer = buffer.slice(boundary + 2)
+      let boundary: number;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
         const data = rawEvent
-          .split('\n')
-          .filter(line => line.startsWith('data:'))
-          .map(line => line.slice(5).trimStart())
-          .join('\n')
-          .trim()
-        if (!data || data === '[DONE]') continue
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n")
+          .trim();
+        if (!data || data === "[DONE]") continue;
 
-        let parsed: any
+        let parsed: any;
         try {
-          parsed = JSON.parse(data)
+          parsed = JSON.parse(data);
         } catch {
-          continue
+          continue;
         }
 
-        if (parsed.type === 'error') {
+        if (parsed.type === "error") {
           if (!sawMessageStart) {
-            sawMessageStart = true
-            yield emitSyntheticStart()
+            sawMessageStart = true;
+            yield emitSyntheticStart();
           }
           const detail =
-            parsed.error?.message
-            ?? parsed.message
-            ?? JSON.stringify(parsed.error ?? parsed)
-          yield* emitErrorText(`opencodego API stream error: ${detail}`)
+            parsed.error?.message ??
+            parsed.message ??
+            JSON.stringify(parsed.error ?? parsed);
+          yield* emitErrorText(`opencodego API stream error: ${detail}`);
           yield {
-            type: 'message_delta',
-            delta: { stop_reason: 'end_turn' },
+            type: "message_delta",
+            delta: { stop_reason: "end_turn" },
             usage: { output_tokens: outputTokens },
-          }
-          yield { type: 'message_stop' }
+          };
+          yield { type: "message_stop" };
           return {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
             cache_read_tokens: cacheReadTokens,
             cache_write_tokens: cacheWriteTokens,
             thinking_tokens: 0,
-          }
+          };
         }
 
-        if (parsed.type === 'message_start') {
-          sawMessageStart = true
-          const usage = parsed.message?.usage ?? {}
-          inputTokens = usage.input_tokens ?? inputTokens
-          outputTokens = usage.output_tokens ?? outputTokens
-          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens
-          cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens
-        } else if (parsed.type === 'message_delta') {
-          const usage = parsed.usage ?? {}
-          inputTokens = usage.input_tokens ?? inputTokens
-          outputTokens = usage.output_tokens ?? outputTokens
-          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens
-          cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens
-        } else if (parsed.type === 'message_stop') {
-          sawMessageStop = true
+        if (parsed.type === "message_start") {
+          sawMessageStart = true;
+          const usage = parsed.message?.usage ?? {};
+          inputTokens = usage.input_tokens ?? inputTokens;
+          outputTokens = usage.output_tokens ?? outputTokens;
+          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens;
+          cacheWriteTokens =
+            usage.cache_creation_input_tokens ?? cacheWriteTokens;
+        } else if (parsed.type === "message_delta") {
+          const usage = parsed.usage ?? {};
+          inputTokens = usage.input_tokens ?? inputTokens;
+          outputTokens = usage.output_tokens ?? outputTokens;
+          cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens;
+          cacheWriteTokens =
+            usage.cache_creation_input_tokens ?? cacheWriteTokens;
+        } else if (parsed.type === "message_stop") {
+          sawMessageStop = true;
         }
 
         if (
-          parsed.type === 'message_start'
-          || parsed.type === 'content_block_start'
-          || parsed.type === 'content_block_delta'
-          || parsed.type === 'content_block_stop'
-          || parsed.type === 'message_delta'
-          || parsed.type === 'message_stop'
+          parsed.type === "message_start" ||
+          parsed.type === "content_block_start" ||
+          parsed.type === "content_block_delta" ||
+          parsed.type === "content_block_stop" ||
+          parsed.type === "message_delta" ||
+          parsed.type === "message_stop"
         ) {
-          yield parsed as AnthropicStreamEvent
+          yield parsed as AnthropicStreamEvent;
         }
       }
 
-      if (done) break
+      if (done) break;
     }
   } finally {
-    reader.releaseLock()
+    reader.releaseLock();
   }
 
-  if (!sawMessageStart) yield emitSyntheticStart()
+  if (!sawMessageStart) yield emitSyntheticStart();
   if (!sawMessageStop) {
     yield {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn' },
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
       usage: {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
-        ...(cacheReadTokens > 0 && { cache_read_input_tokens: cacheReadTokens }),
-        ...(cacheWriteTokens > 0 && { cache_creation_input_tokens: cacheWriteTokens }),
+        ...(cacheReadTokens > 0 && {
+          cache_read_input_tokens: cacheReadTokens,
+        }),
+        ...(cacheWriteTokens > 0 && {
+          cache_creation_input_tokens: cacheWriteTokens,
+        }),
       },
-    }
-    yield { type: 'message_stop' }
+    };
+    yield { type: "message_stop" };
   }
 
   return {
@@ -1452,12 +1779,12 @@ async function* streamOpenCodeGoAnthropic(
     cache_read_tokens: cacheReadTokens,
     cache_write_tokens: cacheWriteTokens,
     thinking_tokens: 0,
-  }
+  };
 }
 
 interface ProviderErrorPayload {
-  code?: string
-  message?: string
+  code?: string;
+  message?: string;
 }
 
 function formatProviderHttpError(
@@ -1466,25 +1793,29 @@ function formatProviderHttpError(
   errText: string,
   isPromptTooLong: boolean,
 ): string {
-  if (provider === 'glm') {
-    return formatGlmHttpError(status, errText, isPromptTooLong)
+  if (provider === "glm") {
+    return formatGlmHttpError(status, errText, isPromptTooLong);
   }
-  if (provider === 'opencode' && status === 429 && errText.includes('FreeUsageLimitError')) {
+  if (
+    provider === "opencode" &&
+    status === 429 &&
+    errText.includes("FreeUsageLimitError")
+  ) {
     // FreeUsageLimitError comes from the gateway's IP-based anonymous
     // limiter for allowAnonymous=true models (big-pickle, *-free rows,
     // gpt-5-nano). A real API key only changes quota when the user also
     // switches to a non-anonymous paid model.
     return [
-      'opencode API error 429: This is the IP-based daily limit for OpenCode Zen anonymous/free models',
-      '(big-pickle, *-free rows, gpt-5-nano). Use a real OPENCODE_API_KEY and switch to a paid model in /models opencode',
-      '(e.g. claude-opus-4-7, claude-sonnet-4-6, gpt-5.4, gemini-3.1-pro, glm-5.1, kimi-k2.5)',
+      "opencode API error 429: This is the IP-based daily limit for OpenCode Zen anonymous/free models",
+      "(big-pickle, *-free rows, gpt-5-nano). Use a real OPENCODE_API_KEY and switch to a paid model in /models opencode",
+      "(e.g. claude-opus-4-7, claude-sonnet-4-6, gpt-5.4, gemini-3.1-pro, glm-5.1, kimi-k2.5)",
       `to use your API-key quota instead. Raw: ${errText.slice(0, 200)}`,
-    ].join(' ')
+    ].join(" ");
   }
   const headline = isPromptTooLong
     ? `Prompt is too long (${provider} ${status})`
-    : `${provider} API error ${status}`
-  return `${headline}: ${errText.slice(0, 500)}`
+    : `${provider} API error ${status}`;
+  return `${headline}: ${errText.slice(0, 500)}`;
 }
 
 function formatGlmHttpError(
@@ -1493,118 +1824,127 @@ function formatGlmHttpError(
   isPromptTooLong: boolean,
 ): string {
   if (isPromptTooLong) {
-    return `Prompt is too long (glm ${status})`
+    return `Prompt is too long (glm ${status})`;
   }
 
-  const parsed = parseProviderErrorPayload(errText)
-  const code = parsed?.code
-  const detail = parsed?.message ?? errText.trim()
+  const parsed = parseProviderErrorPayload(errText);
+  const code = parsed?.code;
+  const detail = parsed?.message ?? errText.trim();
   const isInsufficientBalance =
     status === 429 &&
-    (code === '1113' ||
+    (code === "1113" ||
       /余额不足|无可用资源包|请充值|\binsufficient\b|\bbalance\b|\bquota\b|\bresource package\b/i.test(
         detail,
-      ))
+      ));
 
   if (isInsufficientBalance) {
     return [
       `glm API error ${status}: BigModel balance is insufficient or no resource package is available.`,
-      'Open /usage for BigModel links, recharge the account, or switch provider/model with /models.',
-    ].join(' ')
+      "Open /usage for BigModel links, recharge the account, or switch provider/model with /models.",
+    ].join(" ");
   }
 
-  const suffix = code ? ` (${code})` : ''
-  const text = detail || errText
-  return `glm API error ${status}${suffix}: ${text.slice(0, 500)}`
+  const suffix = code ? ` (${code})` : "";
+  const text = detail || errText;
+  return `glm API error ${status}${suffix}: ${text.slice(0, 500)}`;
 }
 
 function parseProviderErrorPayload(raw: string): ProviderErrorPayload | null {
   try {
-    const value = JSON.parse(raw) as unknown
-    if (!value || typeof value !== 'object') return null
-    const root = value as Record<string, unknown>
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object") return null;
+    const root = value as Record<string, unknown>;
     const error =
-      root.error && typeof root.error === 'object'
-        ? root.error as Record<string, unknown>
-        : root
-    const code = error.code
-    const message = error.message
+      root.error && typeof root.error === "object"
+        ? (root.error as Record<string, unknown>)
+        : root;
+    const code = error.code;
+    const message = error.message;
     return {
-      code: typeof code === 'string' || typeof code === 'number' ? String(code) : undefined,
-      message: typeof message === 'string' ? message : undefined,
-    }
+      code:
+        typeof code === "string" || typeof code === "number"
+          ? String(code)
+          : undefined,
+      message: typeof message === "string" ? message : undefined,
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
 function toMistralCatalogModel(model: CompatCatalogModel): ModelInfo | null {
-  if (typeof model.id !== 'string' || model.id.length === 0) {
-    return null
+  if (typeof model.id !== "string" || model.id.length === 0) {
+    return null;
   }
 
-  const capabilities = model.capabilities
+  const capabilities = model.capabilities;
   if (capabilities?.completion_chat === false) {
-    return null
+    return null;
   }
 
-  const tags: string[] = []
-  if (capabilities?.function_calling === true) tags.push('tools')
-  if (isMistralReasoningModelId(model.id)) tags.push('reasoning')
+  const tags: string[] = [];
+  if (capabilities?.function_calling === true) tags.push("tools");
+  if (isMistralReasoningModelId(model.id)) tags.push("reasoning");
 
   return {
     id: model.id,
-    name: typeof model.name === 'string' && model.name.length > 0
-      ? model.name
-      : model.id,
+    name:
+      typeof model.name === "string" && model.name.length > 0
+        ? model.name
+        : model.id,
     contextWindow: model.max_context_length ?? model.context_length,
     supportsToolCalling: capabilities?.function_calling,
     tags: tags.length > 0 ? tags : undefined,
-    ...(typeof model.owned_by === 'string' && model.owned_by.length > 0
+    ...(typeof model.owned_by === "string" && model.owned_by.length > 0
       ? { provider: model.owned_by }
-      : { provider: 'Mistral' }),
-  }
+      : { provider: "Mistral" }),
+  };
 }
 
 function isMistralReasoningModelId(modelId: string): boolean {
-  const m = modelId.toLowerCase()
+  const m = modelId.toLowerCase();
   return (
-    m.includes('magistral') ||
-    m.startsWith('mistral-small') ||
-    m === 'mistral-medium-3-5' ||
-    m === 'mistral-medium-latest'
-  )
+    m.includes("magistral") ||
+    m.startsWith("mistral-small") ||
+    m === "mistral-medium-3-5" ||
+    m === "mistral-medium-latest"
+  );
 }
 
-async function listLmStudioNativeModels(
-  cfg: { apiKey: string; baseUrl: string },
-): Promise<LmStudioModelInfo[]> {
-  const url = `${lmStudioServerRoot(cfg.baseUrl)}/api/v1/models`
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`
+async function listLmStudioNativeModels(cfg: {
+  apiKey: string;
+  baseUrl: string;
+}): Promise<LmStudioModelInfo[]> {
+  const url = `${lmStudioServerRoot(cfg.baseUrl)}/api/v1/models`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5_000)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
-      const resp = await fetch(url, { headers, method: 'GET', signal: controller.signal })
-      if (!resp.ok) continue
-      const data = await resp.json() as { models?: LmStudioNativeModel[] }
+      const resp = await fetch(url, {
+        headers,
+        method: "GET",
+        signal: controller.signal,
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as { models?: LmStudioNativeModel[] };
       const models = (data.models ?? [])
         .map(toLmStudioNativeModelInfo)
-        .filter((model): model is LmStudioModelInfo => model !== null)
+        .filter((model): model is LmStudioModelInfo => model !== null);
       if (models.length > 0) {
-        recordProviderModelContextWindows('lmstudio', models)
-        return models
+        recordProviderModelContextWindows("lmstudio", models);
+        return models;
       }
     } catch {
       // Retry once. LM Studio can briefly reject metadata requests while
       // loading or swapping a local model.
     } finally {
-      clearTimeout(timeout)
+      clearTimeout(timeout);
     }
   }
-  return []
+  return [];
 }
 
 async function getLmStudioContextPreflightMessage(
@@ -1612,52 +1952,55 @@ async function getLmStudioContextPreflightMessage(
   model: string,
   body: OpenAIChatRequest,
 ): Promise<string | null> {
-  const info = await getLmStudioModelInfo(cfg, model)
-  const loadedContextWindow = info?.lmStudioLoadedContextWindow
-  if (!loadedContextWindow || loadedContextWindow <= 0) return null
+  const info = await getLmStudioModelInfo(cfg, model);
+  const loadedContextWindow = info?.lmStudioLoadedContextWindow;
+  if (!loadedContextWindow || loadedContextWindow <= 0) return null;
 
-  const estimatedInputTokens = estimateOpenAICompatRequestTokens(body)
-  if (estimatedInputTokens < loadedContextWindow) return null
+  const estimatedInputTokens = estimateOpenAICompatRequestTokens(body);
+  if (estimatedInputTokens < loadedContextWindow) return null;
 
-  const maxContextWindow = info.lmStudioMaxContextWindow ?? info.contextWindow
+  const maxContextWindow = info.lmStudioMaxContextWindow ?? info.contextWindow;
   const suggestedContextWindow = maxContextWindow
     ? Math.min(
         maxContextWindow,
         roundUpToMultiple(estimatedInputTokens + 4096, 8192),
       )
-    : undefined
-  const reloadHint = suggestedContextWindow && suggestedContextWindow > loadedContextWindow
-    ? ` Reload it with a larger context, for example: lms unload "${model}"; lms load "${model}" -c ${suggestedContextWindow} -y --identifier "${model}".`
-    : ''
+    : undefined;
+  const reloadHint =
+    suggestedContextWindow && suggestedContextWindow > loadedContextWindow
+      ? ` Reload it with a larger context, for example: lms unload "${model}"; lms load "${model}" -c ${suggestedContextWindow} -y --identifier "${model}".`
+      : "";
 
-  return `LM Studio has "${model}" loaded with ${formatTokenCount(loadedContextWindow)} context tokens, but Tau's agent request is about ${formatTokenCount(estimatedInputTokens)} tokens before generation. LM Studio can return an empty response in that state.${maxContextWindow ? ` This model reports up to ${formatTokenCount(maxContextWindow)} tokens available.` : ''}${reloadHint}`
+  return `LM Studio has "${model}" loaded with ${formatTokenCount(loadedContextWindow)} context tokens, but Zen's agent request is about ${formatTokenCount(estimatedInputTokens)} tokens before generation. LM Studio can return an empty response in that state.${maxContextWindow ? ` This model reports up to ${formatTokenCount(maxContextWindow)} tokens available.` : ""}${reloadHint}`;
 }
 
 async function getLmStudioModelInfo(
   cfg: { apiKey: string; baseUrl: string },
   modelId: string,
 ): Promise<LmStudioModelInfo | null> {
-  const models = await listLmStudioNativeModels(cfg)
-  const byId = new Map<string, LmStudioModelInfo>()
+  const models = await listLmStudioNativeModels(cfg);
+  const byId = new Map<string, LmStudioModelInfo>();
   for (const model of models) {
-    byId.set(model.id, model)
-    for (const alias of model.lmStudioAliases ?? []) byId.set(alias, model)
+    byId.set(model.id, model);
+    for (const alias of model.lmStudioAliases ?? []) byId.set(alias, model);
   }
-  return byId.get(modelId) ?? null
+  return byId.get(modelId) ?? null;
 }
 
 function estimateOpenAICompatRequestTokens(body: OpenAIChatRequest): number {
-  const messageChars = JSON.stringify(body.messages).length
-  const toolChars = body.tools ? JSON.stringify(body.tools).length : 0
-  return Math.ceil((messageChars + toolChars) / 4)
+  const messageChars = JSON.stringify(body.messages).length;
+  const toolChars = body.tools ? JSON.stringify(body.tools).length : 0;
+  return Math.ceil((messageChars + toolChars) / 4);
 }
 
 function roundUpToMultiple(value: number, multiple: number): number {
-  return Math.ceil(value / multiple) * multiple
+  return Math.ceil(value / multiple) * multiple;
 }
 
 function formatTokenCount(value: number): string {
-  return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return Math.round(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 async function fetchLmStudioNonStreamingCompletion(
@@ -1667,148 +2010,164 @@ async function fetchLmStudioNonStreamingCompletion(
   signal?: AbortSignal,
   textOnly = false,
 ): Promise<{
-  text?: string
-  thinking?: string
-  toolCalls?: NonNullable<OpenAIChatMessage['tool_calls']>
+  text?: string;
+  thinking?: string;
+  toolCalls?: NonNullable<OpenAIChatMessage["tool_calls"]>;
   usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    completion_tokens_details?: { reasoning_tokens?: number }
-  }
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    completion_tokens_details?: { reasoning_tokens?: number };
+  };
 } | null> {
-  const headers = buildRequestHeaders('lmstudio', cfg.apiKey, model)
-  const fallbackBody: OpenAIChatRequest = { ...body, stream: false }
-  delete fallbackBody.stream_options
+  const headers = buildRequestHeaders("lmstudio", cfg.apiKey, model);
+  const fallbackBody: OpenAIChatRequest = { ...body, stream: false };
+  delete fallbackBody.stream_options;
   if (textOnly) {
-    delete fallbackBody.tools
-    fallbackBody.tool_choice = 'none'
+    delete fallbackBody.tools;
+    fallbackBody.tool_choice = "none";
   }
-  fallbackBody.thinking = { type: 'disabled' }
+  fallbackBody.thinking = { type: "disabled" };
 
-  const resp = await fetch(`${normalizeBaseUrl(cfg.baseUrl)}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(fallbackBody),
-    signal,
-  })
-  if (!resp.ok) return null
+  const resp = await fetch(
+    `${normalizeBaseUrl(cfg.baseUrl)}/chat/completions`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(fallbackBody),
+      signal,
+    },
+  );
+  if (!resp.ok) return null;
 
-  const data = await resp.json() as {
+  const data = (await resp.json()) as {
     choices?: Array<{
       message?: {
-        content?: string | null
-        reasoning_content?: string
-        reasoning?: string
-        thinking?: string
-        tool_calls?: NonNullable<OpenAIChatMessage['tool_calls']>
-      }
-    }>
+        content?: string | null;
+        reasoning_content?: string;
+        reasoning?: string;
+        thinking?: string;
+        tool_calls?: NonNullable<OpenAIChatMessage["tool_calls"]>;
+      };
+    }>;
     usage?: {
-      prompt_tokens?: number
-      completion_tokens?: number
-      completion_tokens_details?: { reasoning_tokens?: number }
-    }
-  }
-  const message = data.choices?.[0]?.message
-  if (!message) return null
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+    };
+  };
+  const message = data.choices?.[0]?.message;
+  if (!message) return null;
   return {
-    text: typeof message.content === 'string' ? message.content : undefined,
-    thinking: message.thinking ?? message.reasoning_content ?? message.reasoning,
+    text: typeof message.content === "string" ? message.content : undefined,
+    thinking:
+      message.thinking ?? message.reasoning_content ?? message.reasoning,
     toolCalls: message.tool_calls,
     usage: data.usage,
-  }
+  };
 }
 
-async function listLmStudioOpenAIModels(
-  cfg: { apiKey: string; baseUrl: string },
-): Promise<ModelInfo[]> {
+async function listLmStudioOpenAIModels(cfg: {
+  apiKey: string;
+  baseUrl: string;
+}): Promise<ModelInfo[]> {
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' }
-    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
     const resp = await fetch(`${normalizeBaseUrl(cfg.baseUrl)}/models`, {
       headers,
-      method: 'GET',
-    })
-    if (!resp.ok) return []
-    const data = await resp.json() as { data?: CompatCatalogModel[] }
+      method: "GET",
+    });
+    if (!resp.ok) return [];
+    const data = (await resp.json()) as { data?: CompatCatalogModel[] };
     const openAIModels = (data.data ?? [])
-      .map(model => toCompatCatalogModel('lmstudio', model))
+      .map((model) => toCompatCatalogModel("lmstudio", model))
       .filter((model): model is ModelInfo => model !== null)
-      .filter(model => !looksLikeEmbeddingModel(model.id))
+      .filter((model) => !looksLikeEmbeddingModel(model.id));
 
-    const nativeModels = await listLmStudioNativeModels(cfg)
-    if (nativeModels.length === 0) return openAIModels
+    const nativeModels = await listLmStudioNativeModels(cfg);
+    if (nativeModels.length === 0) return openAIModels;
 
-    const nativeById = new Map<string, ModelInfo>()
+    const nativeById = new Map<string, ModelInfo>();
     for (const model of nativeModels) {
-      nativeById.set(model.id, model)
-      const variantIds = (model as ModelInfo & { lmStudioAliases?: string[] }).lmStudioAliases ?? []
-      for (const alias of variantIds) nativeById.set(alias, model)
+      nativeById.set(model.id, model);
+      const variantIds =
+        (model as ModelInfo & { lmStudioAliases?: string[] }).lmStudioAliases ??
+        [];
+      for (const alias of variantIds) nativeById.set(alias, model);
     }
     const enriched = openAIModels
-      .filter(model => nativeById.has(model.id))
-      .map(model => {
-        const native = nativeById.get(model.id)
+      .filter((model) => nativeById.has(model.id))
+      .map((model) => {
+        const native = nativeById.get(model.id);
         return {
           ...model,
           ...(native ?? {}),
           id: model.id,
-        }
-      })
-    return enriched.length > 0 ? enriched : openAIModels
+        };
+      });
+    return enriched.length > 0 ? enriched : openAIModels;
   } catch {
-    return []
+    return [];
   }
 }
 
-function toLmStudioNativeModelInfo(model: LmStudioNativeModel): LmStudioModelInfo | null {
-  if (model.type && model.type !== 'llm') return null
-  if (typeof model.key !== 'string' || model.key.length === 0) return null
+function toLmStudioNativeModelInfo(
+  model: LmStudioNativeModel,
+): LmStudioModelInfo | null {
+  if (model.type && model.type !== "llm") return null;
+  if (typeof model.key !== "string" || model.key.length === 0) return null;
 
   const loaded =
-    model.loaded_instances?.find(instance =>
-      instance.id === model.key || instance.id?.startsWith(`${model.key}@`),
-    )
-    ?? model.loaded_instances?.[0]
+    model.loaded_instances?.find(
+      (instance) =>
+        instance.id === model.key || instance.id?.startsWith(`${model.key}@`),
+    ) ?? model.loaded_instances?.[0];
   const contextWindow =
-    model.max_context_length
-    ?? model.context_length
-    ?? loaded?.config?.context_length
-    ?? undefined
-  const loadedContextWindow = loaded?.config?.context_length
+    model.max_context_length ??
+    model.context_length ??
+    loaded?.config?.context_length ??
+    undefined;
+  const loadedContextWindow = loaded?.config?.context_length;
   const aliases = [
     ...(model.selected_variant ? [model.selected_variant] : []),
     ...(model.variants ?? []),
-    ...(model.loaded_instances ?? []).map(instance => instance.id).filter((id): id is string => typeof id === 'string' && id.length > 0),
-  ]
+    ...(model.loaded_instances ?? [])
+      .map((instance) => instance.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  ];
 
   return {
     id: model.key,
-    name: typeof model.display_name === 'string' && model.display_name.length > 0
-      ? model.display_name
-      : model.key,
+    name:
+      typeof model.display_name === "string" && model.display_name.length > 0
+        ? model.display_name
+        : model.key,
     ...(contextWindow ? { contextWindow } : {}),
-    ...(loadedContextWindow ? { lmStudioLoadedContextWindow: loadedContextWindow } : {}),
-    ...(model.max_context_length ? { lmStudioMaxContextWindow: model.max_context_length } : {}),
-    ...(typeof model.capabilities?.trained_for_tool_use === 'boolean'
+    ...(loadedContextWindow
+      ? { lmStudioLoadedContextWindow: loadedContextWindow }
+      : {}),
+    ...(model.max_context_length
+      ? { lmStudioMaxContextWindow: model.max_context_length }
+      : {}),
+    ...(typeof model.capabilities?.trained_for_tool_use === "boolean"
       ? { supportsToolCalling: model.capabilities.trained_for_tool_use }
       : {}),
     ...(aliases.length > 0 ? { lmStudioAliases: aliases } : {}),
-    provider: 'LM Studio',
-  }
+    provider: "LM Studio",
+  };
 }
 
 function looksLikeEmbeddingModel(modelId: string): boolean {
-  const normalized = modelId.toLowerCase()
-  return normalized.includes('embedding') || normalized.includes('embed')
+  const normalized = modelId.toLowerCase();
+  return normalized.includes("embedding") || normalized.includes("embed");
 }
 
 function lmStudioServerRoot(baseUrl: string): string {
-  return normalizeBaseUrl(baseUrl).replace(/\/(?:api\/)?v1$/i, '')
+  return normalizeBaseUrl(baseUrl).replace(/\/(?:api\/)?v1$/i, "");
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 }
 
 function buildRequestHeaders(
@@ -1818,29 +2177,29 @@ function buildRequestHeaders(
   sessionId?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream',
-  }
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   // Delegate provider-specific header additions (e.g. OpenRouter's
   // HTTP-Referer) to the transformer. Adding a new provider = one
   // buildHeaders() method in its transformer file.
-  const transformer = getTransformer(provider as ProviderId)
-  const extra = transformer.buildHeaders?.(apiKey, { model, sessionId }) ?? {}
-  for (const [k, v] of Object.entries(extra)) headers[k] = v
-  return headers
+  const transformer = getTransformer(provider as ProviderId);
+  const extra = transformer.buildHeaders?.(apiKey, { model, sessionId }) ?? {};
+  for (const [k, v] of Object.entries(extra)) headers[k] = v;
+  return headers;
 }
 
 function normalizeToolName(rawName: string): string {
   // Tool name arrives as whatever the model called. If it matches a native
   // entry in the registry, map to shared impl id. Otherwise pass through.
-  const reg = OPENAI_COMPAT_TOOL_REGISTRY.find(r => r.nativeName === rawName)
-  return reg?.implId ?? rawName
+  const reg = OPENAI_COMPAT_TOOL_REGISTRY.find((r) => r.nativeName === rawName);
+  return reg?.implId ?? rawName;
 }
 
 function clampMaxTokens(provider: ProviderType, requested: number): number {
   // Per-provider ceilings live in each transformer (e.g. DeepSeek 8192).
-  return getTransformer(provider as ProviderId).clampMaxTokens(requested)
+  return getTransformer(provider as ProviderId).clampMaxTokens(requested);
 }
 
 // ─── Per-Provider Request Quirks ─────────────────────────────────
@@ -1852,21 +2211,21 @@ function clampMaxTokens(provider: ProviderType, requested: number): number {
 function applyProviderRequestQuirks(
   body: OpenAIChatRequest,
   provider: ProviderType,
-  thinking: LaneProviderCallParams['thinking'] | undefined,
+  thinking: LaneProviderCallParams["thinking"] | undefined,
   sessionId?: string,
 ): OpenAIChatRequest {
-  const transformer = getTransformer(provider as ProviderId)
-  const isReasoning = !!(thinking && thinking.type !== 'disabled')
-  const effort = resolveReasoningEffort(thinking) ?? null
+  const transformer = getTransformer(provider as ProviderId);
+  const isReasoning = !!(thinking && thinking.type !== "disabled");
+  const effort = resolveReasoningEffort(thinking) ?? null;
 
   // Cache-control placement per-transformer: strip when the provider
   // doesn't honor it (DeepSeek, Groq, Mistral, NIM, Ollama, generic);
   // pass through for OpenRouter (its upstream relocates for Anthropic
   // cap compliance automatically).
-  const cacheMode = transformer.cacheControlMode(body.model)
-  if (cacheMode === 'none') {
-    body.messages = body.messages.map(stripCacheControlFromMessage)
-  } else if (cacheMode === 'last-only') {
+  const cacheMode = transformer.cacheControlMode(body.model);
+  if (cacheMode === "none") {
+    body.messages = body.messages.map(stripCacheControlFromMessage);
+  } else if (cacheMode === "last-only") {
     // Apply Anthropic's 4-breakpoint rolling cache (one for system, two
     // for the trailing user/tool messages). Without this OpenRouter ships
     // a request without a single cache_control marker, Anthropic upstream
@@ -1875,7 +2234,7 @@ function applyProviderRequestQuirks(
     // cold write, the system breakpoint anchors a deep read and the two
     // rolling user breakpoints extend it to the latest tool result, so
     // subsequent turns hit ~100% of the prefix.
-    applyLastOnlyCacheBreakpoints(body.messages)
+    applyLastOnlyCacheBreakpoints(body.messages);
   }
 
   // Let the transformer apply its provider-specific quirks. Every
@@ -1885,20 +2244,20 @@ function applyProviderRequestQuirks(
     isReasoning,
     reasoningEffort: effort,
     sessionId,
-  })
+  });
 
   // Per-model default generation params (Qwen 0.55, Kimi-k2 0.6,
   // MiniMax 1.0, Gemini-via-OR 1.0/0.95/64, …). Mirrors opencode's
   // temperature/topP/topK helpers in provider/transform.ts. ONLY
   // applied when the caller passed undefined — explicit values from
   // claude.ts / frontier defaults always win.
-  const defaults = transformer.defaultGenerationParams?.(body.model)
+  const defaults = transformer.defaultGenerationParams?.(body.model);
   if (defaults) {
     if (body.temperature === undefined && defaults.temperature !== undefined) {
-      body.temperature = defaults.temperature
+      body.temperature = defaults.temperature;
     }
     if (body.top_p === undefined && defaults.top_p !== undefined) {
-      body.top_p = defaults.top_p
+      body.top_p = defaults.top_p;
     }
     if (defaults.top_k !== undefined) {
       // top_k isn't part of the OpenAI Chat Completions shape; ride
@@ -1906,9 +2265,10 @@ function applyProviderRequestQuirks(
       // gateways that accept it forward it to the upstream. Providers
       // that don't recognize it ignore the field. Skip the override if
       // the caller already populated extra_body.top_k.
-      const bag = body as unknown as Record<string, any>
-      bag.extra_body = bag.extra_body ?? {}
-      if (bag.extra_body.top_k === undefined) bag.extra_body.top_k = defaults.top_k
+      const bag = body as unknown as Record<string, any>;
+      bag.extra_body = bag.extra_body ?? {};
+      if (bag.extra_body.top_k === undefined)
+        bag.extra_body.top_k = defaults.top_k;
     }
   }
 
@@ -1916,38 +2276,38 @@ function applyProviderRequestQuirks(
   // always strip null tool_calls regardless of provider (the cost of
   // doing it uniformly is < 1ms, the risk of missing it per-provider
   // is a subtle 400 on certain replay flows).
-  body.messages = body.messages.map(stripNullToolCall)
+  body.messages = body.messages.map(stripNullToolCall);
 
   // Remove undefined fields — many providers 400 on explicit `null` on
   // optional fields they don't recognize.
-  const bag = body as unknown as Record<string, unknown>
+  const bag = body as unknown as Record<string, unknown>;
   for (const k of Object.keys(bag)) {
-    if (bag[k] === undefined) delete bag[k]
+    if (bag[k] === undefined) delete bag[k];
   }
 
-  return body
+  return body;
 }
 
 function resolveReasoningEffort(
-  thinking: LaneProviderCallParams['thinking'] | undefined,
-): 'low' | 'medium' | 'high' | undefined {
-  if (!thinking || thinking.type === 'disabled') return undefined
-  if (thinking.type === 'adaptive') return 'medium'
-  const budget = (thinking as any).budget_tokens as number | undefined
-  if (budget == null) return 'medium'
-  if (budget < 2000) return 'low'
-  if (budget < 8000) return 'medium'
-  return 'high'
+  thinking: LaneProviderCallParams["thinking"] | undefined,
+): "low" | "medium" | "high" | undefined {
+  if (!thinking || thinking.type === "disabled") return undefined;
+  if (thinking.type === "adaptive") return "medium";
+  const budget = (thinking as any).budget_tokens as number | undefined;
+  if (budget == null) return "medium";
+  if (budget < 2000) return "low";
+  if (budget < 8000) return "medium";
+  return "high";
 }
 
 function stripCacheControlFromMessage(m: OpenAIChatMessage): OpenAIChatMessage {
-  if (!m.content || typeof m.content === 'string') return m
-  const cleanedContent = m.content.map(part => {
-    if (typeof part !== 'object' || part === null) return part
-    const { cache_control: _cc, ...rest } = part as any
-    return rest
-  })
-  return { ...m, content: cleanedContent as any }
+  if (!m.content || typeof m.content === "string") return m;
+  const cleanedContent = m.content.map((part) => {
+    if (typeof part !== "object" || part === null) return part;
+    const { cache_control: _cc, ...rest } = part as any;
+    return rest;
+  });
+  return { ...m, content: cleanedContent as any };
 }
 
 /**
@@ -1972,74 +2332,97 @@ function stripCacheControlFromMessage(m: OpenAIChatMessage): OpenAIChatMessage {
  * arrived with cache_control already set isn't re-stamped.
  */
 function applyLastOnlyCacheBreakpoints(messages: OpenAIChatMessage[]): void {
-  const stampLast = (parts: Array<{ type: string; text?: string; cache_control?: { type: string } }>): void => {
-    if (parts.length === 0) return
-    const last = parts[parts.length - 1]
-    if (last && last.type === 'text' && !last.cache_control) {
-      last.cache_control = { type: 'ephemeral' }
+  const stampLast = (
+    parts: Array<{
+      type: string;
+      text?: string;
+      cache_control?: { type: string };
+    }>,
+  ): void => {
+    if (parts.length === 0) return;
+    const last = parts[parts.length - 1];
+    if (last && last.type === "text" && !last.cache_control) {
+      last.cache_control = { type: "ephemeral" };
     }
-  }
+  };
 
   const stampTrailing = (m: OpenAIChatMessage): void => {
-    if (typeof m.content === 'string') {
-      const text = m.content
+    if (typeof m.content === "string") {
+      const text = m.content;
       m.content = [
-        { type: 'text', text: text.length > 0 ? text : ' ', cache_control: { type: 'ephemeral' } },
-      ]
+        {
+          type: "text",
+          text: text.length > 0 ? text : " ",
+          cache_control: { type: "ephemeral" },
+        },
+      ];
     } else if (Array.isArray(m.content) && m.content.length > 0) {
-      stampLast(m.content as any)
+      stampLast(m.content as any);
     }
-  }
+  };
 
   // 1. System breakpoint — anchors the whole system-prompt-plus-tools prefix.
-  const sys = messages.find((m) => m.role === 'system')
+  const sys = messages.find((m) => m.role === "system");
   if (sys) {
-    if (typeof sys.content === 'string' && sys.content.length > 0) {
-      sys.content = [{ type: 'text', text: sys.content, cache_control: { type: 'ephemeral' } }]
+    if (typeof sys.content === "string" && sys.content.length > 0) {
+      sys.content = [
+        {
+          type: "text",
+          text: sys.content,
+          cache_control: { type: "ephemeral" },
+        },
+      ];
     } else if (Array.isArray(sys.content)) {
-      stampLast(sys.content as any)
+      stampLast(sys.content as any);
     }
   }
 
   // 2 & 3. Last TWO non-system user/tool breakpoints — rolling cache.
-  let stamped = 0
+  let stamped = 0;
   for (let i = messages.length - 1; i >= 0 && stamped < 2; i--) {
-    const m = messages[i]!
-    if (m.role !== 'user' && m.role !== 'tool') continue
-    stampTrailing(m)
-    stamped++
+    const m = messages[i]!;
+    if (m.role !== "user" && m.role !== "tool") continue;
+    stampTrailing(m);
+    stamped++;
   }
 }
 
 function stripNullToolCall(m: OpenAIChatMessage): OpenAIChatMessage {
-  if (!m.tool_calls) return m
-  const cleaned = m.tool_calls.filter(tc => tc && tc.function && tc.function.name)
+  if (!m.tool_calls) return m;
+  const cleaned = m.tool_calls.filter(
+    (tc) => tc && tc.function && tc.function.name,
+  );
   if (cleaned.length === 0) {
-    const { tool_calls: _tc, ...rest } = m
-    return rest
+    const { tool_calls: _tc, ...rest } = m;
+    return rest;
   }
-  return { ...m, tool_calls: cleaned }
+  return { ...m, tool_calls: cleaned };
 }
 
 function stripNameField(m: OpenAIChatMessage): OpenAIChatMessage {
-  if (!m.name) return m
-  const { name: _n, ...rest } = m
-  return rest
+  if (!m.name) return m;
+  const { name: _n, ...rest } = m;
+  return rest;
 }
 
-function injectMagistralThinkingPrompt(messages: OpenAIChatMessage[]): OpenAIChatMessage[] {
+function injectMagistralThinkingPrompt(
+  messages: OpenAIChatMessage[],
+): OpenAIChatMessage[] {
   const thinkingPrompt =
-    'Reason step-by-step inside <think>...</think> tags before answering. '
-    + 'Emit your thinking first, then provide your final answer outside the tags.'
-  const existingSystem = messages.findIndex(m => m.role === 'system')
+    "Reason step-by-step inside <think>...</think> tags before answering. " +
+    "Emit your thinking first, then provide your final answer outside the tags.";
+  const existingSystem = messages.findIndex((m) => m.role === "system");
   if (existingSystem >= 0) {
-    const sys = messages[existingSystem]
-    const merged = typeof sys.content === 'string'
-      ? thinkingPrompt + '\n\n' + sys.content
-      : thinkingPrompt
-    return messages.map((m, i) => i === existingSystem ? { ...m, content: merged } : m)
+    const sys = messages[existingSystem];
+    const merged =
+      typeof sys.content === "string"
+        ? thinkingPrompt + "\n\n" + sys.content
+        : thinkingPrompt;
+    return messages.map((m, i) =>
+      i === existingSystem ? { ...m, content: merged } : m,
+    );
   }
-  return [{ role: 'system', content: thinkingPrompt }, ...messages]
+  return [{ role: "system", content: thinkingPrompt }, ...messages];
 }
 
 // ─── Ollama Native /api/chat Path ────────────────────────────────
@@ -2053,39 +2436,43 @@ function injectMagistralThinkingPrompt(messages: OpenAIChatMessage[]): OpenAICha
 // thin transport swap rather than a full re-implementation.
 
 function safeParseObject(s: string): Record<string, unknown> {
-  if (!s) return {}
-  try { return JSON.parse(s) as Record<string, unknown> } catch { return {} }
+  if (!s) return {};
+  try {
+    return JSON.parse(s) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function toOllamaMessage(m: OpenAIChatMessage): Record<string, unknown> {
   // Ollama wants flat string content; collapse OpenAI parts arrays.
-  let content = ''
-  if (typeof m.content === 'string') {
-    content = m.content
+  let content = "";
+  if (typeof m.content === "string") {
+    content = m.content;
   } else if (Array.isArray(m.content)) {
     content = m.content
-      .filter((p: any) => p && p.type === 'text' && typeof p.text === 'string')
+      .filter((p: any) => p && p.type === "text" && typeof p.text === "string")
       .map((p: any) => p.text)
-      .join('\n')
+      .join("\n");
   }
 
-  const out: Record<string, unknown> = { role: m.role, content }
+  const out: Record<string, unknown> = { role: m.role, content };
 
   if (m.tool_calls && m.tool_calls.length > 0) {
-    out.tool_calls = m.tool_calls.map(tc => ({
+    out.tool_calls = m.tool_calls.map((tc) => ({
       ...(tc.id && { id: tc.id }),
-      type: 'function',
+      type: "function",
       function: {
         name: tc.function.name,
         // Ollama's /api/chat accepts arguments as object; we always have
         // a JSON string from the OpenAI conversion path so parse here.
         arguments: safeParseObject(tc.function.arguments),
       },
-    }))
+    }));
   }
-  if (m.tool_call_id) out.tool_call_id = m.tool_call_id
+  if (m.tool_call_id) out.tool_call_id = m.tool_call_id;
 
-  return out
+  return out;
 }
 
 async function* streamOllamaNative(
@@ -2094,11 +2481,11 @@ async function* streamOllamaNative(
   model: string,
   signal: AbortSignal | undefined,
 ): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
-  const root = normalizeBaseUrl(cfg.baseUrl).replace(/\/v1$/i, '')
-  const url = `${root}/api/chat`
+  const root = normalizeBaseUrl(cfg.baseUrl).replace(/\/v1$/i, "");
+  const url = `${root}/api/chat`;
 
-  const numCtx = parseInt(process.env.OLLAMA_NUM_CTX ?? '16384', 10)
-  const keepAlive = process.env.OLLAMA_KEEP_ALIVE ?? '30m'
+  const numCtx = parseInt(process.env.OLLAMA_NUM_CTX ?? "16384", 10);
+  const keepAlive = process.env.OLLAMA_KEEP_ALIVE ?? "30m";
 
   const ollamaBody: Record<string, unknown> = {
     model: body.model,
@@ -2111,198 +2498,243 @@ async function* streamOllamaNative(
       ...(body.temperature !== undefined && { temperature: body.temperature }),
       ...(body.stop?.length && { stop: body.stop }),
     },
-  }
-  if (body.tools && body.tools.length > 0) ollamaBody.tools = body.tools
+  };
+  if (body.tools && body.tools.length > 0) ollamaBody.tools = body.tools;
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (cfg.apiKey) headers["Authorization"] = `Bearer ${cfg.apiKey}`;
 
-  const messageId = `ollama-${Date.now()}`
-  let messageStartEmitted = false
-  let inputTokens = 0
-  let outputTokens = 0
-  let currentBlockIndex = 0
-  let inTextBlock = false
-  let inThinkingBlock = false
-  const toolCallBuffers: Array<{ id: string; name: string; args: string; anthropicIndex: number }> = []
-  let emittedAnyToolUse = false
+  const messageId = `ollama-${Date.now()}`;
+  let messageStartEmitted = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let currentBlockIndex = 0;
+  let inTextBlock = false;
+  let inThinkingBlock = false;
+  const toolCallBuffers: Array<{
+    id: string;
+    name: string;
+    args: string;
+    anthropicIndex: number;
+  }> = [];
+  let emittedAnyToolUse = false;
 
   const emitMessageStart = (): AnthropicStreamEvent | undefined => {
-    if (messageStartEmitted) return undefined
-    messageStartEmitted = true
+    if (messageStartEmitted) return undefined;
+    messageStartEmitted = true;
     return {
-      type: 'message_start',
+      type: "message_start",
       message: {
         id: messageId,
-        type: 'message',
-        role: 'assistant',
+        type: "message",
+        role: "assistant",
         content: [],
         model,
         stop_reason: null,
         stop_sequence: null,
         usage: { input_tokens: 0, output_tokens: 0 },
       },
-    }
-  }
+    };
+  };
 
-  let response: Response
+  let response: Response;
   try {
     response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify(ollamaBody),
       signal,
-    })
+    });
   } catch (err: any) {
-    const mst = emitMessageStart()
-    if (mst) yield mst
-    yield* emitErrorText(`ollama API connection error: ${err?.message ?? String(err)}`)
-    yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } }
-    yield { type: 'message_stop' }
-    return blankUsage(0, 0, 0, 0)
+    const mst = emitMessageStart();
+    if (mst) yield mst;
+    yield* emitErrorText(
+      `ollama API connection error: ${err?.message ?? String(err)}`,
+    );
+    yield {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 0 },
+    };
+    yield { type: "message_stop" };
+    return blankUsage(0, 0, 0, 0);
   }
 
   if (!response.ok) {
-    const errText = await response.text().catch(() => '')
-    const mst = emitMessageStart()
-    if (mst) yield mst
-    const lowered = errText.toLowerCase()
-    const isPromptTooLong = ['context length', 'too long', 'context window'].some(m => lowered.includes(m))
+    const errText = await response.text().catch(() => "");
+    const mst = emitMessageStart();
+    if (mst) yield mst;
+    const lowered = errText.toLowerCase();
+    const isPromptTooLong = [
+      "context length",
+      "too long",
+      "context window",
+    ].some((m) => lowered.includes(m));
     const headline = isPromptTooLong
       ? `Prompt is too long (ollama ${response.status})`
-      : `ollama API error ${response.status}`
-    yield* emitErrorText(`${headline}: ${errText.slice(0, 500)}`)
-    yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } }
-    yield { type: 'message_stop' }
-    return blankUsage(0, 0, 0, 0)
+      : `ollama API error ${response.status}`;
+    yield* emitErrorText(`${headline}: ${errText.slice(0, 500)}`);
+    yield {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 0 },
+    };
+    yield { type: "message_stop" };
+    return blankUsage(0, 0, 0, 0);
   }
 
-  if (!response.body) throw new Error('Ollama: empty response body')
+  if (!response.body) throw new Error("Ollama: empty response body");
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
 
   try {
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
       // /api/chat is NDJSON: each line is a complete JSON object.
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
       for (const rawLine of lines) {
-        const line = rawLine.trim()
-        if (!line) continue
-        let chunk: any
-        try { chunk = JSON.parse(line) } catch { continue }
+        const line = rawLine.trim();
+        if (!line) continue;
+        let chunk: any;
+        try {
+          chunk = JSON.parse(line);
+        } catch {
+          continue;
+        }
 
-        const message = chunk.message ?? {}
-        const isDone = chunk.done === true
+        const message = chunk.message ?? {};
+        const isDone = chunk.done === true;
 
-        if (typeof chunk.prompt_eval_count === 'number') inputTokens = chunk.prompt_eval_count
-        if (typeof chunk.eval_count === 'number') outputTokens = chunk.eval_count
+        if (typeof chunk.prompt_eval_count === "number")
+          inputTokens = chunk.prompt_eval_count;
+        if (typeof chunk.eval_count === "number")
+          outputTokens = chunk.eval_count;
 
-        const hasContent = typeof message.content === 'string' && message.content.length > 0
-        const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+        const hasContent =
+          typeof message.content === "string" && message.content.length > 0;
+        const hasToolCalls =
+          Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
 
         if (!messageStartEmitted && (hasContent || hasToolCalls)) {
-          const mst = emitMessageStart()
-          if (mst) yield mst
+          const mst = emitMessageStart();
+          if (mst) yield mst;
         }
 
         if (hasContent) {
           if (inThinkingBlock) {
-            yield { type: 'content_block_stop', index: currentBlockIndex }
-            currentBlockIndex++
-            inThinkingBlock = false
+            yield { type: "content_block_stop", index: currentBlockIndex };
+            currentBlockIndex++;
+            inThinkingBlock = false;
           }
           if (!inTextBlock) {
             yield {
-              type: 'content_block_start',
+              type: "content_block_start",
               index: currentBlockIndex,
-              content_block: { type: 'text', text: '' },
-            }
-            inTextBlock = true
+              content_block: { type: "text", text: "" },
+            };
+            inTextBlock = true;
           }
           yield {
-            type: 'content_block_delta',
+            type: "content_block_delta",
             index: currentBlockIndex,
-            delta: { type: 'text_delta', text: message.content },
-          }
+            delta: { type: "text_delta", text: message.content },
+          };
         }
 
         if (hasToolCalls) {
           if (inTextBlock || inThinkingBlock) {
-            yield { type: 'content_block_stop', index: currentBlockIndex }
-            currentBlockIndex++
-            inTextBlock = false
-            inThinkingBlock = false
+            yield { type: "content_block_stop", index: currentBlockIndex };
+            currentBlockIndex++;
+            inTextBlock = false;
+            inThinkingBlock = false;
           }
           for (const tc of message.tool_calls) {
-            const fn = tc.function ?? {}
-            const name = fn.name ?? ''
-            const argsStr = typeof fn.arguments === 'string'
-              ? fn.arguments
-              : JSON.stringify(fn.arguments ?? {})
-            const id = tc.id ?? `call_${toolCallBuffers.length}`
+            const fn = tc.function ?? {};
+            const name = fn.name ?? "";
+            const argsStr =
+              typeof fn.arguments === "string"
+                ? fn.arguments
+                : JSON.stringify(fn.arguments ?? {});
+            const id = tc.id ?? `call_${toolCallBuffers.length}`;
             toolCallBuffers.push({
               id,
               name,
               args: argsStr,
               anthropicIndex: currentBlockIndex,
-            })
-            currentBlockIndex++
-            emittedAnyToolUse = true
+            });
+            currentBlockIndex++;
+            emittedAnyToolUse = true;
           }
         }
 
         if (isDone) {
           if (inTextBlock || inThinkingBlock) {
-            yield { type: 'content_block_stop', index: currentBlockIndex }
-            inTextBlock = false
-            inThinkingBlock = false
+            yield { type: "content_block_stop", index: currentBlockIndex };
+            inTextBlock = false;
+            inThinkingBlock = false;
           }
           for (const buf of toolCallBuffers) {
-            const implId = normalizeToolName(buf.name)
-            let input: Record<string, unknown>
-            try { input = buf.args ? JSON.parse(buf.args) : {} }
-            catch { input = { _raw: buf.args } }
-            const anthropicToolUseId = buf.id.startsWith('toolu_') ? buf.id : `toolu_ollama_${buf.id}`
-            yield {
-              type: 'content_block_start',
-              index: buf.anthropicIndex,
-              content_block: { type: 'tool_use', id: anthropicToolUseId, name: implId, input: {} },
+            const implId = normalizeToolName(buf.name);
+            let input: Record<string, unknown>;
+            try {
+              input = buf.args ? JSON.parse(buf.args) : {};
+            } catch {
+              input = { _raw: buf.args };
             }
+            const anthropicToolUseId = buf.id.startsWith("toolu_")
+              ? buf.id
+              : `toolu_ollama_${buf.id}`;
             yield {
-              type: 'content_block_delta',
+              type: "content_block_start",
               index: buf.anthropicIndex,
-              delta: { type: 'input_json_delta', partial_json: JSON.stringify(input ?? {}) },
-            }
-            yield { type: 'content_block_stop', index: buf.anthropicIndex }
+              content_block: {
+                type: "tool_use",
+                id: anthropicToolUseId,
+                name: implId,
+                input: {},
+              },
+            };
+            yield {
+              type: "content_block_delta",
+              index: buf.anthropicIndex,
+              delta: {
+                type: "input_json_delta",
+                partial_json: JSON.stringify(input ?? {}),
+              },
+            };
+            yield { type: "content_block_stop", index: buf.anthropicIndex };
           }
-          toolCallBuffers.length = 0
+          toolCallBuffers.length = 0;
         }
       }
     }
   } finally {
-    reader.releaseLock()
+    reader.releaseLock();
   }
 
   if (!messageStartEmitted) {
-    const mst = emitMessageStart()
-    if (mst) yield mst
+    const mst = emitMessageStart();
+    if (mst) yield mst;
   }
 
-  const stopReason: 'tool_use' | 'end_turn' = emittedAnyToolUse ? 'tool_use' : 'end_turn'
+  const stopReason: "tool_use" | "end_turn" = emittedAnyToolUse
+    ? "tool_use"
+    : "end_turn";
   yield {
-    type: 'message_delta',
+    type: "message_delta",
     delta: { stop_reason: stopReason },
     usage: { output_tokens: outputTokens, input_tokens: inputTokens },
-  }
-  yield { type: 'message_stop' }
+  };
+  yield { type: "message_stop" };
 
   return {
     input_tokens: inputTokens,
@@ -2310,21 +2742,25 @@ async function* streamOllamaNative(
     cache_read_tokens: 0,
     cache_write_tokens: 0,
     thinking_tokens: 0,
-  }
+  };
 }
 
 // ─── Per-Provider Response Quirks ────────────────────────────────
 
 function applyProviderResponseQuirks(chunk: any, provider: ProviderType): any {
-  const choice = chunk?.choices?.[0]
-  if (!choice) return chunk
-  const delta = choice.delta ?? {}
+  const choice = chunk?.choices?.[0];
+  if (!choice) return chunk;
+  const delta = choice.delta ?? {};
 
   // Groq: returns `reasoning` on deltas; normalize to reasoning_content
   // for uniform downstream handling (not strictly required with our
   // thinking-delta union fallback, but keeps things tidy).
-  if (provider === 'groq' && typeof delta.reasoning === 'string' && !delta.reasoning_content) {
-    delta.reasoning_content = delta.reasoning
+  if (
+    provider === "groq" &&
+    typeof delta.reasoning === "string" &&
+    !delta.reasoning_content
+  ) {
+    delta.reasoning_content = delta.reasoning;
   }
   // Qwen (DashScope compatible-mode) reasoning + DashScope error handling
   // moved to src/lanes/qwen/ (dedicated lane). Compat no longer sees qwen.
@@ -2334,14 +2770,14 @@ function applyProviderResponseQuirks(chunk: any, provider: ProviderType): any {
   // covers both.
 
   // Rebuild choice with normalized delta.
-  return { ...chunk, choices: [{ ...choice, delta }] }
+  return { ...chunk, choices: [{ ...choice, delta }] };
 }
 
 // ─── Tool Schema Sanitization ────────────────────────────────────
 
 interface BuildToolsCtx {
-  platform: NodeJS.Platform
-  psEdition: 'desktop' | 'core' | null
+  platform: NodeJS.Platform;
+  psEdition: "desktop" | "core" | null;
 }
 
 function buildOpenAITools(
@@ -2350,25 +2786,25 @@ function buildOpenAITools(
   model: string,
   ctx: BuildToolsCtx,
 ): Array<{
-  type: 'function'
+  type: "function";
   function: {
-    name: string
-    description: string
-    parameters: Record<string, unknown>
-    strict?: boolean
-  }
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+    strict?: boolean;
+  };
 }> {
   // Transformer-driven strict mode + schema drop list. Per-provider
   // config lives in each transformer file — adding a new provider =
   // one new file; this function is provider-agnostic.
-  const transformer = getTransformer(provider as ProviderId)
-  const useStrict = transformer.supportsStrictMode()
-  return tools.map(t => {
+  const transformer = getTransformer(provider as ProviderId);
+  const useStrict = transformer.supportsStrictMode();
+  return tools.map((t) => {
     const parameters = sanitizeToolSchema(
-      t.input_schema ?? { type: 'object', properties: {} },
+      t.input_schema ?? { type: "object", properties: {} },
       provider,
       model,
-    )
+    );
 
     // Shell-description override path: replaces caller's verbose
     // frontier-tier description with a compact, example-driven version
@@ -2376,15 +2812,18 @@ function buildOpenAITools(
     // cross-shell syntax. The transformer can opt in/out per model;
     // the default (used when the transformer doesn't override) is the
     // shared OpenCode-style description from shell_descriptions.ts.
-    const isShellTool = t.name === 'Bash' || t.name === 'PowerShell'
+    const isShellTool = t.name === "Bash" || t.name === "PowerShell";
     const customShellDesc = isShellTool
-      ? transformer.overrideShellToolDescription?.(t.name as 'Bash' | 'PowerShell', model, ctx)
-        ?? getCompatShellDescription(t.name, ctx)
-      : undefined
-    const baseDescription = customShellDesc ?? t.description ?? ''
+      ? (transformer.overrideShellToolDescription?.(
+          t.name as "Bash" | "PowerShell",
+          model,
+          ctx,
+        ) ?? getCompatShellDescription(t.name, ctx))
+      : undefined;
+    const baseDescription = customShellDesc ?? t.description ?? "";
 
     return {
-      type: 'function' as const,
+      type: "function" as const,
       function: {
         name: t.name,
         // Every tool description gets the STRICT PARAMETERS summary
@@ -2395,8 +2834,8 @@ function buildOpenAITools(
         parameters,
         ...(useStrict && { strict: true }),
       },
-    }
-  })
+    };
+  });
 }
 
 // Strip JSON Schema fields that various providers reject. Drop lists
@@ -2410,31 +2849,31 @@ function sanitizeToolSchema(
   provider: ProviderType,
   model: string,
 ): Record<string, unknown> {
-  const transformer = getTransformer(provider as ProviderId)
-  const drop = transformer.schemaDropList()
+  const transformer = getTransformer(provider as ProviderId);
+  const drop = transformer.schemaDropList();
 
   function walk(v: unknown): unknown {
-    if (Array.isArray(v)) return v.map(walk)
-    if (v && typeof v === 'object') {
-      const out: Record<string, unknown> = {}
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
       for (const [k, value] of Object.entries(v as Record<string, unknown>)) {
-        if (drop.has(k)) continue
+        if (drop.has(k)) continue;
         // OpenAPI 3.0 vendor extensions (x-google-enum-descriptions, x-stripe-*,
         // …) leak in from MCP tool schemas. OpenAI-strict, Mistral, Groq, and
         // other validators 400 on unknown fields, so strip the whole x-* family
         // for every transformer.
-        if (k.startsWith('x-')) continue
-        out[k] = walk(value)
+        if (k.startsWith("x-")) continue;
+        out[k] = walk(value);
       }
-      return out
+      return out;
     }
-    return v
+    return v;
   }
-  const dropped = walk(schema) as Record<string, unknown>
+  const dropped = walk(schema) as Record<string, unknown>;
   if (transformer.sanitizeToolSchemaExtra) {
-    return transformer.sanitizeToolSchemaExtra(dropped, model)
+    return transformer.sanitizeToolSchemaExtra(dropped, model);
   }
-  return dropped
+  return dropped;
 }
 
 // ─── History Conversion ──────────────────────────────────────────
@@ -2442,14 +2881,14 @@ function sanitizeToolSchema(
 function convertHistoryToOpenAI(
   messages: ProviderMessage[],
   systemText: string,
-  provider: ProviderType = 'generic',
-  model = '',
+  provider: ProviderType = "generic",
+  model = "",
 ): OpenAIChatMessage[] {
-  if (provider === 'deepseek' && model.toLowerCase() !== 'deepseek-reasoner') {
-    return convertHistoryToOpenAIForDeepSeek(messages, systemText)
+  if (provider === "deepseek" && model.toLowerCase() !== "deepseek-reasoner") {
+    return convertHistoryToOpenAIForDeepSeek(messages, systemText);
   }
-  if (provider === 'moonshot' && isMoonshotThinkingModel(model)) {
-    return convertHistoryToOpenAIForDeepSeek(messages, systemText)
+  if (provider === "moonshot" && isMoonshotThinkingModel(model)) {
+    return convertHistoryToOpenAIForDeepSeek(messages, systemText);
   }
   // OpenCode Zen with per-model thinking enabled: the gateway forwards
   // `reasoning_content` from streamed deltas, and the downstream upstream
@@ -2463,198 +2902,206 @@ function convertHistoryToOpenAI(
   // carry-back applies — without it a thinking-on Go row 400s on the next
   // tool turn ("reasoning_content must be passed back").
   if (
-    (provider === 'opencode' || provider === 'opencodego')
-    && opencodeThinkingActive(provider, model)
+    (provider === "opencode" || provider === "opencodego") &&
+    opencodeThinkingActive(provider, model)
   ) {
-    return convertHistoryToOpenAIForDeepSeek(messages, systemText)
+    return convertHistoryToOpenAIForDeepSeek(messages, systemText);
   }
-  return convertHistoryToOpenAIDefault(messages, systemText)
+  return convertHistoryToOpenAIDefault(messages, systemText);
 }
 
-function opencodeThinkingActive(provider: ProviderType, model: string): boolean {
-  if (!supportsOpencodeThinkingSelection(provider, model)) return false
-  return getOpencodeEffort(model) !== 'default'
+function opencodeThinkingActive(
+  provider: ProviderType,
+  model: string,
+): boolean {
+  if (!supportsOpencodeThinkingSelection(provider, model)) return false;
+  return getOpencodeEffort(model) !== "default";
 }
 
 function convertHistoryToOpenAIDefault(
   messages: ProviderMessage[],
   systemText: string,
 ): OpenAIChatMessage[] {
-  const out: OpenAIChatMessage[] = []
-  if (systemText) out.push({ role: 'system', content: systemText })
+  const out: OpenAIChatMessage[] = [];
+  if (systemText) out.push({ role: "system", content: systemText });
 
   for (const msg of messages) {
-    if (typeof msg.content === 'string') {
+    if (typeof msg.content === "string") {
       out.push({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        role: msg.role === "assistant" ? "assistant" : "user",
         content: msg.content,
-      })
-      continue
+      });
+      continue;
     }
 
-    const texts: string[] = []
-    const toolCalls: NonNullable<OpenAIChatMessage['tool_calls']> = []
-    const toolResults: OpenAIChatMessage[] = []
+    const texts: string[] = [];
+    const toolCalls: NonNullable<OpenAIChatMessage["tool_calls"]> = [];
+    const toolResults: OpenAIChatMessage[] = [];
 
     for (const block of msg.content) {
       switch (block.type) {
-        case 'text':
-          if (block.text) texts.push(block.text)
-          break
-        case 'tool_use':
+        case "text":
+          if (block.text) texts.push(block.text);
+          break;
+        case "tool_use":
           if (block.id && block.name) {
             toolCalls.push({
               id: block.id,
-              type: 'function',
+              type: "function",
               function: {
                 name: block.name,
                 arguments: JSON.stringify(block.input ?? {}),
               },
-            })
+            });
           }
-          break
-        case 'tool_result':
+          break;
+        case "tool_result":
           if (block.tool_use_id) {
             toolResults.push({
-              role: 'tool',
+              role: "tool",
               tool_call_id: block.tool_use_id,
-              content: typeof block.content === 'string'
-                ? block.content
-                : stringifyToolContent(block.content),
-            })
+              content:
+                typeof block.content === "string"
+                  ? block.content
+                  : stringifyToolContent(block.content),
+            });
           }
-          break
-        case 'thinking':
+          break;
+        case "thinking":
           // OpenAI Chat Completions doesn't echo thinking back — skip.
-          break
+          break;
       }
     }
 
     if (texts.length > 0 || toolCalls.length > 0) {
       out.push({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: texts.length > 0 ? texts.join('\n') : null,
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: texts.length > 0 ? texts.join("\n") : null,
         ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
-      })
+      });
     }
-    out.push(...toolResults)
+    out.push(...toolResults);
   }
 
-  return out
+  return out;
 }
 
 function convertHistoryToOpenAIForDeepSeek(
   messages: ProviderMessage[],
   systemText: string,
 ): OpenAIChatMessage[] {
-  const out: OpenAIChatMessage[] = []
-  if (systemText) out.push({ role: 'system', content: systemText })
+  const out: OpenAIChatMessage[] = [];
+  if (systemText) out.push({ role: "system", content: systemText });
 
-  let pendingReasoning: string | null = null
-  let pendingAssistantTexts: string[] = []
+  let pendingReasoning: string | null = null;
+  let pendingAssistantTexts: string[] = [];
 
   const clearPendingAssistant = () => {
-    pendingReasoning = null
-    pendingAssistantTexts = []
-  }
+    pendingReasoning = null;
+    pendingAssistantTexts = [];
+  };
 
   const flushPendingAssistantText = () => {
     if (pendingAssistantTexts.length > 0) {
-      out.push({ role: 'assistant', content: pendingAssistantTexts.join('\n') })
+      out.push({
+        role: "assistant",
+        content: pendingAssistantTexts.join("\n"),
+      });
     }
-    clearPendingAssistant()
-  }
+    clearPendingAssistant();
+  };
 
   const appendPendingReasoning = (thinking: string) => {
     pendingReasoning = pendingReasoning
       ? `${pendingReasoning}\n${thinking}`
-      : thinking
-  }
+      : thinking;
+  };
 
   for (const msg of messages) {
-    if (typeof msg.content === 'string') {
-      flushPendingAssistantText()
+    if (typeof msg.content === "string") {
+      flushPendingAssistantText();
       out.push({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        role: msg.role === "assistant" ? "assistant" : "user",
         content: msg.content,
-      })
-      continue
+      });
+      continue;
     }
 
-    const texts: string[] = []
-    const toolCalls: NonNullable<OpenAIChatMessage['tool_calls']> = []
-    const toolResults: OpenAIChatMessage[] = []
-    const thinkingBlocks: string[] = []
+    const texts: string[] = [];
+    const toolCalls: NonNullable<OpenAIChatMessage["tool_calls"]> = [];
+    const toolResults: OpenAIChatMessage[] = [];
+    const thinkingBlocks: string[] = [];
 
     for (const block of msg.content) {
       switch (block.type) {
-        case 'text':
-          if (block.text) texts.push(block.text)
-          break
-        case 'tool_use':
+        case "text":
+          if (block.text) texts.push(block.text);
+          break;
+        case "tool_use":
           if (block.id && block.name) {
             toolCalls.push({
               id: block.id,
-              type: 'function',
+              type: "function",
               function: {
                 name: block.name,
                 arguments: JSON.stringify(block.input ?? {}),
               },
-            })
+            });
           }
-          break
-        case 'tool_result':
+          break;
+        case "tool_result":
           if (block.tool_use_id) {
             toolResults.push({
-              role: 'tool',
+              role: "tool",
               tool_call_id: block.tool_use_id,
-              content: typeof block.content === 'string'
-                ? block.content
-                : stringifyToolContent(block.content),
-            })
+              content:
+                typeof block.content === "string"
+                  ? block.content
+                  : stringifyToolContent(block.content),
+            });
           }
-          break
-        case 'thinking':
-          if (block.thinking) thinkingBlocks.push(block.thinking)
-          break
+          break;
+        case "thinking":
+          if (block.thinking) thinkingBlocks.push(block.thinking);
+          break;
       }
     }
 
-    if (msg.role === 'assistant') {
-      for (const thinking of thinkingBlocks) appendPendingReasoning(thinking)
+    if (msg.role === "assistant") {
+      for (const thinking of thinkingBlocks) appendPendingReasoning(thinking);
 
       if (toolCalls.length > 0) {
-        const contentParts = [...pendingAssistantTexts, ...texts]
+        const contentParts = [...pendingAssistantTexts, ...texts];
         out.push({
-          role: 'assistant',
-          content: contentParts.length > 0 ? contentParts.join('\n') : null,
+          role: "assistant",
+          content: contentParts.length > 0 ? contentParts.join("\n") : null,
           // DeepSeek thinking mode requires this field on every replayed
           // assistant tool-call message. Old cross-provider history may not
           // have a thinking block, so preserve protocol shape with "".
-          reasoning_content: pendingReasoning ?? '',
+          reasoning_content: pendingReasoning ?? "",
           tool_calls: toolCalls,
-        })
-        clearPendingAssistant()
+        });
+        clearPendingAssistant();
       } else if (texts.length > 0) {
-        pendingAssistantTexts.push(...texts)
+        pendingAssistantTexts.push(...texts);
       }
 
       if (toolResults.length > 0) {
-        flushPendingAssistantText()
-        out.push(...toolResults)
+        flushPendingAssistantText();
+        out.push(...toolResults);
       }
-      continue
+      continue;
     }
 
-    flushPendingAssistantText()
+    flushPendingAssistantText();
     if (texts.length > 0) {
-      out.push({ role: 'user', content: texts.join('\n') })
+      out.push({ role: "user", content: texts.join("\n") });
     }
-    out.push(...toolResults)
+    out.push(...toolResults);
   }
 
-  flushPendingAssistantText()
-  return out
+  flushPendingAssistantText();
+  return out;
 }
 
 export function _convertHistoryToOpenAIForTest(
@@ -2663,24 +3110,24 @@ export function _convertHistoryToOpenAIForTest(
   provider: ProviderType,
   model: string,
 ): OpenAIChatMessage[] {
-  return convertHistoryToOpenAI(messages, systemText, provider, model)
+  return convertHistoryToOpenAI(messages, systemText, provider, model);
 }
 
 function stringifyToolContent(content: unknown): string {
-  if (typeof content === 'string') return content
+  if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    const parts: string[] = []
+    const parts: string[] = [];
     for (const b of content as any[]) {
-      if (b && typeof b === 'object') {
-        if ('text' in b && typeof b.text === 'string') parts.push(b.text)
-        else parts.push(JSON.stringify(b))
+      if (b && typeof b === "object") {
+        if ("text" in b && typeof b.text === "string") parts.push(b.text);
+        else parts.push(JSON.stringify(b));
       }
     }
-    return parts.join('\n')
+    return parts.join("\n");
   }
-  return JSON.stringify(content ?? '')
+  return JSON.stringify(content ?? "");
 }
 
 // ─── Singleton Export ────────────────────────────────────────────
 
-export const openaiCompatLane = new OpenAICompatLane()
+export const openaiCompatLane = new OpenAICompatLane();

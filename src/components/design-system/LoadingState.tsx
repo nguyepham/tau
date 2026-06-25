@@ -1,7 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
-import React from 'react';
-import { Box, Text } from '../../ink.js';
-import { Spinner } from '../Spinner.js';
+import { Box, Text } from "../../ink.js";
+import { Spinner } from "../Spinner.js";
 type LoadingStateProps = {
   /**
    * The loading message to display next to the spinner.
@@ -42,17 +41,12 @@ type LoadingStateProps = {
  * <LoadingState
  *   message="Loading sessions"
  *   bold
- *   subtitle="Fetching your Tau sessions..."
+ *   subtitle="Fetching your Zen sessions..."
  * />
  */
 export function LoadingState(t0) {
   const $ = _c(10);
-  const {
-    message,
-    bold: t1,
-    dimColor: t2,
-    subtitle
-  } = t0;
+  const { message, bold: t1, dimColor: t2, subtitle } = t0;
   const bold = t1 === undefined ? false : t1;
   const dimColor = t2 === undefined ? false : t2;
   let t3;
@@ -64,7 +58,15 @@ export function LoadingState(t0) {
   }
   let t4;
   if ($[1] !== bold || $[2] !== dimColor || $[3] !== message) {
-    t4 = <Box flexDirection="row">{t3}<Text bold={bold} dimColor={dimColor}>{" "}{message}</Text></Box>;
+    t4 = (
+      <Box flexDirection="row">
+        {t3}
+        <Text bold={bold} dimColor={dimColor}>
+          {" "}
+          {message}
+        </Text>
+      </Box>
+    );
     $[1] = bold;
     $[2] = dimColor;
     $[3] = message;
@@ -82,7 +84,12 @@ export function LoadingState(t0) {
   }
   let t6;
   if ($[7] !== t4 || $[8] !== t5) {
-    t6 = <Box flexDirection="column">{t4}{t5}</Box>;
+    t6 = (
+      <Box flexDirection="column">
+        {t4}
+        {t5}
+      </Box>
+    );
     $[7] = t4;
     $[8] = t5;
     $[9] = t6;

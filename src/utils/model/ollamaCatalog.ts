@@ -8,7 +8,7 @@
  *   Ollama runtime, so the CLI workflow is identical once the reference has
  *   been pulled once (the pull just registers the cloud-side alias).
  * - Local models have heterogeneous capabilities. Some support tool-calling,
- *   some do not. Tau issues tool-use requests that break on models
+ *   some do not. Zen issues tool-use requests that break on models
  *   without tool support, so we hide those from the picker.
  * - Some cloud models support `enable_thinking` — a per-request parameter
  *   that toggles reasoning output. The UI exposes this as a toggle, but it
@@ -22,12 +22,12 @@
  *   4. ensureCloudModelsPulled() — idempotent pre-pull used on first launch
  */
 
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import type { ModelInfo } from '../../services/api/providers/base_provider.js'
-import { getGlobalConfig, saveGlobalConfig } from '../config.js'
+import { execFile } from "child_process";
+import { promisify } from "util";
+import type { ModelInfo } from "../../services/api/providers/base_provider.js";
+import { getGlobalConfig, saveGlobalConfig } from "../config.js";
 
-const exec = promisify(execFile)
+const exec = promisify(execFile);
 
 /**
  * Non-fatal debug logger. Cloud-model prime failures and Ollama daemon
@@ -38,7 +38,7 @@ const exec = promisify(execFile)
 function debugLog(message: string): void {
   if (process.env.DEBUG || process.env.OLLAMA_DEBUG) {
     // eslint-disable-next-line no-console
-    console.error(`[ollamaCatalog] ${message}`)
+    console.error(`[ollamaCatalog] ${message}`);
   }
 }
 
@@ -51,22 +51,22 @@ function debugLog(message: string): void {
 //
 // KEEP IN SYNC with scripts/postinstall.mjs (OLLAMA_CLOUD_MODELS).
 export const CLOUD_MODELS_LIST: readonly string[] = [
-  'glm-5.1:cloud',
-  'glm-5:cloud',
-  'glm-4.7:cloud',
-  'glm-4.6:cloud',
-  'kimi-k2.5:cloud',
-  'kimi-k2-thinking:cloud',
-  'qwen3.5:cloud',
-  'qwen3-coder-next:cloud',
-  'minimax-m2.7:cloud',
-  'minimax-m2.5:cloud',
-  'minimax-m2.1:cloud',
-  'minimax-m2:cloud',
-  'nemotron-3-super:cloud',
-  'deepseek-v3.2:cloud',
-  'gemini-3-flash-preview:cloud',
-]
+  "glm-5.1:cloud",
+  "glm-5:cloud",
+  "glm-4.7:cloud",
+  "glm-4.6:cloud",
+  "kimi-k2.5:cloud",
+  "kimi-k2-thinking:cloud",
+  "qwen3.5:cloud",
+  "qwen3-coder-next:cloud",
+  "minimax-m2.7:cloud",
+  "minimax-m2.5:cloud",
+  "minimax-m2.1:cloud",
+  "minimax-m2:cloud",
+  "nemotron-3-super:cloud",
+  "deepseek-v3.2:cloud",
+  "gemini-3-flash-preview:cloud",
+];
 
 // ─── Thinking-mode cloud models ────────────────────────────────────
 //
@@ -74,20 +74,20 @@ export const CLOUD_MODELS_LIST: readonly string[] = [
 // For other models we omit the parameter entirely (sending it anyway trips a
 // 400 on some providers).
 export const THINKING_CLOUD_MODELS: ReadonlySet<string> = new Set([
-  'glm-5.1:cloud',
-  'glm-5:cloud',
-  'glm-4.7:cloud',
-  'glm-4.6:cloud',
-  'kimi-k2-thinking:cloud',
-  'qwen3.5:cloud',
-  'minimax-m2.7:cloud',
-  'minimax-m2.5:cloud',
-  'deepseek-v3.2:cloud',
-])
+  "glm-5.1:cloud",
+  "glm-5:cloud",
+  "glm-4.7:cloud",
+  "glm-4.6:cloud",
+  "kimi-k2-thinking:cloud",
+  "qwen3.5:cloud",
+  "minimax-m2.7:cloud",
+  "minimax-m2.5:cloud",
+  "deepseek-v3.2:cloud",
+]);
 
 /** True if the given model accepts the `enable_thinking` parameter. */
 export function modelSupportsThinkingToggle(modelId: string): boolean {
-  return THINKING_CLOUD_MODELS.has(modelId)
+  return THINKING_CLOUD_MODELS.has(modelId);
 }
 
 // ─── Thinking toggle bridge ────────────────────────────────────────
@@ -100,36 +100,36 @@ export function modelSupportsThinkingToggle(modelId: string): boolean {
 // Default is ON — matches shouldEnableThinkingByDefault() so a user who
 // never toggles gets sensible behavior out of the box.
 
-let _thinkingToggleState = true
+let _thinkingToggleState = true;
 
 /** Called from React (REPL) whenever `thinkingEnabled` AppState changes. */
 export function setOllamaThinkingEnabled(enabled: boolean): void {
-  _thinkingToggleState = enabled
+  _thinkingToggleState = enabled;
 }
 
 /** Read by providers when building a request body. */
 export function getOllamaThinkingEnabled(): boolean {
-  return _thinkingToggleState
+  return _thinkingToggleState;
 }
 
 // ─── Capability-aware ModelInfo ────────────────────────────────────
 
-export type OllamaModelCategory = 'cloud' | 'local'
+export type OllamaModelCategory = "cloud" | "local";
 
 export interface OllamaModelInfo extends ModelInfo {
-  category: OllamaModelCategory
+  category: OllamaModelCategory;
   /** True when the model is already pulled in the local Ollama install. */
-  pulled: boolean
-  /** True when the model can accept Tau tool definitions. */
-  supportsTools: boolean
+  pulled: boolean;
+  /** True when the model can accept Zen tool definitions. */
+  supportsTools: boolean;
   /** True when the model supports the thinking/reasoning toggle. */
-  supportsThinking: boolean
+  supportsThinking: boolean;
 }
 
 export interface OllamaCatalog {
-  cloud: OllamaModelInfo[]
-  local: OllamaModelInfo[]
-  toolless: OllamaModelInfo[]
+  cloud: OllamaModelInfo[];
+  local: OllamaModelInfo[];
+  toolless: OllamaModelInfo[];
 }
 
 // Known base families that we trust to support tool-calling properly.
@@ -137,57 +137,54 @@ export interface OllamaCatalog {
 // registry as of early 2026. If a model's name contains any of these
 // substrings we consider it tool-capable.
 const TOOLS_CAPABLE_NAMES: readonly string[] = [
-  'llama3.1',
-  'llama3.2',
-  'llama3.3',
-  'llama4',
-  'qwen3',
-  'qwen2.5',
-  'mistral-large',
-  'mistral-small',
-  'devstral',
-  'command-r',
-  'hermes',
-  'gpt-oss',
-  'granite3',
-  'nemotron',
-  'glm-4',
-  'glm-5',
-  'kimi-k2',
-  'deepseek-v3',
-  'minimax-m2',
-  'gemini-3',
-  'rnj-1',
-  'gemma4',
-  'ministral',
-]
+  "llama3.1",
+  "llama3.2",
+  "llama3.3",
+  "llama4",
+  "qwen3",
+  "qwen2.5",
+  "mistral-large",
+  "mistral-small",
+  "devstral",
+  "command-r",
+  "hermes",
+  "gpt-oss",
+  "granite3",
+  "nemotron",
+  "glm-4",
+  "glm-5",
+  "kimi-k2",
+  "deepseek-v3",
+  "minimax-m2",
+  "gemini-3",
+  "rnj-1",
+  "gemma4",
+  "ministral",
+];
 
 function inferToolsSupport(modelId: string): boolean {
-  const lower = modelId.toLowerCase()
-  return TOOLS_CAPABLE_NAMES.some(n => lower.includes(n))
+  const lower = modelId.toLowerCase();
+  return TOOLS_CAPABLE_NAMES.some((n) => lower.includes(n));
 }
 
 // ─── Talking to Ollama ─────────────────────────────────────────────
 
 /** Resolve the Ollama base URL from env or config, defaulting to localhost. */
 function ollamaBase(): string {
-  const env =
-    process.env.OLLAMA_HOST ??
-    process.env.OLLAMA_BASE_URL ??
-    ''
+  const env = process.env.OLLAMA_HOST ?? process.env.OLLAMA_BASE_URL ?? "";
   if (env) {
     // OLLAMA_HOST may be "127.0.0.1:11434" without a scheme
-    return /^https?:/i.test(env) ? env.replace(/\/$/, '') : `http://${env}`
+    return /^https?:/i.test(env) ? env.replace(/\/$/, "") : `http://${env}`;
   }
-  return 'http://localhost:11434'
+  return "http://localhost:11434";
 }
 
 interface ApiTagsResponse {
   models?: Array<{
-    name: string
-    model?: string
-    details?: { family?: string; parameter_size?: string }
-  }>
+    name: string;
+    model?: string;
+    details?: { family?: string; parameter_size?: string };
+  }>;
 }
 
 /**
@@ -197,17 +194,17 @@ interface ApiTagsResponse {
  */
 export async function listLocalOllamaModels(): Promise<string[]> {
   try {
-    const response = await fetch(`${ollamaBase()}/api/tags`)
-    if (!response.ok) return []
-    const data = (await response.json()) as ApiTagsResponse
-    return (data.models ?? []).map(m => m.name).filter(Boolean)
+    const response = await fetch(`${ollamaBase()}/api/tags`);
+    if (!response.ok) return [];
+    const data = (await response.json()) as ApiTagsResponse;
+    return (data.models ?? []).map((m) => m.name).filter(Boolean);
   } catch (error) {
     debugLog(
       `[OllamaCatalog] listLocalOllamaModels failed: ${
         error instanceof Error ? error.message : String(error)
       }`,
-    )
-    return []
+    );
+    return [];
   }
 }
 
@@ -223,52 +220,52 @@ export async function listLocalOllamaModels(): Promise<string[]> {
  * the toolless section (hidden by default but accessible via a warning UI).
  */
 export async function getOllamaCatalog(): Promise<OllamaCatalog> {
-  const pulled = new Set(await listLocalOllamaModels())
-  const cloudSet = new Set(CLOUD_MODELS_LIST)
+  const pulled = new Set(await listLocalOllamaModels());
+  const cloudSet = new Set(CLOUD_MODELS_LIST);
 
-  const cloud: OllamaModelInfo[] = CLOUD_MODELS_LIST.map(id => ({
+  const cloud: OllamaModelInfo[] = CLOUD_MODELS_LIST.map((id) => ({
     id,
     name: id,
-    category: 'cloud' as const,
+    category: "cloud" as const,
     pulled: pulled.has(id),
     supportsTools: true,
     supportsThinking: THINKING_CLOUD_MODELS.has(id),
-  }))
+  }));
 
-  const local: OllamaModelInfo[] = []
-  const toolless: OllamaModelInfo[] = []
+  const local: OllamaModelInfo[] = [];
+  const toolless: OllamaModelInfo[] = [];
 
   for (const id of pulled) {
-    if (cloudSet.has(id)) continue // already in the cloud section
-    const supportsTools = inferToolsSupport(id)
+    if (cloudSet.has(id)) continue; // already in the cloud section
+    const supportsTools = inferToolsSupport(id);
     const entry: OllamaModelInfo = {
       id,
       name: id,
-      category: 'local',
+      category: "local",
       pulled: true,
       supportsTools,
       supportsThinking: false,
-    }
+    };
     if (supportsTools) {
-      local.push(entry)
+      local.push(entry);
     } else {
-      toolless.push(entry)
+      toolless.push(entry);
     }
   }
 
   // Stable, case-insensitive ordering per section.
   const byName = (a: OllamaModelInfo, b: OllamaModelInfo) =>
-    a.id.toLowerCase().localeCompare(b.id.toLowerCase())
-  local.sort(byName)
-  toolless.sort(byName)
+    a.id.toLowerCase().localeCompare(b.id.toLowerCase());
+  local.sort(byName);
+  toolless.sort(byName);
 
-  return { cloud, local, toolless }
+  return { cloud, local, toolless };
 }
 
 // ─── First-launch auto-pull ────────────────────────────────────────
 
 /** Config flag that records whether we've already run the auto-pull pass. */
-const FIRST_PULL_FLAG = 'ollamaCloudModelsPrimedAt' as const
+const FIRST_PULL_FLAG = "ollamaCloudModelsPrimedAt" as const;
 
 /**
  * On first launch, pull each model in CLOUD_MODELS_LIST that isn't already
@@ -285,54 +282,54 @@ const FIRST_PULL_FLAG = 'ollamaCloudModelsPrimedAt' as const
  * retry on the next launch.
  */
 export async function ensureCloudModelsPrimed(): Promise<void> {
-  const config = getGlobalConfig() as Record<string, unknown>
+  const config = getGlobalConfig() as Record<string, unknown>;
   if (config[FIRST_PULL_FLAG]) {
-    return
+    return;
   }
 
   // Check if ollama is even installed before trying anything.
   try {
-    await exec('ollama', ['--version'], { timeout: 5000 })
+    await exec("ollama", ["--version"], { timeout: 5000 });
   } catch {
     debugLog(
-      '[OllamaCatalog] skipping cloud-model prime — ollama CLI not found',
-    )
-    return
+      "[OllamaCatalog] skipping cloud-model prime — ollama CLI not found",
+    );
+    return;
   }
 
-  const pulled = new Set(await listLocalOllamaModels())
-  const missing = CLOUD_MODELS_LIST.filter(id => !pulled.has(id))
+  const pulled = new Set(await listLocalOllamaModels());
+  const missing = CLOUD_MODELS_LIST.filter((id) => !pulled.has(id));
 
   if (missing.length === 0) {
-    saveGlobalConfig(current => ({
+    saveGlobalConfig((current) => ({
       ...current,
       [FIRST_PULL_FLAG]: Date.now(),
-    }))
-    return
+    }));
+    return;
   }
 
   debugLog(
     `[OllamaCatalog] first-launch pulling ${missing.length} cloud models`,
-  )
+  );
 
   // Pull sequentially so we don't hammer the registry and so a single
   // failing model doesn't block the rest.
   for (const id of missing) {
     try {
-      await exec('ollama', ['pull', id], { timeout: 5 * 60 * 1000 })
-      debugLog(`[OllamaCatalog] pulled ${id}`)
+      await exec("ollama", ["pull", id], { timeout: 5 * 60 * 1000 });
+      debugLog(`[OllamaCatalog] pulled ${id}`);
     } catch (error) {
       debugLog(
         `[OllamaCatalog] pull failed for ${id}: ${
           error instanceof Error ? error.message : String(error)
         }`,
-      )
+      );
       // Keep going — partial success is still useful.
     }
   }
 
-  saveGlobalConfig(current => ({
+  saveGlobalConfig((current) => ({
     ...current,
     [FIRST_PULL_FLAG]: Date.now(),
-  }))
+  }));
 }

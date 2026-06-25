@@ -1,7 +1,7 @@
 name: Cross-Platform CI
 
 # Runs on every push + PR to master, and on-demand via the Actions tab.
-# Tests the build + install + smoke-test pipeline across every OS Tau
+# Tests the build + install + smoke-test pipeline across every OS Zen
 # claims to support, so a regression on macOS, Linux, or Windows is
 # caught before users hit it.
 
@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['20.x', '22.x']
+        node: ["20.x", "22.x"]
 
     steps:
       - name: Checkout
@@ -50,11 +50,11 @@ jobs:
           TARBALL="$(npm pack --quiet | tail -n 1)"
           npm install -g "./$TARBALL"
 
-      - name: Smoke test - global Tau binary runs
-        run: tau --version
+      - name: Smoke test - global Zen binary runs
+        run: zen --version
 
       # The no-auth error path is the single most important UX test for
-      # the first-run story: Tau must give a friendly message (not crash,
+      # the first-run story: Zen must give a friendly message (not crash,
       # not print an unhelpful env-var hint) when -p is invoked before any
       # provider is configured. On CI, no API keys are present, so this is
       # the fresh-user experience.
@@ -85,7 +85,7 @@ jobs:
           Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Select-Object -First 50
 
   # Windows without git-bash
-  # Tau runs on vanilla Windows without Git for Windows installed. GitHub
+  # Zen runs on vanilla Windows without Git for Windows installed. GitHub
   # runners come with git pre-installed, so we simulate a fresh install by
   # stripping every Git directory out of PATH before running the binary.
   windows-no-bash:
@@ -98,7 +98,7 @@ jobs:
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.x"
           cache: npm
 
       - name: Install dependencies
@@ -126,8 +126,8 @@ jobs:
           # Sanity: where.exe should NOT find bash now.
           $bashLookup = & where.exe bash 2>&1
           Write-Host "bash lookup result: $bashLookup"
-          # Main assertion: Tau must exit 0 despite no bash.
-          tau --version
+          # Main assertion: Zen must exit 0 despite no bash.
+          zen --version
 
   # Alternate build path (Bun)
   # Contributors who prefer Bun shouldn't be surprised by the build path
@@ -140,7 +140,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.x"
           cache: npm
       - uses: oven-sh/setup-bun@v1
         with:

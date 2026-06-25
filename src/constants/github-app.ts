@@ -1,9 +1,9 @@
-export const PR_TITLE = 'Add Tau GitHub Workflow'
+export const PR_TITLE = "Add Zen GitHub Workflow";
 
 export const GITHUB_ACTION_SETUP_DOCS_URL =
-  'https://github.com/anthropics/claude-code-action/blob/main/docs/setup.md'
+  "https://github.com/anthropics/claude-code-action/blob/main/docs/setup.md";
 
-export const WORKFLOW_CONTENT = `name: Tau
+export const WORKFLOW_CONTENT = `name: Zen
 
 on:
   issue_comment:
@@ -35,7 +35,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Tau
+      - name: Run Zen
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -53,16 +53,16 @@ jobs:
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
-`
+`;
 
-export const PR_BODY = `## 🤖 Installing Tau GitHub App
+export const PR_BODY = `## 🤖 Installing Zen GitHub App
 
-This PR adds a GitHub Actions workflow that enables Tau integration in our repository.
+This PR adds a GitHub Actions workflow that enables Zen integration in our repository.
 
-### What is Tau?
+### What is Zen?
 
-[Tau](https://claude.com/claude-code) is an AI coding agent that can help with:
-- Bug fixes and improvements  
+[Zen](https://claude.com/claude-code) is an AI coding agent that can help with:
+- Bug fixes and improvements
 - Documentation updates
 - Implementing new features
 - Code reviews and suggestions
@@ -93,11 +93,11 @@ Once the workflow is triggered, Claude will analyze the comment and surrounding 
 allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
 \`\`\`
 
-There's more information in the [Tau action repo](https://github.com/anthropics/claude-code-action).
+There's more information in the [Zen action repo](https://github.com/anthropics/claude-code-action).
 
-After merging this PR, let's try mentioning @claude in a comment on any PR to get started!`
+After merging this PR, let's try mentioning @claude in a comment on any PR to get started!`;
 
-export const CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT = `name: Tau Review
+export const CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT = `name: Zen Review
 
 on:
   pull_request:
@@ -130,7 +130,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Tau Review
+      - name: Run Zen Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
@@ -141,4 +141,4 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
-`
+`;

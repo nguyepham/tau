@@ -1,45 +1,47 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const Module = require('node:module');
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const Module = require("node:module");
 
 function createStatus(overrides = {}) {
   return {
     installed: true,
-    executable: 'tau',
-    launchCommand: 'tau --project-aware',
-    terminalName: 'Tau',
-    activeProvider: '',
-    workspaceFolder: '/workspace/claudex/very/long/path/example-project',
-    workspaceSourceLabel: 'active editor workspace',
-    launchCwd: '/workspace/claudex/very/long/path/example-project',
-    launchCwdLabel: '/workspace/claudex/very/long/path/example-project',
+    executable: "zen",
+    launchCommand: "zen --project-aware",
+    terminalName: "Zen",
+    activeProvider: "",
+    workspaceFolder: "/workspace/claudex/very/long/path/example-project",
+    workspaceSourceLabel: "active editor workspace",
+    launchCwd: "/workspace/claudex/very/long/path/example-project",
+    launchCwdLabel: "/workspace/claudex/very/long/path/example-project",
     canLaunchInWorkspaceRoot: true,
-    profileStatusLabel: 'Found',
-    profileStatusHint: '/workspace/claudex/very/long/path/example-project/.claudex-profile.json',
-    workspaceProfilePath: '/workspace/claudex/very/long/path/example-project/.claudex-profile.json',
+    profileStatusLabel: "Found",
+    profileStatusHint:
+      "/workspace/claudex/very/long/path/example-project/.claudex-profile.json",
+    workspaceProfilePath:
+      "/workspace/claudex/very/long/path/example-project/.claudex-profile.json",
     providerState: {
-      label: 'Codex',
-      detail: 'gpt-5.4',
-      source: 'profile',
+      label: "Codex",
+      detail: "gpt-5.4",
+      source: "profile",
     },
-    providerSourceLabel: 'saved profile',
+    providerSourceLabel: "saved profile",
     ...overrides,
   };
 }
 
 function loadExtension() {
-  const extensionPath = require.resolve('./extension');
+  const extensionPath = require.resolve("./extension");
   delete require.cache[extensionPath];
 
   const originalLoad = Module._load;
   Module._load = function patchedLoad(request, parent, isMain) {
-    if (request === 'vscode') {
+    if (request === "vscode") {
       return {
         workspace: {},
         window: {},
         env: {},
         commands: {},
-        Uri: { parse: value => value, file: value => value },
+        Uri: { parse: (value) => value, file: (value) => value },
       };
     }
 
@@ -47,17 +49,23 @@ function loadExtension() {
   };
 
   try {
-    return require('./extension');
+    return require("./extension");
   } finally {
     Module._load = originalLoad;
   }
 }
 
-test('renderControlCenterHtml uses the Tau wordmark, status rail, and warm action hierarchy', () => {
+test("renderControlCenterHtml uses the Zen wordmark, status rail, and warm action hierarchy", () => {
   const { renderControlCenterHtml } = loadExtension();
-  const html = renderControlCenterHtml(createStatus(), { nonce: 'test-nonce', platform: 'win32' });
+  const html = renderControlCenterHtml(createStatus(), {
+    nonce: "test-nonce",
+    platform: "win32",
+  });
 
-  assert.match(html, /<div class="wordmark" aria-label="Tau wordmark">Tau<\/div>/);
+  assert.match(
+    html,
+    /<div class="wordmark" aria-label="Zen wordmark">Zen<\/div>/,
+  );
   assert.match(html, /class="status-rail"/);
   assert.match(html, /class="action-button primary" id="launch"/);
   assert.match(html, /class="action-button secondary" id="launchRoot"/);
@@ -67,20 +75,20 @@ test('renderControlCenterHtml uses the Tau wordmark, status rail, and warm actio
   );
 });
 
-test('renderControlCenterHtml shows explicit disabled and empty states when workspace data is missing', () => {
+test("renderControlCenterHtml shows explicit disabled and empty states when workspace data is missing", () => {
   const { renderControlCenterHtml } = loadExtension();
   const html = renderControlCenterHtml(
     createStatus({
       workspaceFolder: null,
-      workspaceSourceLabel: 'no workspace open',
+      workspaceSourceLabel: "no workspace open",
       launchCwd: null,
-      launchCwdLabel: 'VS Code default terminal cwd',
+      launchCwdLabel: "VS Code default terminal cwd",
       canLaunchInWorkspaceRoot: false,
-      profileStatusLabel: 'No workspace',
-      profileStatusHint: 'Open a workspace folder to detect a saved profile',
+      profileStatusLabel: "No workspace",
+      profileStatusHint: "Open a workspace folder to detect a saved profile",
       workspaceProfilePath: null,
     }),
-    { nonce: 'test-nonce', platform: 'linux' },
+    { nonce: "test-nonce", platform: "linux" },
   );
 
   assert.match(
@@ -92,7 +100,7 @@ test('renderControlCenterHtml shows explicit disabled and empty states when work
   assert.doesNotMatch(html, /id="openProfile"/);
 });
 
-test('TauControlCenterProvider.getHtml supplies a nonce to the redesigned renderer', () => {
+test("ZenControlCenterProvider.getHtml supplies a nonce to the redesigned renderer", () => {
   const { ClaudexControlCenterProvider } = loadExtension();
   const provider = new ClaudexControlCenterProvider();
 
@@ -105,144 +113,179 @@ test('TauControlCenterProvider.getHtml supplies a nonce to the redesigned render
   assert.doesNotMatch(html, /<script nonce="undefined">/);
 });
 
-test('resolveLaunchTargets distinguishes project-aware launch from workspace-root launch', () => {
+test("resolveLaunchTargets distinguishes project-aware launch from workspace-root launch", () => {
   const { resolveLaunchTargets } = loadExtension();
 
   assert.deepEqual(
     resolveLaunchTargets({
-      activeFilePath: '/workspace/claudex/src/panels/control-center.js',
-      workspacePath: '/workspace/claudex',
-      workspaceSourceLabel: 'active editor workspace',
+      activeFilePath: "/workspace/claudex/src/panels/control-center.js",
+      workspacePath: "/workspace/claudex",
+      workspaceSourceLabel: "active editor workspace",
     }),
     {
-      projectAwareCwd: '/workspace/claudex/src/panels',
-      projectAwareCwdLabel: '/workspace/claudex/src/panels',
-      projectAwareSourceLabel: 'active file directory',
-      workspaceRootCwd: '/workspace/claudex',
-      workspaceRootCwdLabel: '/workspace/claudex',
+      projectAwareCwd: "/workspace/claudex/src/panels",
+      projectAwareCwdLabel: "/workspace/claudex/src/panels",
+      projectAwareSourceLabel: "active file directory",
+      workspaceRootCwd: "/workspace/claudex",
+      workspaceRootCwdLabel: "/workspace/claudex",
       launchActionsShareTarget: false,
       launchActionsShareTargetReason: null,
     },
   );
 });
 
-test('resolveLaunchTargets anchors relative launch commands to the workspace root', () => {
+test("resolveLaunchTargets anchors relative launch commands to the workspace root", () => {
   const { resolveLaunchTargets } = loadExtension();
 
   assert.deepEqual(
     resolveLaunchTargets({
-      executable: './node_modules/.bin/tau',
-      activeFilePath: '/workspace/claudex/src/panels/control-center.js',
-      workspacePath: '/workspace/claudex',
-      workspaceSourceLabel: 'active editor workspace',
+      executable: "./node_modules/.bin/zen",
+      activeFilePath: "/workspace/claudex/src/panels/control-center.js",
+      workspacePath: "/workspace/claudex",
+      workspaceSourceLabel: "active editor workspace",
     }),
     {
-      projectAwareCwd: '/workspace/claudex',
-      projectAwareCwdLabel: '/workspace/claudex',
-      projectAwareSourceLabel: 'workspace root (required by relative launch command)',
-      workspaceRootCwd: '/workspace/claudex',
-      workspaceRootCwdLabel: '/workspace/claudex',
+      projectAwareCwd: "/workspace/claudex",
+      projectAwareCwdLabel: "/workspace/claudex",
+      projectAwareSourceLabel:
+        "workspace root (required by relative launch command)",
+      workspaceRootCwd: "/workspace/claudex",
+      workspaceRootCwdLabel: "/workspace/claudex",
       launchActionsShareTarget: true,
-      launchActionsShareTargetReason: 'relative-launch-command',
+      launchActionsShareTargetReason: "relative-launch-command",
     },
   );
 });
 
-test('resolveLaunchTargets ignores active files outside the selected workspace', () => {
+test("resolveLaunchTargets ignores active files outside the selected workspace", () => {
   const { resolveLaunchTargets } = loadExtension();
 
   assert.deepEqual(
     resolveLaunchTargets({
-      executable: 'tau',
-      activeFilePath: '/tmp/notes/scratch.js',
-      workspacePath: '/workspace/claudex',
-      workspaceSourceLabel: 'first workspace folder',
+      executable: "zen",
+      activeFilePath: "/tmp/notes/scratch.js",
+      workspacePath: "/workspace/claudex",
+      workspaceSourceLabel: "first workspace folder",
     }),
     {
-      projectAwareCwd: '/workspace/claudex',
-      projectAwareCwdLabel: '/workspace/claudex',
-      projectAwareSourceLabel: 'first workspace folder',
-      workspaceRootCwd: '/workspace/claudex',
-      workspaceRootCwdLabel: '/workspace/claudex',
+      projectAwareCwd: "/workspace/claudex",
+      projectAwareCwdLabel: "/workspace/claudex",
+      projectAwareSourceLabel: "first workspace folder",
+      workspaceRootCwd: "/workspace/claudex",
+      workspaceRootCwdLabel: "/workspace/claudex",
       launchActionsShareTarget: true,
       launchActionsShareTargetReason: null,
     },
   );
 });
 
-test('renderControlCenterHtml restores landmark and heading semantics', () => {
+test("renderControlCenterHtml restores landmark and heading semantics", () => {
   const { renderControlCenterHtml } = loadExtension();
-  const html = renderControlCenterHtml(createStatus(), { nonce: 'test-nonce', platform: 'win32' });
+  const html = renderControlCenterHtml(createStatus(), {
+    nonce: "test-nonce",
+    platform: "win32",
+  });
 
-  assert.match(html, /<main class="shell" aria-labelledby="control-center-title">/);
+  assert.match(
+    html,
+    /<main class="shell" aria-labelledby="control-center-title">/,
+  );
   assert.match(html, /<header class="hero">/);
   assert.match(html, /<h1 class="headline-title" id="control-center-title">/);
-  assert.match(html, /<section class="modules" aria-label="Control center details">/);
-  assert.match(html, /<h2 class="module-title" id="section-project">Project<\/h2>/);
-  assert.match(html, /<section class="actions-layout" aria-label="Control center actions">/);
+  assert.match(
+    html,
+    /<section class="modules" aria-label="Control center details">/,
+  );
+  assert.match(
+    html,
+    /<h2 class="module-title" id="section-project">Project<\/h2>/,
+  );
+  assert.match(
+    html,
+    /<section class="actions-layout" aria-label="Control center actions">/,
+  );
 });
 
-test('renderControlCenterHtml explains distinct launch targets when an active file directory is available', () => {
+test("renderControlCenterHtml explains distinct launch targets when an active file directory is available", () => {
   const { renderControlCenterHtml } = loadExtension();
   const html = renderControlCenterHtml(
     createStatus({
-      launchCwd: '/workspace/claudex/src/panels',
-      launchCwdLabel: '/workspace/claudex/src/panels',
-      launchCwdSourceLabel: 'active file directory',
-      workspaceRootCwd: '/workspace/claudex',
-      workspaceRootCwdLabel: '/workspace/claudex',
+      launchCwd: "/workspace/claudex/src/panels",
+      launchCwdLabel: "/workspace/claudex/src/panels",
+      launchCwdSourceLabel: "active file directory",
+      workspaceRootCwd: "/workspace/claudex",
+      workspaceRootCwdLabel: "/workspace/claudex",
     }),
-    { nonce: 'test-nonce', platform: 'linux' },
+    { nonce: "test-nonce", platform: "linux" },
   );
 
-  assert.match(html, /Starts beside the active file · \/workspace\/claudex\/src\/panels/);
-  assert.match(html, /Always starts at the workspace root · \/workspace\/claudex/);
+  assert.match(
+    html,
+    /Starts beside the active file · \/workspace\/claudex\/src\/panels/,
+  );
+  assert.match(
+    html,
+    /Always starts at the workspace root · \/workspace\/claudex/,
+  );
 });
 
-test('renderControlCenterHtml makes shared workspace-root launches explicit for relative commands', () => {
+test("renderControlCenterHtml makes shared workspace-root launches explicit for relative commands", () => {
   const { renderControlCenterHtml } = loadExtension();
   const html = renderControlCenterHtml(
     createStatus({
-      launchCwd: '/workspace/claudex',
-      launchCwdLabel: '/workspace/claudex',
-      launchCwdSourceLabel: 'workspace root (required by relative launch command)',
-      workspaceRootCwd: '/workspace/claudex',
-      workspaceRootCwdLabel: '/workspace/claudex',
+      launchCwd: "/workspace/claudex",
+      launchCwdLabel: "/workspace/claudex",
+      launchCwdSourceLabel:
+        "workspace root (required by relative launch command)",
+      workspaceRootCwd: "/workspace/claudex",
+      workspaceRootCwdLabel: "/workspace/claudex",
       launchActionsShareTarget: true,
-      launchActionsShareTargetReason: 'relative-launch-command',
+      launchActionsShareTargetReason: "relative-launch-command",
     }),
-    { nonce: 'test-nonce', platform: 'linux' },
+    { nonce: "test-nonce", platform: "linux" },
   );
 
-  assert.match(html, /Project-aware launch is anchored to the workspace root by the relative command · \/workspace\/claudex/);
-  assert.match(html, /Same workspace-root target as Launch Tau because the relative command resolves from the workspace root · \/workspace\/claudex/);
+  assert.match(
+    html,
+    /Project-aware launch is anchored to the workspace root by the relative command · \/workspace\/claudex/,
+  );
+  assert.match(
+    html,
+    /Same workspace-root target as Launch Zen because the relative command resolves from the workspace root · \/workspace\/claudex/,
+  );
 });
 
-test('renderControlCenterHtml escapes hostile text and title values', () => {
+test("renderControlCenterHtml escapes hostile text and title values", () => {
   const { renderControlCenterHtml } = loadExtension();
   const html = renderControlCenterHtml(
     createStatus({
       launchCommand: '<img src=x onerror="boom()">',
       workspaceFolder: '"/><script>workspace()</script>',
-      workspaceSourceLabel: 'active <b>workspace</b>',
+      workspaceSourceLabel: "active <b>workspace</b>",
       launchCwdLabel: '"><script>cwd()</script>',
       profileStatusHint: '<svg onload="profile()">',
       workspaceProfilePath: '"/><script>profile-path()</script>',
       providerState: {
         label: 'Provider "><img src=x onerror="label()">',
-        detail: '<script>provider-detail()</script>',
-        source: 'profile',
+        detail: "<script>provider-detail()</script>",
+        source: "profile",
       },
     }),
-    { nonce: 'test-nonce', platform: 'linux' },
+    { nonce: "test-nonce", platform: "linux" },
   );
 
   assert.match(html, /&lt;img src=x onerror=&quot;boom\(\)&quot;&gt;/);
   assert.match(html, /&quot;\/&gt;&lt;script&gt;workspace\(\)&lt;\/script&gt;/);
   assert.match(html, /active &lt;b&gt;workspace&lt;\/b&gt;/);
   assert.match(html, /&lt;svg onload=&quot;profile\(\)&quot;&gt;/);
-  assert.match(html, /Provider &quot;&gt;&lt;img src=x onerror=&quot;label\(\)&quot;&gt;/);
-  assert.match(html, /&lt;script&gt;provider-detail\(\)&lt;\/script&gt; · saved profile/);
+  assert.match(
+    html,
+    /Provider &quot;&gt;&lt;img src=x onerror=&quot;label\(\)&quot;&gt;/,
+  );
+  assert.match(
+    html,
+    /&lt;script&gt;provider-detail\(\)&lt;\/script&gt; · saved profile/,
+  );
   assert.doesNotMatch(html, /<script>workspace\(\)<\/script>/);
   assert.doesNotMatch(html, /<img src=x onerror="boom\(\)">/);
 });

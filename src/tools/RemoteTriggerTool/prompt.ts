@@ -1,7 +1,7 @@
-export const REMOTE_TRIGGER_TOOL_NAME = 'RemoteTrigger'
+export const REMOTE_TRIGGER_TOOL_NAME = "RemoteTrigger";
 
 export const DESCRIPTION =
-  'Manage scheduled remote Tau agents (triggers) via the claude.ai CCR API. Auth handled in-process — token never reaches the shell.'
+  "Manage scheduled remote Zen agents (triggers) via the claude.ai CCR API. Auth handled in-process — token never reaches the shell.";
 
 export const PROMPT = `Call the claude.ai remote-trigger API. Use this instead of curl — the OAuth token is added automatically in-process and never exposed.
 
@@ -12,4 +12,4 @@ Actions:
 - update: POST /v1/code/triggers/{trigger_id} (requires body, partial update)
 - run: POST /v1/code/triggers/{trigger_id}/run
 
-The response is the raw JSON from the API.`
+The response is the raw JSON from the API.`;

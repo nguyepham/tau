@@ -55,10 +55,10 @@
  * Escape hatches: TAU_ANTIGRAVITY_NO_PREFIX_PAD=1, TAU_ANTIGRAVITY_NO_PACING=1.
  */
 
-import { createHash } from 'crypto'
-import { appendFileSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
+import { createHash } from "crypto";
+import { appendFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 // ─── Opt-in switch ───────────────────────────────────────────────
 //
@@ -72,58 +72,58 @@ import { join } from 'path'
 // no padding at all. Flip TAU_ANTIGRAVITY_MAX_CACHE=1 to force-warm small
 // prompts too (at the cost of ~17.4k padding tokens on every turn).
 export function antigravityMaxCacheEnabled(): boolean {
-  return process.env.TAU_ANTIGRAVITY_MAX_CACHE === '1'
+  return process.env.TAU_ANTIGRAVITY_MAX_CACHE === "1";
 }
 
 // ─── Prefix padding ──────────────────────────────────────────────
 
 // Target prompt size in estimated tokens. Comfortably above the
 // measured 16,384 minimum so estimation error can't drop us below it.
-const TARGET_TOKENS = 17_400
+const TARGET_TOKENS = 17_400;
 
 // Existing-content token estimate: assume ≥1 token per 5.5 chars.
 // English prose runs ~4-5 chars/token and JSON schemas ~3-4, so this
 // systematically UNDER-estimates the real token count — meaning the pad
 // overshoots the target rather than undershooting the cache minimum.
-const EXISTING_CHARS_PER_TOKEN = 5.5
+const EXISTING_CHARS_PER_TOKEN = 5.5;
 
 // Pad filler measured at ~4.36 chars/token (counter digits keep the
 // tokenizer from over-compressing repetition). Provision at 4.6 so the
 // generated pad always reaches at least the requested token count.
-const PAD_CHARS_PER_TOKEN = 4.6
+const PAD_CHARS_PER_TOKEN = 4.6;
 
 // Round pad sizes up to this granularity so the per-size memo stays
 // tiny and a conversation's pad is trivially byte-stable across turns
 // even when the tool list drifts by a few characters.
-const PAD_SIZE_STEP_TOKENS = 500
+const PAD_SIZE_STEP_TOKENS = 500;
 
-const _padBySize = new Map<number, string>()
+const _padBySize = new Map<number, string>();
 
 /** Deterministic inert pad sized to `tokens` (estimated). */
 export function antigravityPrefixPad(tokens: number): string {
-  const cached = _padBySize.get(tokens)
-  if (cached !== undefined) return cached
+  const cached = _padBySize.get(tokens);
+  if (cached !== undefined) return cached;
 
   const parts: string[] = [
-    '<cache_alignment_padding>',
-    'The block below is inert padding that aligns this request with the',
-    'provider prefix cache. It carries no instructions, no data, and no',
-    'relevance to your task. Disregard everything inside this block.',
-    '',
-  ]
-  const targetChars = Math.ceil(tokens * PAD_CHARS_PER_TOKEN)
-  let length = parts.join('\n').length
-  let i = 0
+    "<cache_alignment_padding>",
+    "The block below is inert padding that aligns this request with the",
+    "provider prefix cache. It carries no instructions, no data, and no",
+    "relevance to your task. Disregard everything inside this block.",
+    "",
+  ];
+  const targetChars = Math.ceil(tokens * PAD_CHARS_PER_TOKEN);
+  let length = parts.join("\n").length;
+  let i = 0;
   while (length < targetChars) {
-    const line = `Segment ${String(i).padStart(6, '0')}: inert cache alignment text for provider prefix stability; this line carries no instructions.`
-    parts.push(line)
-    length += line.length + 1
-    i++
+    const line = `Segment ${String(i).padStart(6, "0")}: inert cache alignment text for provider prefix stability; this line carries no instructions.`;
+    parts.push(line);
+    length += line.length + 1;
+    i++;
   }
-  parts.push('</cache_alignment_padding>')
-  const pad = parts.join('\n')
-  _padBySize.set(tokens, pad)
-  return pad
+  parts.push("</cache_alignment_padding>");
+  const pad = parts.join("\n");
+  _padBySize.set(tokens, pad);
+  return pad;
 }
 
 /**
@@ -141,20 +141,20 @@ export function applyAntigravityPrefixPad(
   stableText: string,
   toolDeclarationChars: number,
 ): string {
-  if (process.env.TAU_ANTIGRAVITY_NO_PREFIX_PAD === '1') return stableText
+  if (process.env.TAU_ANTIGRAVITY_NO_PREFIX_PAD === "1") return stableText;
   // Default OFF — padding a small prompt to ~17.4k tokens makes simple,
   // interactive turns slow for a cache win that natural session growth
   // already provides. Opt in for token-cost-sensitive batch/agent runs.
-  if (!antigravityMaxCacheEnabled()) return stableText
+  if (!antigravityMaxCacheEnabled()) return stableText;
 
-  const existingChars = stableText.length + toolDeclarationChars
-  const estimatedTokens = Math.floor(existingChars / EXISTING_CHARS_PER_TOKEN)
-  const missing = TARGET_TOKENS - estimatedTokens
-  if (missing <= 0) return stableText
+  const existingChars = stableText.length + toolDeclarationChars;
+  const estimatedTokens = Math.floor(existingChars / EXISTING_CHARS_PER_TOKEN);
+  const missing = TARGET_TOKENS - estimatedTokens;
+  if (missing <= 0) return stableText;
 
   const padTokens =
-    Math.ceil(missing / PAD_SIZE_STEP_TOKENS) * PAD_SIZE_STEP_TOKENS
-  return `${antigravityPrefixPad(padTokens)}\n\n${stableText}`
+    Math.ceil(missing / PAD_SIZE_STEP_TOKENS) * PAD_SIZE_STEP_TOKENS;
+  return `${antigravityPrefixPad(padTokens)}\n\n${stableText}`;
 }
 
 // ─── Commit-window pacing (agent sessions only) ──────────────────
@@ -171,38 +171,38 @@ export function applyAntigravityPrefixPad(
 // longer than the backend actually needed. Override with
 // TAU_ANTIGRAVITY_PACING_MS (0 keeps state tracking but never waits).
 
-const DEFAULT_COMMIT_WINDOW_MS = 6_000
-const MAX_PACED_TURNS = 2
-const AGENT_SESSION_PREFIX = 'tau-agent-'
+const DEFAULT_COMMIT_WINDOW_MS = 6_000;
+const MAX_PACED_TURNS = 2;
+const AGENT_SESSION_PREFIX = "zen-agent-";
 
 interface PaceState {
   /** Start of the most recent un-committed (cold) request. */
-  armedAt: number
-  pacedCount: number
-  hitSeen: boolean
+  armedAt: number;
+  pacedCount: number;
+  hitSeen: boolean;
 }
 
 // Test override beats env (TAU_ANTIGRAVITY_PACING_MS) beats default.
-let _commitWindowOverride: number | undefined
-const _agentPace = new Map<string, PaceState>()
+let _commitWindowOverride: number | undefined;
+const _agentPace = new Map<string, PaceState>();
 
 function commitWindowMs(): number {
-  if (_commitWindowOverride !== undefined) return _commitWindowOverride
-  const raw = process.env.TAU_ANTIGRAVITY_PACING_MS
+  if (_commitWindowOverride !== undefined) return _commitWindowOverride;
+  const raw = process.env.TAU_ANTIGRAVITY_PACING_MS;
   if (raw) {
-    const n = Number.parseInt(raw, 10)
-    if (Number.isFinite(n) && n >= 0) return n
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 0) return n;
   }
-  return DEFAULT_COMMIT_WINDOW_MS
+  return DEFAULT_COMMIT_WINDOW_MS;
 }
 
 function _prunePaceMap(): void {
-  if (_agentPace.size <= 64) return
+  if (_agentPace.size <= 64) return;
   const entries = [..._agentPace.entries()].sort(
     (a, b) => a[1].armedAt - b[1].armedAt,
-  )
+  );
   for (let i = 0; i < entries.length - 32; i++) {
-    _agentPace.delete(entries[i]![0])
+    _agentPace.delete(entries[i]![0]);
   }
 }
 
@@ -210,42 +210,42 @@ export async function paceAntigravityAgentRequest(
   sessionId: string | undefined,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (process.env.TAU_ANTIGRAVITY_NO_PACING === '1') return
+  if (process.env.TAU_ANTIGRAVITY_NO_PACING === "1") return;
   // Default OFF — see antigravityMaxCacheEnabled(). Without padding, small
   // agent prompts never reach the cache minimum anyway, so stalling them
   // would buy nothing but latency.
-  if (!antigravityMaxCacheEnabled()) return
-  if (!sessionId || !sessionId.startsWith(AGENT_SESSION_PREFIX)) return
+  if (!antigravityMaxCacheEnabled()) return;
+  if (!sessionId || !sessionId.startsWith(AGENT_SESSION_PREFIX)) return;
 
-  const now = Date.now()
-  const state = _agentPace.get(sessionId)
+  const now = Date.now();
+  const state = _agentPace.get(sessionId);
   if (!state) {
-    _agentPace.set(sessionId, { armedAt: now, pacedCount: 0, hitSeen: false })
-    _prunePaceMap()
-    return
+    _agentPace.set(sessionId, { armedAt: now, pacedCount: 0, hitSeen: false });
+    _prunePaceMap();
+    return;
   }
-  if (state.hitSeen || state.pacedCount >= MAX_PACED_TURNS) return
+  if (state.hitSeen || state.pacedCount >= MAX_PACED_TURNS) return;
 
-  const waitMs = state.armedAt + commitWindowMs() - now
+  const waitMs = state.armedAt + commitWindowMs() - now;
   // Natural cadence already cleared the window — the prior write has
   // committed (or never will); don't burn a paced turn on it.
-  if (waitMs <= 0) return
+  if (waitMs <= 0) return;
 
-  state.pacedCount++
-  await new Promise<void>(resolve => {
-    const timer = setTimeout(resolve, waitMs)
+  state.pacedCount++;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, waitMs);
     signal?.addEventListener(
-      'abort',
+      "abort",
       () => {
-        clearTimeout(timer)
-        resolve()
+        clearTimeout(timer);
+        resolve();
       },
       { once: true },
-    )
-  })
+    );
+  });
   // This request is the new cold write — if it also misses, the next
   // turn paces from here.
-  state.armedAt = Date.now()
+  state.armedAt = Date.now();
 }
 
 /**
@@ -262,38 +262,38 @@ export function recordAntigravityCacheRead(
   if (process.env.TAU_CACHE_DEBUG && sessionId && promptTokens > 0) {
     // Usage arrives on many SSE chunks per turn — only log when the
     // (cacheRead, prompt) pair changes so the file has one line per turn.
-    const sig = `${sessionId}:${cacheReadTokens}:${promptTokens}`
+    const sig = `${sessionId}:${cacheReadTokens}:${promptTokens}`;
     if (sig !== _lastUsageSig) {
-      _lastUsageSig = sig
+      _lastUsageSig = sig;
       try {
         appendFileSync(
-          join(tmpdir(), 'tau-cache-debug.jsonl'),
+          join(tmpdir(), "zen-cache-debug.jsonl"),
           JSON.stringify({
             ts: new Date().toISOString(),
-            kind: 'usage',
+            kind: "usage",
             sessionId,
             cacheRead: cacheReadTokens,
             prompt: promptTokens,
             hitPct: Math.round((cacheReadTokens / promptTokens) * 100),
-          }) + '\n',
-        )
+          }) + "\n",
+        );
       } catch {
         // never break the request path
       }
     }
   }
-  if (!sessionId || cacheReadTokens <= 0 || promptTokens <= 0) return
-  if (cacheReadTokens < promptTokens * 0.7) return
-  const state = _agentPace.get(sessionId)
-  if (state) state.hitSeen = true
+  if (!sessionId || cacheReadTokens <= 0 || promptTokens <= 0) return;
+  if (cacheReadTokens < promptTokens * 0.7) return;
+  const state = _agentPace.get(sessionId);
+  if (state) state.hitSeen = true;
 }
 
 // ─── Diagnostics ─────────────────────────────────────────────────
 
 interface DebugSnapshot {
-  system: string
-  tools: string
-  blocks: string[]
+  system: string;
+  tools: string;
+  blocks: string[];
 }
 
 /**
@@ -318,28 +318,28 @@ export function diagnoseAntigravityCacheBreak(
   prev: DebugSnapshot | undefined,
   cur: DebugSnapshot,
 ): string {
-  if (!prev) return 'cold'
-  if (prev.system !== cur.system) return 'BREAK: systemInstruction'
-  if (prev.tools !== cur.tools) return 'BREAK: tools'
-  const shared = Math.min(prev.blocks.length, cur.blocks.length)
+  if (!prev) return "cold";
+  if (prev.system !== cur.system) return "BREAK: systemInstruction";
+  if (prev.tools !== cur.tools) return "BREAK: tools";
+  const shared = Math.min(prev.blocks.length, cur.blocks.length);
   for (let i = 0; i < shared; i++) {
     if (prev.blocks[i] !== cur.blocks[i]) {
-      return `BREAK: history block ${i}/${prev.blocks.length} rewritten`
+      return `BREAK: history block ${i}/${prev.blocks.length} rewritten`;
     }
   }
   // Every shared block matched. If the new request only added blocks at the
   // end (or is identical), the previous committed prefix extends cleanly.
   return cur.blocks.length >= prev.blocks.length
-    ? 'ok: clean prefix extension'
-    : 'BREAK: history truncated'
+    ? "ok: clean prefix extension"
+    : "BREAK: history truncated";
 }
 
-const _lastDebugSnapshot = new Map<string, DebugSnapshot>()
-let _lastUsageSig = ''
+const _lastDebugSnapshot = new Map<string, DebugSnapshot>();
+let _lastUsageSig = "";
 
 /**
  * TAU_CACHE_DEBUG=1 diagnostic: append one JSON line per Antigravity
- * request to <tmpdir>/tau-cache-debug.jsonl with a hash of every
+ * request to <tmpdir>/zen-cache-debug.jsonl with a hash of every
  * cache-relevant section (systemInstruction, tools, generationConfig,
  * each content block) PLUS a `break` verdict comparing this request to
  * the previous one on the same session — so a single multi-turn session
@@ -353,24 +353,24 @@ export function writeAntigravityCacheDebugEntry(
 ): void {
   try {
     const h = (value: unknown): string =>
-      createHash('sha256')
-        .update(JSON.stringify(value) ?? 'undefined')
-        .digest('hex')
-        .slice(0, 12)
+      createHash("sha256")
+        .update(JSON.stringify(value) ?? "undefined")
+        .digest("hex")
+        .slice(0, 12);
     const contents = Array.isArray(request.contents)
       ? (request.contents as unknown[])
-      : []
+      : [];
     const snapshot: DebugSnapshot = {
       system: h(request.systemInstruction),
       tools: h(request.tools),
       blocks: contents.map(h),
-    }
-    const key = sessionId ?? '<no-session>'
+    };
+    const key = sessionId ?? "<no-session>";
     const verdict = diagnoseAntigravityCacheBreak(
       _lastDebugSnapshot.get(key),
       snapshot,
-    )
-    _lastDebugSnapshot.set(key, snapshot)
+    );
+    _lastDebugSnapshot.set(key, snapshot);
     const entry = {
       ts: new Date().toISOString(),
       model,
@@ -382,11 +382,11 @@ export function writeAntigravityCacheDebugEntry(
       nContents: contents.length,
       blocks: snapshot.blocks,
       bytes: JSON.stringify(request).length,
-    }
+    };
     appendFileSync(
-      join(tmpdir(), 'tau-cache-debug.jsonl'),
-      JSON.stringify(entry) + '\n',
-    )
+      join(tmpdir(), "zen-cache-debug.jsonl"),
+      JSON.stringify(entry) + "\n",
+    );
   } catch {
     // Diagnostics must never break the request path.
   }
@@ -395,17 +395,17 @@ export function writeAntigravityCacheDebugEntry(
 // ─── Test hooks ──────────────────────────────────────────────────
 
 export function _resetAntigravityCacheStateForTest(): void {
-  _agentPace.clear()
-  _lastDebugSnapshot.clear()
-  _commitWindowOverride = undefined
+  _agentPace.clear();
+  _lastDebugSnapshot.clear();
+  _commitWindowOverride = undefined;
 }
 
 export function _setAntigravityCommitWindowForTest(ms: number): void {
-  _commitWindowOverride = ms
+  _commitWindowOverride = ms;
 }
 
 export function _getAntigravityPaceStateForTest(
   sessionId: string,
 ): { armedAt: number; pacedCount: number; hitSeen: boolean } | undefined {
-  return _agentPace.get(sessionId)
+  return _agentPace.get(sessionId);
 }

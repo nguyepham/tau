@@ -1,7 +1,7 @@
-const vscode = require('vscode');
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
+const vscode = require("vscode");
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const {
   chooseLaunchWorkspace,
@@ -10,43 +10,43 @@ const {
   isPathInsideWorkspace,
   parseProfileFile,
   resolveCommandCheckPath,
-} = require('./state');
-const { buildControlCenterViewModel } = require('./presentation');
+} = require("./state");
+const { buildControlCenterViewModel } = require("./presentation");
 
-const CLAUDEX_REPO_URL = 'https://github.com/AbdoKnbGit/tau';
-const CLAUDEX_SETUP_URL = 'https://github.com/AbdoKnbGit/tau#readme';
-const PROFILE_FILE_NAME = '.claudex-profile.json';
+const CLAUDEX_REPO_URL = "https://github.com/AbdoKnbGit/zen";
+const CLAUDEX_SETUP_URL = "https://github.com/AbdoKnbGit/zen#readme";
+const PROFILE_FILE_NAME = ".claudex-profile.json";
 
 /** Provider env var mapping for terminal injection */
 const PROVIDER_ENV_VARS = {
   anthropic: {},
-  openai:     { CLAUDE_CODE_USE_OPENAI: '1' },
-  gemini:     { CLAUDE_CODE_USE_GEMINI: '1' },
-  openrouter: { CLAUDE_CODE_USE_OPENROUTER: '1' },
-  groq:       { CLAUDE_CODE_USE_GROQ: '1' },
-  nim:        { CLAUDE_CODE_USE_NIM: '1' },
-  deepseek:   { CLAUDE_CODE_USE_DEEPSEEK: '1' },
-  ollama:     { CLAUDE_CODE_USE_OLLAMA: '1' },
+  openai: { CLAUDE_CODE_USE_OPENAI: "1" },
+  gemini: { CLAUDE_CODE_USE_GEMINI: "1" },
+  openrouter: { CLAUDE_CODE_USE_OPENROUTER: "1" },
+  groq: { CLAUDE_CODE_USE_GROQ: "1" },
+  nim: { CLAUDE_CODE_USE_NIM: "1" },
+  deepseek: { CLAUDE_CODE_USE_DEEPSEEK: "1" },
+  ollama: { CLAUDE_CODE_USE_OLLAMA: "1" },
 };
 
 const PROVIDER_LABELS = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  gemini: 'Google Gemini',
-  openrouter: 'OpenRouter',
-  groq: 'Groq',
-  nim: 'NVIDIA NIM',
-  deepseek: 'DeepSeek',
-  ollama: 'Ollama (local)',
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  gemini: "Google Gemini",
+  openrouter: "OpenRouter",
+  groq: "Groq",
+  nim: "NVIDIA NIM",
+  deepseek: "DeepSeek",
+  ollama: "Ollama (local)",
 };
 
 function escapeHtml(value) {
   return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function isCommandAvailable(command, launchCwd) {
@@ -54,9 +54,9 @@ async function isCommandAvailable(command, launchCwd) {
 }
 
 function getExecutableFromCommand(command) {
-  const normalized = String(command || '').trim();
+  const normalized = String(command || "").trim();
   if (!normalized) {
-    return '';
+    return "";
   }
 
   const doubleQuotedMatch = normalized.match(/^"([^"]+)"/);
@@ -73,33 +73,45 @@ function getExecutableFromCommand(command) {
 }
 
 function getWorkspacePaths() {
-  return (vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath);
+  return (vscode.workspace.workspaceFolders || []).map(
+    (folder) => folder.uri.fsPath,
+  );
 }
 
 function getActiveWorkspacePath() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.uri.scheme !== 'file') {
+  if (!editor || editor.document.uri.scheme !== "file") {
     return null;
   }
 
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+    editor.document.uri,
+  );
   return workspaceFolder ? workspaceFolder.uri.fsPath : null;
 }
 
 function getActiveFilePath() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.uri.scheme !== 'file') {
+  if (!editor || editor.document.uri.scheme !== "file") {
     return null;
   }
 
   return editor.document.uri.fsPath || null;
 }
 
-function resolveLaunchTargets({ activeFilePath, workspacePath, workspaceSourceLabel, executable } = {}) {
-  const activeFileDirectory = isPathInsideWorkspace(activeFilePath, workspacePath)
+function resolveLaunchTargets({
+  activeFilePath,
+  workspacePath,
+  workspaceSourceLabel,
+  executable,
+} = {}) {
+  const activeFileDirectory = isPathInsideWorkspace(
+    activeFilePath,
+    workspacePath,
+  )
     ? path.dirname(activeFilePath)
     : null;
-  const normalizedExecutable = String(executable || '').trim();
+  const normalizedExecutable = String(executable || "").trim();
   const commandPath = normalizedExecutable
     ? resolveCommandCheckPath(normalizedExecutable, workspacePath)
     : null;
@@ -111,11 +123,12 @@ function resolveLaunchTargets({ activeFilePath, workspacePath, workspaceSourceLa
     return {
       projectAwareCwd: workspacePath,
       projectAwareCwdLabel: workspacePath,
-      projectAwareSourceLabel: 'workspace root (required by relative launch command)',
+      projectAwareSourceLabel:
+        "workspace root (required by relative launch command)",
       workspaceRootCwd: workspacePath,
       workspaceRootCwdLabel: workspacePath,
       launchActionsShareTarget: true,
-      launchActionsShareTargetReason: 'relative-launch-command',
+      launchActionsShareTargetReason: "relative-launch-command",
     };
   }
 
@@ -123,9 +136,9 @@ function resolveLaunchTargets({ activeFilePath, workspacePath, workspaceSourceLa
     return {
       projectAwareCwd: activeFileDirectory,
       projectAwareCwdLabel: activeFileDirectory,
-      projectAwareSourceLabel: 'active file directory',
+      projectAwareSourceLabel: "active file directory",
       workspaceRootCwd: workspacePath || null,
-      workspaceRootCwdLabel: workspacePath || 'No workspace open',
+      workspaceRootCwdLabel: workspacePath || "No workspace open",
       launchActionsShareTarget: false,
       launchActionsShareTargetReason: null,
     };
@@ -135,7 +148,7 @@ function resolveLaunchTargets({ activeFilePath, workspacePath, workspaceSourceLa
     return {
       projectAwareCwd: workspacePath,
       projectAwareCwdLabel: workspacePath,
-      projectAwareSourceLabel: workspaceSourceLabel || 'workspace root',
+      projectAwareSourceLabel: workspaceSourceLabel || "workspace root",
       workspaceRootCwd: workspacePath,
       workspaceRootCwdLabel: workspacePath,
       launchActionsShareTarget: true,
@@ -145,10 +158,10 @@ function resolveLaunchTargets({ activeFilePath, workspacePath, workspaceSourceLa
 
   return {
     projectAwareCwd: null,
-    projectAwareCwdLabel: 'VS Code default terminal cwd',
-    projectAwareSourceLabel: 'VS Code default terminal cwd',
+    projectAwareCwdLabel: "VS Code default terminal cwd",
+    projectAwareSourceLabel: "VS Code default terminal cwd",
     workspaceRootCwd: null,
-    workspaceRootCwdLabel: 'No workspace open',
+    workspaceRootCwdLabel: "No workspace open",
     launchActionsShareTarget: false,
     launchActionsShareTargetReason: null,
   };
@@ -163,25 +176,25 @@ function resolveLaunchWorkspace() {
 
 function getWorkspaceSourceLabel(source) {
   switch (source) {
-    case 'active-workspace':
-      return 'active editor workspace';
-    case 'first-workspace':
-      return 'first workspace folder';
+    case "active-workspace":
+      return "active editor workspace";
+    case "first-workspace":
+      return "first workspace folder";
     default:
-      return 'no workspace open';
+      return "no workspace open";
   }
 }
 
 function getProviderSourceLabel(source) {
   switch (source) {
-    case 'profile':
-      return 'saved profile';
-    case 'env':
-      return 'environment';
-    case 'shim':
-      return 'launch setting';
+    case "profile":
+      return "saved profile";
+    case "env":
+      return "environment";
+    case "shim":
+      return "launch setting";
     default:
-      return 'unknown';
+      return "unknown";
   }
 }
 
@@ -189,19 +202,19 @@ function readWorkspaceProfile(profilePath) {
   if (!profilePath || !fs.existsSync(profilePath)) {
     return {
       profile: null,
-      statusLabel: 'Missing',
+      statusLabel: "Missing",
       statusHint: `${PROFILE_FILE_NAME} not found in the workspace root`,
       filePath: null,
     };
   }
 
   try {
-    const raw = fs.readFileSync(profilePath, 'utf8');
+    const raw = fs.readFileSync(profilePath, "utf8");
     const profile = parseProfileFile(raw);
     if (!profile) {
       return {
         profile: null,
-        statusLabel: 'Invalid',
+        statusLabel: "Invalid",
         statusHint: `${profilePath} has invalid JSON or an unsupported profile`,
         filePath: profilePath,
       };
@@ -209,15 +222,15 @@ function readWorkspaceProfile(profilePath) {
 
     return {
       profile,
-      statusLabel: 'Found',
+      statusLabel: "Found",
       statusHint: profilePath,
       filePath: profilePath,
     };
   } catch (error) {
     return {
       profile: null,
-      statusLabel: 'Unreadable',
-      statusHint: `${profilePath} (${error instanceof Error ? error.message : 'read failed'})`,
+      statusLabel: "Unreadable",
+      statusHint: `${profilePath} (${error instanceof Error ? error.message : "read failed"})`,
       filePath: profilePath,
     };
   }
@@ -225,14 +238,14 @@ function readWorkspaceProfile(profilePath) {
 
 /** Get the currently configured provider from settings */
 function getActiveProvider() {
-  const configured = vscode.workspace.getConfiguration('claudex');
-  return configured.get('activeProvider', '') || '';
+  const configured = vscode.workspace.getConfiguration("claudex");
+  return configured.get("activeProvider", "") || "";
 }
 
 async function collectControlCenterState() {
-  const configured = vscode.workspace.getConfiguration('claudex');
-  const launchCommand = configured.get('launchCommand', 'tau');
-  const terminalName = configured.get('terminalName', 'Tau');
+  const configured = vscode.workspace.getConfiguration("claudex");
+  const launchCommand = configured.get("launchCommand", "zen");
+  const terminalName = configured.get("terminalName", "Zen");
   const activeProvider = getActiveProvider();
   const executable = getExecutableFromCommand(launchCommand);
   const launchWorkspace = resolveLaunchWorkspace();
@@ -244,7 +257,10 @@ async function collectControlCenterState() {
     workspaceSourceLabel,
     executable,
   });
-  const installed = await isCommandAvailable(executable, launchTargets.projectAwareCwd);
+  const installed = await isCommandAvailable(
+    executable,
+    launchTargets.projectAwareCwd,
+  );
   const profilePath = workspaceFolder
     ? path.join(workspaceFolder, PROFILE_FILE_NAME)
     : null;
@@ -253,8 +269,8 @@ async function collectControlCenterState() {
     ? readWorkspaceProfile(profilePath)
     : {
         profile: null,
-        statusLabel: 'No workspace',
-        statusHint: 'Open a workspace folder to detect a saved profile',
+        statusLabel: "No workspace",
+        statusHint: "Open a workspace folder to detect a saved profile",
         filePath: null,
       };
 
@@ -279,7 +295,8 @@ async function collectControlCenterState() {
     workspaceRootCwd: launchTargets.workspaceRootCwd,
     workspaceRootCwdLabel: launchTargets.workspaceRootCwdLabel,
     launchActionsShareTarget: launchTargets.launchActionsShareTarget,
-    launchActionsShareTargetReason: launchTargets.launchActionsShareTargetReason,
+    launchActionsShareTargetReason:
+      launchTargets.launchActionsShareTargetReason,
     canLaunchInWorkspaceRoot: Boolean(workspaceFolder),
     profileStatusLabel: profileState.statusLabel,
     profileStatusHint: profileState.statusHint,
@@ -289,18 +306,18 @@ async function collectControlCenterState() {
   };
 }
 
-async function launchTau(options = {}) {
+async function launchZen(options = {}) {
   const { requireWorkspace = false, companion = null } = options;
-  const configured = vscode.workspace.getConfiguration('claudex');
-  const launchCommand = configured.get('launchCommand', 'tau');
-  const terminalName = configured.get('terminalName', 'Tau');
+  const configured = vscode.workspace.getConfiguration("claudex");
+  const launchCommand = configured.get("launchCommand", "zen");
+  const terminalName = configured.get("terminalName", "Zen");
   const activeProvider = getActiveProvider();
   const executable = getExecutableFromCommand(launchCommand);
   const launchWorkspace = resolveLaunchWorkspace();
 
   if (requireWorkspace && !launchWorkspace.workspacePath) {
     await vscode.window.showWarningMessage(
-      'Open a workspace folder before using Launch in Workspace Root.',
+      "Open a workspace folder before using Launch in Workspace Root.",
     );
     return;
   }
@@ -318,14 +335,14 @@ async function launchTau(options = {}) {
 
   if (!installed) {
     const action = await vscode.window.showErrorMessage(
-      `Tau command not found: ${executable}. Install it with: npm install -g @abdoknbgit/tau`,
-      'Open Setup Guide',
-      'Open Repository',
+      `Zen command not found: ${executable}. Install it with: npm install -g @abdoknbgit/zen`,
+      "Open Setup Guide",
+      "Open Repository",
     );
 
-    if (action === 'Open Setup Guide') {
+    if (action === "Open Setup Guide") {
       await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_SETUP_URL));
-    } else if (action === 'Open Repository') {
+    } else if (action === "Open Repository") {
       await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_REPO_URL));
     }
 
@@ -381,31 +398,35 @@ async function switchProvider(statusBarItem) {
   const currentProvider = getActiveProvider();
   const items = Object.entries(PROVIDER_LABELS).map(([key, label]) => ({
     label: key === currentProvider ? `$(check) ${label}` : label,
-    description: key === currentProvider ? '(active)' : '',
+    description: key === currentProvider ? "(active)" : "",
     providerId: key,
   }));
 
   // Add auto-detect option
   items.unshift({
-    label: !currentProvider ? '$(check) Auto-detect' : 'Auto-detect',
-    description: !currentProvider ? '(active)' : 'Detect provider from environment variables',
-    providerId: '',
+    label: !currentProvider ? "$(check) Auto-detect" : "Auto-detect",
+    description: !currentProvider
+      ? "(active)"
+      : "Detect provider from environment variables",
+    providerId: "",
   });
 
   const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select LLM provider for Tau',
-    title: 'Switch Provider',
+    placeHolder: "Select LLM provider for Zen",
+    title: "Switch Provider",
   });
 
   if (picked) {
-    await vscode.workspace.getConfiguration('claudex').update(
-      'activeProvider',
-      picked.providerId,
-      vscode.ConfigurationTarget.Global,
-    );
+    await vscode.workspace
+      .getConfiguration("claudex")
+      .update(
+        "activeProvider",
+        picked.providerId,
+        vscode.ConfigurationTarget.Global,
+      );
     updateStatusBar(statusBarItem);
     vscode.window.showInformationMessage(
-      `Tau provider set to: ${picked.providerId || 'Auto-detect'}`,
+      `Zen provider set to: ${picked.providerId || "Auto-detect"}`,
     );
   }
 }
@@ -413,23 +434,23 @@ async function switchProvider(statusBarItem) {
 /** Update the status bar item text */
 function updateStatusBar(statusBarItem) {
   const provider = getActiveProvider();
-  const label = PROVIDER_LABELS[provider] || 'Auto';
-  statusBarItem.text = `$(zap) Tau: ${label}`;
-  statusBarItem.tooltip = `Tau Provider: ${label}\nClick to switch`;
+  const label = PROVIDER_LABELS[provider] || "Auto";
+  statusBarItem.text = `$(zap) Zen: ${label}`;
+  statusBarItem.tooltip = `Zen Provider: ${label}\nClick to switch`;
 }
 
 function getToneClass(tone) {
   switch (tone) {
-    case 'accent':
-      return 'tone-accent';
-    case 'positive':
-      return 'tone-positive';
-    case 'warning':
-      return 'tone-warning';
-    case 'critical':
-      return 'tone-critical';
+    case "accent":
+      return "tone-accent";
+    case "positive":
+      return "tone-positive";
+    case "warning":
+      return "tone-warning";
+    case "critical":
+      return "tone-critical";
     default:
-      return 'tone-neutral';
+      return "tone-neutral";
   }
 }
 
@@ -441,11 +462,11 @@ function renderHeaderBadge(badge) {
 }
 
 function renderSummaryCard(card) {
-  const detail = card.detail || '';
+  const detail = card.detail || "";
   return `<section class="summary-card" aria-label="${escapeHtml(card.label)}">
     <div class="summary-label">${escapeHtml(card.label)}</div>
     <div class="summary-value" title="${escapeHtml(card.value)}">${escapeHtml(card.value)}</div>
-    ${detail ? `<div class="summary-detail" title="${escapeHtml(detail)}">${escapeHtml(detail)}</div>` : ''}
+    ${detail ? `<div class="summary-detail" title="${escapeHtml(detail)}">${escapeHtml(detail)}</div>` : ""}
   </section>`;
 }
 
@@ -453,20 +474,22 @@ function renderDetailRow(row) {
   return `<div class="detail-row ${getToneClass(row.tone)}">
     <div class="detail-label">${escapeHtml(row.label)}</div>
     <div class="detail-summary" title="${escapeHtml(row.summary)}">${escapeHtml(row.summary)}</div>
-    ${row.detail ? `<div class="detail-meta" title="${escapeHtml(row.detail)}">${escapeHtml(row.detail)}</div>` : ''}
+    ${row.detail ? `<div class="detail-meta" title="${escapeHtml(row.detail)}">${escapeHtml(row.detail)}</div>` : ""}
   </div>`;
 }
 
 function renderDetailSection(section) {
-  const sectionId = `section-${String(section.title || 'section').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const sectionId = `section-${String(section.title || "section")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")}`;
   return `<section class="detail-module" aria-labelledby="${escapeHtml(sectionId)}">
     <h2 class="module-title" id="${escapeHtml(sectionId)}">${escapeHtml(section.title)}</h2>
-    <div class="detail-list">${section.rows.map(renderDetailRow).join('')}</div>
+    <div class="detail-list">${section.rows.map(renderDetailRow).join("")}</div>
   </section>`;
 }
 
-function renderActionButton(action, variant = 'secondary') {
-  return `<button class="action-button ${variant}" id="${escapeHtml(action.id)}" type="button" ${action.disabled ? 'disabled aria-disabled="true"' : ''}>
+function renderActionButton(action, variant = "secondary") {
+  return `<button class="action-button ${variant}" id="${escapeHtml(action.id)}" type="button" ${action.disabled ? 'disabled aria-disabled="true"' : ""}>
     <span class="action-label">${escapeHtml(action.label)}</span>
     <span class="action-detail">${escapeHtml(action.detail)}</span>
   </button>`;
@@ -482,23 +505,31 @@ function renderProfileEmptyState(detail) {
 /** Render provider quick-switch cards */
 function renderProviderCards(activeProvider) {
   const providers = Object.entries(PROVIDER_LABELS);
-  return providers.map(([key, label]) => {
-    const isActive = key === activeProvider;
-    const toneClass = isActive ? 'tone-accent' : '';
-    return `<button class="provider-card ${toneClass}" data-provider="${escapeHtml(key)}" type="button"
-      title="${isActive ? 'Active provider' : `Switch to ${label}`}">
+  return providers
+    .map(([key, label]) => {
+      const isActive = key === activeProvider;
+      const toneClass = isActive ? "tone-accent" : "";
+      return `<button class="provider-card ${toneClass}" data-provider="${escapeHtml(key)}" type="button"
+      title="${isActive ? "Active provider" : `Switch to ${label}`}">
       <span class="provider-name">${escapeHtml(label)}</span>
-      ${isActive ? '<span class="provider-active-badge">Active</span>' : ''}
+      ${isActive ? '<span class="provider-active-badge">Active</span>' : ""}
     </button>`;
-  }).join('');
+    })
+    .join("");
 }
 
 function getPrimaryLaunchActionDetail(status) {
-  if (status.launchActionsShareTargetReason === 'relative-launch-command' && status.launchCwd) {
+  if (
+    status.launchActionsShareTargetReason === "relative-launch-command" &&
+    status.launchCwd
+  ) {
     return `Project-aware launch is anchored to the workspace root by the relative command · ${status.launchCwdLabel}`;
   }
 
-  if (status.launchCwd && status.launchCwdSourceLabel === 'active file directory') {
+  if (
+    status.launchCwd &&
+    status.launchCwdSourceLabel === "active file directory"
+  ) {
     return `Starts beside the active file · ${status.launchCwdLabel}`;
   }
 
@@ -506,7 +537,7 @@ function getPrimaryLaunchActionDetail(status) {
     return `Project-aware launch. Currently resolves to ${status.launchCwdSourceLabel} · ${status.launchCwdLabel}`;
   }
 
-  return 'Project-aware launch. Uses the VS Code default terminal cwd';
+  return "Project-aware launch. Uses the VS Code default terminal cwd";
 }
 
 function getWorkspaceRootActionDetail(status, fallbackDetail) {
@@ -514,8 +545,8 @@ function getWorkspaceRootActionDetail(status, fallbackDetail) {
     return fallbackDetail;
   }
 
-  if (status.launchActionsShareTargetReason === 'relative-launch-command') {
-    return `Same workspace-root target as Launch Tau because the relative command resolves from the workspace root · ${status.workspaceRootCwdLabel}`;
+  if (status.launchActionsShareTargetReason === "relative-launch-command") {
+    return `Same workspace-root target as Launch Zen because the relative command resolves from the workspace root · ${status.workspaceRootCwdLabel}`;
   }
 
   return `Always starts at the workspace root · ${status.workspaceRootCwdLabel}`;
@@ -523,14 +554,14 @@ function getWorkspaceRootActionDetail(status, fallbackDetail) {
 
 function getRenderableViewModel(status) {
   const viewModel = buildControlCenterViewModel(status);
-  const summaryCards = viewModel.summaryCards.map(card => {
-    if (card.key !== 'launchCwd' || card.detail) {
+  const summaryCards = viewModel.summaryCards.map((card) => {
+    if (card.key !== "launchCwd" || card.detail) {
       return card;
     }
 
     return {
       ...card,
-      detail: status.launchCwdSourceLabel || '',
+      detail: status.launchCwdSourceLabel || "",
     };
   });
 
@@ -545,19 +576,25 @@ function getRenderableViewModel(status) {
       },
       launchRoot: {
         ...viewModel.actions.launchRoot,
-        detail: getWorkspaceRootActionDetail(status, viewModel.actions.launchRoot.detail),
+        detail: getWorkspaceRootActionDetail(
+          status,
+          viewModel.actions.launchRoot.detail,
+        ),
       },
     },
   };
 }
 
 function renderControlCenterHtml(status, options = {}) {
-  const nonce = options.nonce || crypto.randomBytes(16).toString('base64');
+  const nonce = options.nonce || crypto.randomBytes(16).toString("base64");
   const platform = options.platform || process.platform;
   const viewModel = getRenderableViewModel(status);
   const profileActionOrEmpty = viewModel.actions.openProfile
     ? renderActionButton(viewModel.actions.openProfile)
-    : renderProfileEmptyState(status.profileStatusHint || 'Open a workspace folder to detect a saved profile');
+    : renderProfileEmptyState(
+        status.profileStatusHint ||
+          "Open a workspace folder to detect a saved profile",
+      );
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -976,19 +1013,19 @@ function renderControlCenterHtml(status, options = {}) {
         <div class="hero-top">
           <div class="brand">
             <div class="eyebrow">${escapeHtml(viewModel.header.eyebrow)}</div>
-            <div class="wordmark" aria-label="Tau wordmark">Tau</div>
+            <div class="wordmark" aria-label="Zen wordmark">Zen</div>
             <div class="headline">
               <h1 class="headline-title" id="control-center-title">${escapeHtml(viewModel.header.title)}</h1>
               <p class="headline-subtitle">${escapeHtml(viewModel.header.subtitle)}</p>
             </div>
           </div>
           <div class="status-rail" role="group" aria-label="Runtime, provider, and profile status">
-            ${viewModel.headerBadges.map(renderHeaderBadge).join('')}
+            ${viewModel.headerBadges.map(renderHeaderBadge).join("")}
             <button class="refresh-button" id="refresh" type="button">Refresh</button>
           </div>
         </div>
         <section class="summary-grid" aria-label="Current launch summary">
-          ${viewModel.summaryCards.map(renderSummaryCard).join('')}
+          ${viewModel.summaryCards.map(renderSummaryCard).join("")}
         </section>
       </header>
 
@@ -1000,13 +1037,13 @@ function renderControlCenterHtml(status, options = {}) {
       </section>
 
       <section class="modules" aria-label="Control center details">
-        ${viewModel.detailSections.map(renderDetailSection).join('')}
+        ${viewModel.detailSections.map(renderDetailSection).join("")}
       </section>
 
       <section class="actions-layout" aria-label="Control center actions">
         <section class="action-panel" aria-labelledby="actions-title">
           <h2 class="action-section-title" id="actions-title">Launch & Project</h2>
-          ${renderActionButton(viewModel.actions.primary, 'primary')}
+          ${renderActionButton(viewModel.actions.primary, "primary")}
           <div class="action-stack">
             ${renderActionButton(viewModel.actions.launchRoot)}
             ${profileActionOrEmpty}
@@ -1023,18 +1060,18 @@ function renderControlCenterHtml(status, options = {}) {
             </button>
             <button class="support-link" id="repo" type="button">
               <span class="support-link-label">Open Repository</span>
-              <span class="summary-detail">Browse the upstream Tau project.</span>
+              <span class="summary-detail">Browse the upstream Zen project.</span>
             </button>
             <button class="support-link" id="commands" type="button">
               <span class="support-link-label">Open Command Palette</span>
-              <span class="summary-detail">Access VS Code and Tau commands quickly.</span>
+              <span class="summary-detail">Access VS Code and Zen commands quickly.</span>
             </button>
           </div>
         </section>
       </section>
 
       <p class="footer-note">
-        Quick trigger: use <code>${escapeHtml(platform === 'darwin' ? 'Cmd+Shift+P' : 'Ctrl+Shift+P')}</code> for the command palette, then refresh this panel after workspace or profile changes.
+        Quick trigger: use <code>${escapeHtml(platform === "darwin" ? "Cmd+Shift+P" : "Ctrl+Shift+P")}</code> for the command palette, then refresh this panel after workspace or profile changes.
       </p>
     </div>
   </main>
@@ -1084,37 +1121,39 @@ class ClaudexControlCenterProvider {
       }
     });
 
-    webviewView.webview.onDidReceiveMessage(async message => {
+    webviewView.webview.onDidReceiveMessage(async (message) => {
       const companion = this._getCompanion();
       switch (message?.type) {
-        case 'launch':
-          await launchTau({ companion });
+        case "launch":
+          await launchZen({ companion });
           break;
-        case 'launchRoot':
-          await launchTau({ requireWorkspace: true, companion });
+        case "launchRoot":
+          await launchZen({ requireWorkspace: true, companion });
           break;
-        case 'openProfile':
+        case "openProfile":
           await openWorkspaceProfile();
           break;
-        case 'repo':
+        case "repo":
           await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_REPO_URL));
           break;
-        case 'setup':
+        case "setup":
           await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_SETUP_URL));
           break;
-        case 'commands':
-          await vscode.commands.executeCommand('workbench.action.showCommands');
+        case "commands":
+          await vscode.commands.executeCommand("workbench.action.showCommands");
           break;
-        case 'switchProvider':
+        case "switchProvider":
           if (message.provider !== undefined) {
-            await vscode.workspace.getConfiguration('claudex').update(
-              'activeProvider',
-              message.provider,
-              vscode.ConfigurationTarget.Global,
-            );
+            await vscode.workspace
+              .getConfiguration("claudex")
+              .update(
+                "activeProvider",
+                message.provider,
+                vscode.ConfigurationTarget.Global,
+              );
           }
           break;
-        case 'refresh':
+        case "refresh":
         default:
           break;
       }
@@ -1139,9 +1178,9 @@ class ClaudexControlCenterProvider {
   }
 
   getErrorHtml(error) {
-    const nonce = crypto.randomBytes(16).toString('base64');
+    const nonce = crypto.randomBytes(16).toString("base64");
     const message =
-      error instanceof Error ? error.message : 'Unknown Control Center error';
+      error instanceof Error ? error.message : "Unknown Control Center error";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -1199,8 +1238,11 @@ class ClaudexControlCenterProvider {
   }
 
   getHtml(status) {
-    const nonce = crypto.randomBytes(16).toString('base64');
-    return renderControlCenterHtml(status, { nonce, platform: process.platform });
+    const nonce = crypto.randomBytes(16).toString("base64");
+    return renderControlCenterHtml(status, {
+      nonce,
+      platform: process.platform,
+    });
   }
 }
 
@@ -1218,19 +1260,21 @@ function getCompanionRef() {
 }
 
 async function startCompanion(context) {
-  const { CompanionServer } = require('./companion/server');
-  const { writeLockfile, deleteLockfile } = require('./companion/lockfile');
+  const { CompanionServer } = require("./companion/server");
+  const { writeLockfile, deleteLockfile } = require("./companion/lockfile");
   const {
     DiffContentProvider,
     DiffManager,
     DIFF_SCHEME,
     createDiffHandlers,
-  } = require('./companion/handlers/diff');
-  const { createGetDiagnosticsHandler } = require('./companion/handlers/diagnostics');
+  } = require("./companion/handlers/diff");
+  const {
+    createGetDiagnosticsHandler,
+  } = require("./companion/handlers/diagnostics");
 
-  const output = vscode.window.createOutputChannel('Tau Companion');
+  const output = vscode.window.createOutputChannel("Zen Companion");
   context.subscriptions.push(output);
-  companionLog = msg => {
+  companionLog = (msg) => {
     try {
       output.appendLine(msg);
     } catch (_) {
@@ -1239,22 +1283,26 @@ async function startCompanion(context) {
   };
 
   const diffContentProvider = new DiffContentProvider(vscode);
-  const diffManager = new DiffManager(vscode, diffContentProvider, companionLog);
+  const diffManager = new DiffManager(
+    vscode,
+    diffContentProvider,
+    companionLog,
+  );
 
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
       DIFF_SCHEME,
       diffContentProvider,
     ),
-    vscode.workspace.onDidCloseTextDocument(doc => {
+    vscode.workspace.onDidCloseTextDocument((doc) => {
       if (doc.uri.scheme === DIFF_SCHEME) {
         void diffManager.onDocumentClosed(doc.uri);
       }
     }),
-    vscode.commands.registerCommand('claudex.acceptDiff', uri => {
+    vscode.commands.registerCommand("claudex.acceptDiff", (uri) => {
       void diffManager.acceptDiff(uri);
     }),
-    vscode.commands.registerCommand('claudex.rejectDiff', uri => {
+    vscode.commands.registerCommand("claudex.rejectDiff", (uri) => {
       void diffManager.rejectDiff(uri);
     }),
   );
@@ -1264,44 +1312,45 @@ async function startCompanion(context) {
 
   const tools = {
     getDiagnostics: {
-      description: 'Get language-server diagnostics from the IDE.',
+      description: "Get language-server diagnostics from the IDE.",
       inputSchema: {
-        type: 'object',
+        type: "object",
         properties: {
           uri: {
-            type: 'string',
-            description: 'Optional file URI to scope to. Omit for all workspace diagnostics.',
+            type: "string",
+            description:
+              "Optional file URI to scope to. Omit for all workspace diagnostics.",
           },
         },
       },
       handler: getDiagnostics,
     },
     openDiff: {
-      description: 'Open a diff view in the IDE and wait for accept/reject.',
+      description: "Open a diff view in the IDE and wait for accept/reject.",
       inputSchema: {
-        type: 'object',
-        required: ['new_file_contents'],
+        type: "object",
+        required: ["new_file_contents"],
         properties: {
-          old_file_path: { type: 'string' },
-          new_file_path: { type: 'string' },
-          new_file_contents: { type: 'string' },
-          tab_name: { type: 'string' },
+          old_file_path: { type: "string" },
+          new_file_path: { type: "string" },
+          new_file_contents: { type: "string" },
+          tab_name: { type: "string" },
         },
       },
       handler: diffHandlers.openDiff,
     },
     close_tab: {
-      description: 'Close a tab in the IDE by name.',
+      description: "Close a tab in the IDE by name.",
       inputSchema: {
-        type: 'object',
-        required: ['tab_name'],
-        properties: { tab_name: { type: 'string' } },
+        type: "object",
+        required: ["tab_name"],
+        properties: { tab_name: { type: "string" } },
       },
       handler: diffHandlers.close_tab,
     },
     closeAllDiffTabs: {
-      description: 'Close every Tau-owned diff tab in the IDE.',
-      inputSchema: { type: 'object', properties: {} },
+      description: "Close every Zen-owned diff tab in the IDE.",
+      inputSchema: { type: "object", properties: {} },
       handler: diffHandlers.closeAllDiffTabs,
     },
   };
@@ -1325,20 +1374,20 @@ async function startCompanion(context) {
   companionLockfilePort = server.port;
 
   const workspaceFolders = (vscode.workspace.workspaceFolders || []).map(
-    f => f.uri.fsPath,
+    (f) => f.uri.fsPath,
   );
   const lockfilePath = writeLockfile({
     port: server.port,
     workspaceFolders,
     pid: process.pid,
-    ideName: 'VS Code',
+    ideName: "VS Code",
     authToken: server.authToken,
   });
 
   if (lockfilePath) {
     companionLog(`Lockfile written: ${lockfilePath}`);
   } else {
-    companionLog('Lockfile write failed — CLI auto-discovery may not work');
+    companionLog("Lockfile write failed — CLI auto-discovery may not work");
   }
 
   // Keep workspace folders fresh in the lockfile so the CLI's path-matching
@@ -1346,13 +1395,13 @@ async function startCompanion(context) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       const folders = (vscode.workspace.workspaceFolders || []).map(
-        f => f.uri.fsPath,
+        (f) => f.uri.fsPath,
       );
       writeLockfile({
         port: server.port,
         workspaceFolders: folders,
         pid: process.pid,
-        ideName: 'VS Code',
+        ideName: "VS Code",
         authToken: server.authToken,
       });
     }),
@@ -1385,7 +1434,7 @@ function activate(context) {
   // Boot the companion server lazily — failures here must not block the rest
   // of the extension (provider switching, theme, manual launch all still work
   // even if the lockfile/HOME is read-only).
-  void startCompanion(context).catch(err => {
+  void startCompanion(context).catch((err) => {
     companionLog(`startCompanion error: ${err && err.message}`);
   });
 
@@ -1394,7 +1443,7 @@ function activate(context) {
     vscode.StatusBarAlignment.Left,
     100,
   );
-  statusBarItem.command = 'claudex.switchProvider';
+  statusBarItem.command = "claudex.switchProvider";
   updateStatusBar(statusBarItem);
   statusBarItem.show();
 
@@ -1403,41 +1452,50 @@ function activate(context) {
     updateStatusBar(statusBarItem);
   };
 
-  const startCommand = vscode.commands.registerCommand('claudex.start', async () => {
-    await launchTau({ companion: getCompanionRef() });
-  });
-
-  const startInWorkspaceRootCommand = vscode.commands.registerCommand(
-    'claudex.startInWorkspaceRoot',
+  const startCommand = vscode.commands.registerCommand(
+    "claudex.start",
     async () => {
-      await launchTau({ requireWorkspace: true, companion: getCompanionRef() });
+      await launchZen({ companion: getCompanionRef() });
     },
   );
 
-  const openDocsCommand = vscode.commands.registerCommand('claudex.openDocs', async () => {
-    await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_REPO_URL));
-  });
+  const startInWorkspaceRootCommand = vscode.commands.registerCommand(
+    "claudex.startInWorkspaceRoot",
+    async () => {
+      await launchZen({ requireWorkspace: true, companion: getCompanionRef() });
+    },
+  );
+
+  const openDocsCommand = vscode.commands.registerCommand(
+    "claudex.openDocs",
+    async () => {
+      await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_REPO_URL));
+    },
+  );
 
   const openSetupDocsCommand = vscode.commands.registerCommand(
-    'claudex.openSetupDocs',
+    "claudex.openSetupDocs",
     async () => {
       await vscode.env.openExternal(vscode.Uri.parse(CLAUDEX_SETUP_URL));
     },
   );
 
   const openWorkspaceProfileCommand = vscode.commands.registerCommand(
-    'claudex.openWorkspaceProfile',
+    "claudex.openWorkspaceProfile",
     async () => {
       await openWorkspaceProfile();
     },
   );
 
-  const openUiCommand = vscode.commands.registerCommand('claudex.openControlCenter', async () => {
-    await vscode.commands.executeCommand('workbench.view.extension.claudex');
-  });
+  const openUiCommand = vscode.commands.registerCommand(
+    "claudex.openControlCenter",
+    async () => {
+      await vscode.commands.executeCommand("workbench.view.extension.claudex");
+    },
+  );
 
   const switchProviderCommand = vscode.commands.registerCommand(
-    'claudex.switchProvider',
+    "claudex.switchProvider",
     async () => {
       await switchProvider(statusBarItem);
       refreshProvider();
@@ -1445,11 +1503,13 @@ function activate(context) {
   );
 
   const providerDisposable = vscode.window.registerWebviewViewProvider(
-    'claudex.controlCenter',
+    "claudex.controlCenter",
     provider,
   );
 
-  const profileWatcher = vscode.workspace.createFileSystemWatcher(`**/${PROFILE_FILE_NAME}`);
+  const profileWatcher = vscode.workspace.createFileSystemWatcher(
+    `**/${PROFILE_FILE_NAME}`,
+  );
 
   context.subscriptions.push(
     statusBarItem,
@@ -1462,8 +1522,8 @@ function activate(context) {
     switchProviderCommand,
     providerDisposable,
     profileWatcher,
-    vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('claudex')) {
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("claudex")) {
         refreshProvider();
       }
     }),
@@ -1489,7 +1549,7 @@ async function deactivate() {
   }
   if (companionLockfilePort != null) {
     try {
-      const { deleteLockfile } = require('./companion/lockfile');
+      const { deleteLockfile } = require("./companion/lockfile");
       deleteLockfile(companionLockfilePort);
     } catch (_) {
       // ignore

@@ -1,49 +1,56 @@
 #!/usr/bin/env node
 
-import { chmodSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
-import { spawnSync } from 'child_process'
+import { spawnSync } from "child_process";
+import { chmodSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
-const root = process.cwd()
-const sourceDir = join(root, 'native', 'tau-tools')
-const outDir = join(root, 'dist', 'native')
-const binaryName = process.platform === 'win32' ? 'tau-tools.exe' : 'tau-tools'
-const outPath = join(outDir, binaryName)
-const required = process.env.TAU_REQUIRE_NATIVE_TOOLS === '1'
+const root = process.cwd();
+const sourceDir = join(root, "native", "zen-tools");
+const outDir = join(root, "dist", "native");
+const binaryName = process.platform === "win32" ? "zen-tools.exe" : "zen-tools";
+const outPath = join(outDir, binaryName);
+const required = process.env.TAU_REQUIRE_NATIVE_TOOLS === "1";
 
 function finish(status, message) {
   if (message) {
-    const stream = status === 0 ? process.stdout : process.stderr
-    stream.write(`${message}\n`)
+    const stream = status === 0 ? process.stdout : process.stderr;
+    stream.write(`${message}\n`);
   }
-  process.exit(status)
+  process.exit(status);
 }
 
 if (!existsSync(sourceDir)) {
-  finish(required ? 1 : 0, 'Native Tau tools source not found; skipping.')
+  finish(required ? 1 : 0, "Native Zen tools source not found; skipping.");
 }
 
-const goProbe = spawnSync('go', ['version'], {
-  encoding: 'utf8',
+const goProbe = spawnSync("go", ["version"], {
+  encoding: "utf8",
   windowsHide: true,
-})
+});
 if (goProbe.status !== 0) {
-  finish(required ? 1 : 0, 'Go is not available; skipping native Tau tools build.')
+  finish(
+    required ? 1 : 0,
+    "Go is not available; skipping native Zen tools build.",
+  );
 }
 
-mkdirSync(outDir, { recursive: true })
+mkdirSync(outDir, { recursive: true });
 
-const build = spawnSync('go', ['-C', sourceDir, 'build', '-buildvcs=false', '-o', outPath, '.'], {
-  stdio: 'inherit',
-  windowsHide: true,
-})
+const build = spawnSync(
+  "go",
+  ["-C", sourceDir, "build", "-buildvcs=false", "-o", outPath, "."],
+  {
+    stdio: "inherit",
+    windowsHide: true,
+  },
+);
 
 if (build.status !== 0) {
-  finish(required ? build.status ?? 1 : 0, 'Native Tau tools build failed.')
+  finish(required ? (build.status ?? 1) : 0, "Native Zen tools build failed.");
 }
 
-if (process.platform !== 'win32') {
-  chmodSync(outPath, 0o755)
+if (process.platform !== "win32") {
+  chmodSync(outPath, 0o755);
 }
 
-finish(0, `Built native Tau tools ${outPath}`)
+finish(0, `Built native Zen tools ${outPath}`);

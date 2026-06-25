@@ -1,6 +1,6 @@
 # Claude Code Git Memory
 
-Git-backed memory plugin for Tau / Claude Code compatible plugin runtimes.
+Git-backed memory plugin for Zen / Claude Code compatible plugin runtimes.
 
 The plugin stores memories as Markdown files in a small per-project Git repository. It has no Docker service, no vector database, and no embeddings dependency.
 
@@ -9,11 +9,11 @@ The plugin stores memories as Markdown files in a small per-project Git reposito
 Register this repository as a plugin marketplace:
 
 ```bash
-tau plugin marketplace add https://github.com/AbdoKnbGit/Claude-Code-Git-Memory
-tau plugin install tau-git-memory@claude-code-git-memory
+zen plugin marketplace add https://github.com/AbdoKnbGit/Claude-Code-Git-Memory
+zen plugin install zen-git-memory@claude-code-git-memory
 ```
 
-Then restart Tau or run:
+Then restart Zen or run:
 
 ```text
 /reload-plugins
@@ -24,18 +24,18 @@ Then restart Tau or run:
 From any real project:
 
 ```bash
-tau --plugin-dir /path/to/Claude-Code-Git-Memory/tau-git-memory
+zen --plugin-dir /path/to/Claude-Code-Git-Memory/zen-git-memory
 ```
 
 ## Commands
 
 ```text
-/tau-git-memory:status
-/tau-git-memory:remember --tag pinned preferences.coding.style Keep edits focused and follow existing project patterns.
-/tau-git-memory:remember --tag fallback project.default.rules When unsure, inspect files before changing behavior.
-/tau-git-memory:remember project.setup.commands Use npm test before committing.
-/tau-git-memory:recall setup commands
-/tau-git-memory:tree
+/zen-git-memory:status
+/zen-git-memory:remember --tag pinned preferences.coding.style Keep edits focused and follow existing project patterns.
+/zen-git-memory:remember --tag fallback project.default.rules When unsure, inspect files before changing behavior.
+/zen-git-memory:remember project.setup.commands Use npm test before committing.
+/zen-git-memory:recall setup commands
+/zen-git-memory:tree
 ```
 
 ## Storage
@@ -43,13 +43,13 @@ tau --plugin-dir /path/to/Claude-Code-Git-Memory/tau-git-memory
 Default store:
 
 ```text
-~/.tau/git-memory/<project-slug>
+~/.zen/git-memory/<project-slug>
 ```
 
 Override for testing:
 
 ```bash
-TAU_GIT_MEMORY_STORE=/tmp/tau-git-memory-test tau --plugin-dir /path/to/tau-git-memory
+TAU_GIT_MEMORY_STORE=/tmp/zen-git-memory-test zen --plugin-dir /path/to/zen-git-memory
 ```
 
 ## Context Injection
@@ -63,4 +63,4 @@ The plugin does not inject the entire memory repo every turn.
 - Pinned and fallback memories are not searched for keyword injection because they belong to separate zones.
 - There is no vector database, embedding cache, or background service. The Git-backed Markdown files are the cache/source of truth.
 
-This keeps context small: Tau sees likely-relevant facts, then can use `/tau-git-memory:recall` or the script to fetch exact memory values when needed.
+This keeps context small: Zen sees likely-relevant facts, then can use `/zen-git-memory:recall` or the script to fetch exact memory values when needed.

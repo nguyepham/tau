@@ -1,27 +1,38 @@
-import { feature } from 'bun:bundle'
-import * as React from 'react'
-import { useEffect, useState } from 'react'
-import { resetCostState } from '../../bootstrap/state.js'
+import { feature } from "bun:bundle";
+import * as React from "react";
+import { useEffect, useState } from "react";
+import { resetCostState } from "../../bootstrap/state.js";
 import {
   clearTrustedDeviceToken,
   enrollTrustedDevice,
-} from '../../bridge/trustedDevice.js'
-import type { LocalJSXCommandContext } from '../../commands.js'
-import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js'
-import { ConsoleOAuthFlow } from '../../components/ConsoleOAuthFlow.js'
-import { ProviderLoginFlow } from '../../components/ProviderLoginFlow.js'
-import TextInput from '../../components/TextInput.js'
-import { Dialog } from '../../components/design-system/Dialog.js'
-import { Box, Text, useInput } from '../../ink.js'
-import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js'
-import { refreshPolicyLimits } from '../../services/policyLimits/index.js'
-import { refreshRemoteManagedSettings } from '../../services/remoteManagedSettings/index.js'
-import type { LocalJSXCommandOnDone } from '../../types/command.js'
+} from "../../bridge/trustedDevice.js";
+import type { LocalJSXCommandContext } from "../../commands.js";
+import { ConfigurableShortcutHint } from "../../components/ConfigurableShortcutHint.js";
+import { ConsoleOAuthFlow } from "../../components/ConsoleOAuthFlow.js";
+import { ProviderLoginFlow } from "../../components/ProviderLoginFlow.js";
+import TextInput from "../../components/TextInput.js";
+import { Dialog } from "../../components/design-system/Dialog.js";
+import { Box, Text, useInput } from "../../ink.js";
+import { refreshGrowthBookAfterAuthChange } from "../../services/analytics/growthbook.js";
+import {
+  hasStoredKey,
+  saveProviderKey,
+  validateKeyFormat,
+} from "../../services/api/auth/api_key_manager.js";
+import { refreshPolicyLimits } from "../../services/policyLimits/index.js";
+import { refreshRemoteManagedSettings } from "../../services/remoteManagedSettings/index.js";
+import {
+  FIRECRAWL_API_KEY_ENV,
+  FIRECRAWL_DISPLAY_NAME,
+  FIRECRAWL_PROVIDER_KEY,
+  testFirecrawlApiKey,
+} from "../../tools/WebSearchTool/firecrawl.js";
+import type { LocalJSXCommandOnDone } from "../../types/command.js";
 import {
   getProviderAuthMethod,
   PROVIDER_AUTH_SUPPORT,
-} from '../../utils/auth.js'
-import { stripSignatureBlocks } from '../../utils/messages.js'
+} from "../../utils/auth.js";
+import { stripSignatureBlocks } from "../../utils/messages.js";
 import {
   getAPIProvider,
   isAPIProvider,
@@ -29,30 +40,13 @@ import {
   SELECTABLE_PROVIDERS,
   setActiveProvider,
   type APIProvider,
-} from '../../utils/model/providers.js'
+} from "../../utils/model/providers.js";
 import {
   checkAndDisableAutoModeIfNeeded,
   checkAndDisableBypassPermissionsIfNeeded,
   resetAutoModeGateCheck,
   resetBypassPermissionsCheck,
-} from '../../utils/permissions/bypassPermissionsKillswitch.js'
-import { resetUserCache } from '../../utils/user.js'
-import {
-  hasStoredKey,
-  saveProviderKey,
-  validateKeyFormat,
-} from '../../services/api/auth/api_key_manager.js'
-import {
-  activateGeminiVoiceConversation,
-  hasStoredVoiceConversationKey,
-  saveVoiceConversationApiKey,
-} from '../../voice/voiceConversation.js'
-import {
-  FIRECRAWL_API_KEY_ENV,
-  FIRECRAWL_DISPLAY_NAME,
-  FIRECRAWL_PROVIDER_KEY,
-  testFirecrawlApiKey,
-} from '../../tools/WebSearchTool/firecrawl.js'
+} from "../../utils/permissions/bypassPermissionsKillswitch.js";
 import {
   E2B_DASHBOARD_URL,
   E2B_SECURITY_DISPLAY_NAME,
@@ -60,36 +54,42 @@ import {
   hasE2BSecurityAuth,
   openE2BDashboardInBrowser,
   saveE2BSecurityCredential,
-} from '../../utils/safetest/e2bSecurity.js'
+} from "../../utils/safetest/e2bSecurity.js";
+import { resetUserCache } from "../../utils/user.js";
+import {
+  activateGeminiVoiceConversation,
+  hasStoredVoiceConversationKey,
+  saveVoiceConversationApiKey,
+} from "../../voice/voiceConversation.js";
 
 // ─── Post-login refresh (shared between Anthropic and 3P flows) ──
 
 function runPostLoginRefresh(context: LocalJSXCommandContext) {
-  resetCostState()
-  void refreshRemoteManagedSettings()
-  void refreshPolicyLimits()
-  resetUserCache()
-  refreshGrowthBookAfterAuthChange()
-  clearTrustedDeviceToken()
-  void enrollTrustedDevice()
-  resetBypassPermissionsCheck()
-  const appState = context.getAppState()
+  resetCostState();
+  void refreshRemoteManagedSettings();
+  void refreshPolicyLimits();
+  resetUserCache();
+  refreshGrowthBookAfterAuthChange();
+  clearTrustedDeviceToken();
+  void enrollTrustedDevice();
+  resetBypassPermissionsCheck();
+  const appState = context.getAppState();
   void checkAndDisableBypassPermissionsIfNeeded(
     appState.toolPermissionContext,
     context.setAppState,
-  )
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    resetAutoModeGateCheck()
+  );
+  if (feature("TRANSCRIPT_CLASSIFIER")) {
+    resetAutoModeGateCheck();
     void checkAndDisableAutoModeIfNeeded(
       appState.toolPermissionContext,
       context.setAppState,
       appState.fastMode,
-    )
+    );
   }
   context.setAppState((prev) => ({
     ...prev,
     authVersion: prev.authVersion + 1,
-  }))
+  }));
 }
 
 // ─── Main login entry point ──────────────────────────────────────
@@ -102,183 +102,192 @@ function runPostLoginRefresh(context: LocalJSXCommandContext) {
 export async function call(
   onDone: LocalJSXCommandOnDone,
   context: LocalJSXCommandContext,
-  args = '',
+  args = "",
 ): Promise<React.ReactNode> {
-  const currentProvider = getAPIProvider()
+  const currentProvider = getAPIProvider();
   const finish = (success: boolean) => {
     if (success) {
-      context.onChangeAPIKey()
-      context.setMessages(stripSignatureBlocks)
-      runPostLoginRefresh(context)
+      context.onChangeAPIKey();
+      context.setMessages(stripSignatureBlocks);
+      runPostLoginRefresh(context);
     }
-    onDone(success ? 'Login successful' : 'Login interrupted')
-  }
+    onDone(success ? "Login successful" : "Login interrupted");
+  };
 
   if (matchesE2BSecurityArg(args)) {
-    return <E2BSecurityLogin onDone={finish} />
+    return <E2BSecurityLogin onDone={finish} />;
   }
   if (matchesFirecrawlArg(args)) {
-    return <FirecrawlLogin onDone={finish} />
+    return <FirecrawlLogin onDone={finish} />;
   }
 
-  const requestedProvider = resolveLoginProviderArg(args)
+  const requestedProvider = resolveLoginProviderArg(args);
   if (requestedProvider) {
     const handleDirectLoginDone = (success: boolean) => {
       if (success) {
-        setActiveProvider(requestedProvider)
+        setActiveProvider(requestedProvider);
       }
-      finish(success)
-    }
+      finish(success);
+    };
 
-    if (requestedProvider === 'firstParty') {
-      return <Login onDone={handleDirectLoginDone} />
+    if (requestedProvider === "firstParty") {
+      return <Login onDone={handleDirectLoginDone} />;
     }
     return (
       <ThirdPartyLogin
         provider={requestedProvider}
         onDone={handleDirectLoginDone}
       />
-    )
+    );
   }
 
   return (
-    <ProviderPickerLogin
-      initialProvider={currentProvider}
-      onDone={finish}
-    />
-  )
+    <ProviderPickerLogin initialProvider={currentProvider} onDone={finish} />
+  );
 }
 
 function matchesE2BSecurityArg(args: string): boolean {
-  const first = args.trim().toLowerCase().split(/\s+/)[0]
-  return first === E2B_SECURITY_PROVIDER || first === 'e2b'
+  const first = args.trim().toLowerCase().split(/\s+/)[0];
+  return first === E2B_SECURITY_PROVIDER || first === "e2b";
 }
 
 function matchesFirecrawlArg(args: string): boolean {
-  const first = args.trim().toLowerCase().split(/\s+/)[0]
-  return first === FIRECRAWL_PROVIDER_KEY || first === 'websearch'
+  const first = args.trim().toLowerCase().split(/\s+/)[0];
+  return first === FIRECRAWL_PROVIDER_KEY || first === "websearch";
 }
 
 function resolveLoginProviderArg(args: string): APIProvider | null {
-  const normalized = args.trim().toLowerCase()
-  if (!normalized) return null
+  const normalized = args.trim().toLowerCase();
+  if (!normalized) return null;
 
-  const compact = normalized.replace(/[\s_-]+/g, '')
-  const first = normalized.split(/\s+/)[0]?.replace(/[-_]+/g, '') ?? ''
+  const compact = normalized.replace(/[\s_-]+/g, "");
+  const first = normalized.split(/\s+/)[0]?.replace(/[-_]+/g, "") ?? "";
   const aliases: Record<string, APIProvider> = {
-    anthropic: 'firstParty',
-    claude: 'firstParty',
-    firstparty: 'firstParty',
-    commandcode: 'commandcode',
-    cmd: 'commandcode',
-    cmdcode: 'commandcode',
-  }
+    anthropic: "firstParty",
+    claude: "firstParty",
+    firstparty: "firstParty",
+    commandcode: "commandcode",
+    cmd: "commandcode",
+    cmdcode: "commandcode",
+  };
 
-  const aliased = aliases[compact] ?? aliases[first]
-  if (aliased && SELECTABLE_PROVIDERS.includes(aliased)) return aliased
+  const aliased = aliases[compact] ?? aliases[first];
+  if (aliased && SELECTABLE_PROVIDERS.includes(aliased)) return aliased;
 
   if (isAPIProvider(normalized) && SELECTABLE_PROVIDERS.includes(normalized)) {
-    return normalized
+    return normalized;
   }
   if (isAPIProvider(first) && SELECTABLE_PROVIDERS.includes(first)) {
-    return first
+    return first;
   }
 
-  return null
+  return null;
 }
 
-const GEMINI_VOICE_LOGIN_TARGET = 'geminiVoice' as const
-const E2B_SECURITY_LOGIN_TARGET = E2B_SECURITY_PROVIDER
-const FIRECRAWL_LOGIN_TARGET = FIRECRAWL_PROVIDER_KEY
+const GEMINI_VOICE_LOGIN_TARGET = "geminiVoice" as const;
+const E2B_SECURITY_LOGIN_TARGET = E2B_SECURITY_PROVIDER;
+const FIRECRAWL_LOGIN_TARGET = FIRECRAWL_PROVIDER_KEY;
 type LoginTarget =
   | APIProvider
   | typeof GEMINI_VOICE_LOGIN_TARGET
   | typeof E2B_SECURITY_LOGIN_TARGET
-  | typeof FIRECRAWL_LOGIN_TARGET
+  | typeof FIRECRAWL_LOGIN_TARGET;
 
 const LOGIN_PROVIDERS = [
-  ...SELECTABLE_PROVIDERS.filter(provider => provider !== 'lmstudio'),
+  ...SELECTABLE_PROVIDERS.filter((provider) => provider !== "lmstudio"),
   GEMINI_VOICE_LOGIN_TARGET,
   E2B_SECURITY_LOGIN_TARGET,
   FIRECRAWL_LOGIN_TARGET,
-] as const satisfies readonly LoginTarget[]
+] as const satisfies readonly LoginTarget[];
 
 function getLoginTargetName(target: LoginTarget): string {
-  if (target === GEMINI_VOICE_LOGIN_TARGET) return 'Gemini Voice'
-  if (target === E2B_SECURITY_LOGIN_TARGET) return E2B_SECURITY_DISPLAY_NAME
-  if (target === FIRECRAWL_LOGIN_TARGET) return FIRECRAWL_DISPLAY_NAME
-  return PROVIDER_DISPLAY_NAMES[target]
+  if (target === GEMINI_VOICE_LOGIN_TARGET) return "Gemini Voice";
+  if (target === E2B_SECURITY_LOGIN_TARGET) return E2B_SECURITY_DISPLAY_NAME;
+  if (target === FIRECRAWL_LOGIN_TARGET) return FIRECRAWL_DISPLAY_NAME;
+  return PROVIDER_DISPLAY_NAMES[target];
 }
 
 function getProviderAuthTypeLabel(provider: LoginTarget): string {
-  if (provider === GEMINI_VOICE_LOGIN_TARGET) return 'Gemini API key'
-  if (provider === E2B_SECURITY_LOGIN_TARGET) return 'E2B API key / auth token'
-  if (provider === FIRECRAWL_LOGIN_TARGET) return 'Firecrawl API key'
-  if (provider === 'firstParty') {
-    return 'claude subscription / Console API / platform'
+  if (provider === GEMINI_VOICE_LOGIN_TARGET) return "Gemini API key";
+  if (provider === E2B_SECURITY_LOGIN_TARGET) return "E2B API key / auth token";
+  if (provider === FIRECRAWL_LOGIN_TARGET) return "Firecrawl API key";
+  if (provider === "firstParty") {
+    return "claude subscription / Console API / platform";
   }
-  if (provider === 'antigravity') return 'Google login'
+  if (provider === "antigravity") return "Google login";
 
-  const supported = PROVIDER_AUTH_SUPPORT[provider] ?? ['api_key']
-  const supportsOAuth = supported.includes('oauth')
-  const supportsApiKey = supported.includes('api_key')
+  const supported = PROVIDER_AUTH_SUPPORT[provider] ?? ["api_key"];
+  const supportsOAuth = supported.includes("oauth");
+  const supportsApiKey = supported.includes("api_key");
 
-  if (supportsOAuth && supportsApiKey) return 'OAuth / API key'
-  if (supportsOAuth) return 'OAuth'
-  return 'API key'
+  if (supportsOAuth && supportsApiKey) return "OAuth / API key";
+  if (supportsOAuth) return "OAuth";
+  return "API key";
 }
 
 function getProviderConfiguredLabel(provider: LoginTarget): string {
   if (provider === GEMINI_VOICE_LOGIN_TARGET) {
-    return hasStoredVoiceConversationKey() ? ' [API key saved]' : ''
+    return hasStoredVoiceConversationKey() ? " [API key saved]" : "";
   }
   if (provider === E2B_SECURITY_LOGIN_TARGET) {
-    return hasE2BSecurityAuth() ? ' [auth ready]' : ''
+    return hasE2BSecurityAuth() ? " [auth ready]" : "";
   }
   if (provider === FIRECRAWL_LOGIN_TARGET) {
-    if (process.env[FIRECRAWL_API_KEY_ENV]?.trim()) return ' [env key ready]'
-    return hasStoredKey(FIRECRAWL_PROVIDER_KEY) ? ' [API key saved]' : ''
+    if (process.env[FIRECRAWL_API_KEY_ENV]?.trim()) return " [env key ready]";
+    return hasStoredKey(FIRECRAWL_PROVIDER_KEY) ? " [API key saved]" : "";
   }
-  const method = getProviderAuthMethod(provider)
-  if (method === 'oauth') return ' [OAuth connected]'
-  if (method === 'api_key') return ' [API key saved]'
-  return ''
+  const method = getProviderAuthMethod(provider);
+  if (method === "oauth") return " [OAuth connected]";
+  if (method === "api_key") return " [API key saved]";
+  return "";
 }
 
 function ProviderPickerLogin({
   initialProvider,
   onDone,
 }: {
-  initialProvider: APIProvider
-  onDone: (success: boolean) => void
+  initialProvider: APIProvider;
+  onDone: (success: boolean) => void;
 }) {
-  const [selectedProvider, setSelectedProvider] = useState<LoginTarget | null>(null)
-  const initialIndex = Math.max(0, LOGIN_PROVIDERS.indexOf(initialProvider))
-  const [selectedIndex, setSelectedIndex] = useState(initialIndex)
+  const [selectedProvider, setSelectedProvider] = useState<LoginTarget | null>(
+    null,
+  );
+  const initialIndex = Math.max(0, LOGIN_PROVIDERS.indexOf(initialProvider));
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
-  useInput((_input: string, key: { return?: boolean; escape?: boolean; upArrow?: boolean; downArrow?: boolean }) => {
-    if (selectedProvider) return
+  useInput(
+    (
+      _input: string,
+      key: {
+        return?: boolean;
+        escape?: boolean;
+        upArrow?: boolean;
+        downArrow?: boolean;
+      },
+    ) => {
+      if (selectedProvider) return;
 
-    if (key.escape) {
-      onDone(false)
-      return
-    }
-    if (key.upArrow) {
-      setSelectedIndex((i) => (i > 0 ? i - 1 : LOGIN_PROVIDERS.length - 1))
-      return
-    }
-    if (key.downArrow) {
-      setSelectedIndex((i) => (i < LOGIN_PROVIDERS.length - 1 ? i + 1 : 0))
-      return
-    }
-    if (key.return) {
-      const provider = LOGIN_PROVIDERS[selectedIndex]
-      if (provider) setSelectedProvider(provider)
-    }
-  })
+      if (key.escape) {
+        onDone(false);
+        return;
+      }
+      if (key.upArrow) {
+        setSelectedIndex((i) => (i > 0 ? i - 1 : LOGIN_PROVIDERS.length - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedIndex((i) => (i < LOGIN_PROVIDERS.length - 1 ? i + 1 : 0));
+        return;
+      }
+      if (key.return) {
+        const provider = LOGIN_PROVIDERS[selectedIndex];
+        if (provider) setSelectedProvider(provider);
+      }
+    },
+  );
 
   if (selectedProvider) {
-    const providerForLogin = selectedProvider
+    const providerForLogin = selectedProvider;
     const handleProviderDone = (success: boolean) => {
       if (success) {
         if (
@@ -286,32 +295,32 @@ function ProviderPickerLogin({
           providerForLogin !== E2B_SECURITY_LOGIN_TARGET &&
           providerForLogin !== FIRECRAWL_LOGIN_TARGET
         ) {
-          setActiveProvider(providerForLogin)
+          setActiveProvider(providerForLogin);
         }
-        onDone(true)
-        return
+        onDone(true);
+        return;
       }
-      setSelectedProvider(null)
-    }
+      setSelectedProvider(null);
+    };
 
-    if (providerForLogin === 'firstParty') {
-      return <Login onDone={handleProviderDone} />
+    if (providerForLogin === "firstParty") {
+      return <Login onDone={handleProviderDone} />;
     }
     if (providerForLogin === GEMINI_VOICE_LOGIN_TARGET) {
-      return <GeminiVoiceLogin onDone={handleProviderDone} />
+      return <GeminiVoiceLogin onDone={handleProviderDone} />;
     }
     if (providerForLogin === E2B_SECURITY_LOGIN_TARGET) {
-      return <E2BSecurityLogin onDone={handleProviderDone} />
+      return <E2BSecurityLogin onDone={handleProviderDone} />;
     }
     if (providerForLogin === FIRECRAWL_LOGIN_TARGET) {
-      return <FirecrawlLogin onDone={handleProviderDone} />
+      return <FirecrawlLogin onDone={handleProviderDone} />;
     }
     return (
       <ThirdPartyLogin
         provider={providerForLogin}
         onDone={handleProviderDone}
       />
-    )
+    );
   }
 
   return (
@@ -339,83 +348,83 @@ function ProviderPickerLogin({
           </Text>
         </Box>
         {LOGIN_PROVIDERS.map((provider, index) => {
-          const isSelected = index === selectedIndex
+          const isSelected = index === selectedIndex;
           return (
             <Box key={provider}>
               <Text
                 bold={isSelected}
-                color={isSelected ? 'claude' : undefined}
+                color={isSelected ? "claude" : undefined}
                 dimColor={!isSelected}
               >
-                {isSelected ? '> ' : '  '}
+                {isSelected ? "> " : "  "}
                 {getLoginTargetName(provider)}
               </Text>
               <Text dimColor>
-                {' '}({getProviderAuthTypeLabel(provider)})
+                {" "}
+                ({getProviderAuthTypeLabel(provider)})
                 {getProviderConfiguredLabel(provider)}
               </Text>
             </Box>
-          )
+          );
         })}
         <Box marginTop={1}>
           <Text dimColor>Use arrow keys, Enter to select, Esc to cancel</Text>
         </Box>
       </Box>
     </Dialog>
-  )
+  );
 }
 
-function GeminiVoiceLogin({
-  onDone,
-}: {
-  onDone: (success: boolean) => void
-}) {
-  const [apiKeyInput, setApiKeyInput] = useState('')
-  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
+function GeminiVoiceLogin({ onDone }: { onDone: (success: boolean) => void }) {
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0);
   const [state, setState] = useState<
-    | { step: 'input'; error?: string }
-    | { step: 'success'; message: string }
-    | { step: 'warning'; message: string }
-  >({ step: 'input' })
-  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 12)
+    | { step: "input"; error?: string }
+    | { step: "success"; message: string }
+    | { step: "warning"; message: string }
+  >({ step: "input" });
+  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 12);
 
   useEffect(() => {
-    if (state.step === 'input') return
-    const timer = setTimeout(() => onDone(true), state.step === 'warning' ? 1800 : 800)
-    return () => clearTimeout(timer)
-  }, [onDone, state.step])
+    if (state.step === "input") return;
+    const timer = setTimeout(
+      () => onDone(true),
+      state.step === "warning" ? 1800 : 800,
+    );
+    return () => clearTimeout(timer);
+  }, [onDone, state.step]);
 
   function handleSubmit(value: string) {
-    const key = value.trim()
+    const key = value.trim();
     if (!key) {
-      setState({ step: 'input', error: 'API key cannot be empty.' })
-      return
+      setState({ step: "input", error: "API key cannot be empty." });
+      return;
     }
 
-    saveVoiceConversationApiKey(key)
-    const result = activateGeminiVoiceConversation()
+    saveVoiceConversationApiKey(key);
+    const result = activateGeminiVoiceConversation();
     if (result.error) {
       setState({
-        step: 'input',
+        step: "input",
         error:
-          'Key saved, but Tau could not update settings. Check your settings file for syntax errors.',
-      })
-      return
+          "Key saved, but Zen could not update settings. Check your settings file for syntax errors.",
+      });
+      return;
     }
 
-    const formatCheck = validateKeyFormat('gemini', key)
+    const formatCheck = validateKeyFormat("gemini", key);
     if (!formatCheck.valid && formatCheck.error) {
       setState({
-        step: 'warning',
+        step: "warning",
         message: `Gemini voice key saved. Warning: ${formatCheck.error}`,
-      })
-      return
+      });
+      return;
     }
 
     setState({
-      step: 'success',
-      message: 'Gemini voice key saved. Voice conversation is active for /hey.',
-    })
+      step: "success",
+      message: "Gemini voice key saved. Voice conversation is active for /hey.",
+    });
   }
 
   return (
@@ -425,10 +434,10 @@ function GeminiVoiceLogin({
       color="permission"
     >
       <Box flexDirection="column" paddingLeft={1}>
-        {state.step === 'input' && (
+        {state.step === "input" && (
           <>
             <Text dimColor>
-              Get your API key at:{' '}
+              Get your API key at:{" "}
               <Text color="suggestion">https://aistudio.google.com/apikey</Text>
             </Text>
             <Text dimColor>
@@ -459,79 +468,76 @@ function GeminiVoiceLogin({
             </Box>
           </>
         )}
-        {state.step === 'success' && (
+        {state.step === "success" && (
           <Text color="success">{state.message}</Text>
         )}
-        {state.step === 'warning' && (
+        {state.step === "warning" && (
           <Text color="warning">{state.message}</Text>
         )}
       </Box>
     </Dialog>
-  )
+  );
 }
 
 // ─── Auxiliary login dialogs ───
 
-function FirecrawlLogin({
-  onDone,
-}: {
-  onDone: (success: boolean) => void
-}) {
-  const [apiKeyInput, setApiKeyInput] = useState('')
-  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0)
+function FirecrawlLogin({ onDone }: { onDone: (success: boolean) => void }) {
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeyCursorOffset, setApiKeyCursorOffset] = useState(0);
   const [state, setState] = useState<
-    | { step: 'input'; error?: string }
-    | { step: 'validating' }
-    | { step: 'success'; message: string }
-    | { step: 'warning'; message: string }
-  >({ step: 'input' })
-  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 12)
+    | { step: "input"; error?: string }
+    | { step: "validating" }
+    | { step: "success"; message: string }
+    | { step: "warning"; message: string }
+  >({ step: "input" });
+  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 12);
 
   useEffect(() => {
-    if (state.step !== 'success' && state.step !== 'warning') return
+    if (state.step !== "success" && state.step !== "warning") return;
     const timer = setTimeout(
       () => onDone(true),
-      state.step === 'warning' ? 2000 : 800,
-    )
-    return () => clearTimeout(timer)
-  }, [onDone, state.step])
+      state.step === "warning" ? 2000 : 800,
+    );
+    return () => clearTimeout(timer);
+  }, [onDone, state.step]);
 
   function handleSubmit(value: string) {
-    const key = value.trim()
+    const key = value.trim();
     if (!key) {
-      setState({ step: 'input', error: 'Firecrawl API key cannot be empty.' })
-      return
+      setState({ step: "input", error: "Firecrawl API key cannot be empty." });
+      return;
     }
 
-    setState({ step: 'validating' })
-    const warnings: string[] = []
-    const formatCheck = validateKeyFormat(FIRECRAWL_PROVIDER_KEY, key)
+    setState({ step: "validating" });
+    const warnings: string[] = [];
+    const formatCheck = validateKeyFormat(FIRECRAWL_PROVIDER_KEY, key);
     if (!formatCheck.valid && formatCheck.error) {
-      warnings.push(formatCheck.error)
+      warnings.push(formatCheck.error);
     }
 
     const persistAndFinish = () => {
-      saveProviderKey(FIRECRAWL_PROVIDER_KEY, key)
-      process.env[FIRECRAWL_API_KEY_ENV] = key
+      saveProviderKey(FIRECRAWL_PROVIDER_KEY, key);
+      process.env[FIRECRAWL_API_KEY_ENV] = key;
       if (warnings.length > 0) {
         setState({
-          step: 'warning',
-          message: `Firecrawl key saved. Warning: ${warnings.join(' ')}`,
-        })
-        return
+          step: "warning",
+          message: `Firecrawl key saved. Warning: ${warnings.join(" ")}`,
+        });
+        return;
       }
       setState({
-        step: 'success',
-        message: 'Firecrawl key saved. WebSearch is available for all providers.',
-      })
-    }
+        step: "success",
+        message:
+          "Firecrawl key saved. WebSearch is available for all providers.",
+      });
+    };
 
     testFirecrawlApiKey(key)
-      .then(testResult => {
-        if (!testResult.ok) warnings.push(testResult.error)
-        persistAndFinish()
+      .then((testResult) => {
+        if (!testResult.ok) warnings.push(testResult.error);
+        persistAndFinish();
       })
-      .catch(() => persistAndFinish())
+      .catch(() => persistAndFinish());
   }
 
   return (
@@ -541,14 +547,17 @@ function FirecrawlLogin({
       color="permission"
     >
       <Box flexDirection="column" paddingLeft={1}>
-        {state.step === 'input' && (
+        {state.step === "input" && (
           <>
             <Text dimColor>
-              Get your API key at:{' '}
-              <Text color="suggestion">https://www.firecrawl.dev/app/api-keys</Text>
+              Get your API key at:{" "}
+              <Text color="suggestion">
+                https://www.firecrawl.dev/app/api-keys
+              </Text>
             </Text>
             <Text dimColor>
-              Used by WebSearch when the active model provider has no native web search.
+              Used by WebSearch when the active model provider has no native web
+              search.
             </Text>
             {state.error && (
               <Box marginTop={1}>
@@ -575,148 +584,149 @@ function FirecrawlLogin({
             </Box>
           </>
         )}
-        {state.step === 'validating' && (
+        {state.step === "validating" && (
           <Text color="warning">Validating Firecrawl credentials...</Text>
         )}
-        {state.step === 'success' && (
+        {state.step === "success" && (
           <Text color="success">{state.message}</Text>
         )}
-        {state.step === 'warning' && (
+        {state.step === "warning" && (
           <Text color="warning">{state.message}</Text>
         )}
       </Box>
     </Dialog>
-  )
+  );
 }
 
-type E2BSecurityLoginMethod = 'authLogin' | 'apiKey'
+type E2BSecurityLoginMethod = "authLogin" | "apiKey";
 
 const E2B_SECURITY_LOGIN_METHODS: Array<{
-  method: E2BSecurityLoginMethod
-  label: string
-  description: string
+  method: E2BSecurityLoginMethod;
+  label: string;
+  description: string;
 }> = [
   {
-    method: 'authLogin',
-    label: 'Auth login',
-    description: 'open the E2B dashboard in your browser',
+    method: "authLogin",
+    label: "Auth login",
+    description: "open the E2B dashboard in your browser",
   },
   {
-    method: 'apiKey',
-    label: 'API key',
-    description: 'paste an existing E2B API key',
+    method: "apiKey",
+    label: "API key",
+    description: "paste an existing E2B API key",
   },
-]
+];
 
 export function E2BSecurityLogin({
   onDone,
 }: {
-  onDone: (success: boolean) => void
+  onDone: (success: boolean) => void;
 }) {
-  const [method, setMethod] = useState<E2BSecurityLoginMethod | null>(null)
-  const [selectedMethodIndex, setSelectedMethodIndex] = useState(0)
-  const [secretInput, setSecretInput] = useState('')
-  const [secretCursorOffset, setSecretCursorOffset] = useState(0)
+  const [method, setMethod] = useState<E2BSecurityLoginMethod | null>(null);
+  const [selectedMethodIndex, setSelectedMethodIndex] = useState(0);
+  const [secretInput, setSecretInput] = useState("");
+  const [secretCursorOffset, setSecretCursorOffset] = useState(0);
   const [browserStatus, setBrowserStatus] = useState<
-    'opening' | 'opened' | 'fallback'
-  >('opening')
+    "opening" | "opened" | "fallback"
+  >("opening");
   const [state, setState] = useState<
-    | { step: 'input'; error?: string }
-    | { step: 'success'; message: string }
-  >({ step: 'input' })
-  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 14)
+    { step: "input"; error?: string } | { step: "success"; message: string }
+  >({ step: "input" });
+  const inputColumns = Math.max(20, (process.stdout.columns ?? 80) - 14);
 
   useEffect(() => {
-    if (method !== 'authLogin') return
-    let cancelled = false
-    setBrowserStatus('opening')
+    if (method !== "authLogin") return;
+    let cancelled = false;
+    setBrowserStatus("opening");
     openE2BDashboardInBrowser()
-      .then(opened => {
-        if (cancelled) return
-        setBrowserStatus(opened ? 'opened' : 'fallback')
+      .then((opened) => {
+        if (cancelled) return;
+        setBrowserStatus(opened ? "opened" : "fallback");
       })
       .catch(() => {
-        if (!cancelled) setBrowserStatus('fallback')
-      })
+        if (!cancelled) setBrowserStatus("fallback");
+      });
     return () => {
-      cancelled = true
-    }
-  }, [method])
+      cancelled = true;
+    };
+  }, [method]);
 
   useInput(
     (
       _input: string,
       key: {
-        return?: boolean
-        escape?: boolean
-        upArrow?: boolean
-        downArrow?: boolean
+        return?: boolean;
+        escape?: boolean;
+        upArrow?: boolean;
+        downArrow?: boolean;
       },
     ) => {
-      if (state.step === 'success') return
+      if (state.step === "success") return;
       if (method) {
         if (key.escape) {
-          setMethod(null)
-          setState({ step: 'input' })
+          setMethod(null);
+          setState({ step: "input" });
         }
-        return
+        return;
       }
       if (key.escape) {
-        onDone(false)
-        return
+        onDone(false);
+        return;
       }
       if (key.upArrow) {
-        setSelectedMethodIndex(i =>
+        setSelectedMethodIndex((i) =>
           i > 0 ? i - 1 : E2B_SECURITY_LOGIN_METHODS.length - 1,
-        )
-        return
+        );
+        return;
       }
       if (key.downArrow) {
-        setSelectedMethodIndex(i =>
+        setSelectedMethodIndex((i) =>
           i < E2B_SECURITY_LOGIN_METHODS.length - 1 ? i + 1 : 0,
-        )
-        return
+        );
+        return;
       }
       if (key.return) {
         const selected =
-          E2B_SECURITY_LOGIN_METHODS[selectedMethodIndex]?.method ?? 'authLogin'
-        setMethod(selected)
+          E2B_SECURITY_LOGIN_METHODS[selectedMethodIndex]?.method ??
+          "authLogin";
+        setMethod(selected);
       }
     },
-  )
+  );
 
   useEffect(() => {
-    if (state.step !== 'success') return
-    const timer = setTimeout(() => onDone(true), 800)
-    return () => clearTimeout(timer)
-  }, [onDone, state.step])
+    if (state.step !== "success") return;
+    const timer = setTimeout(() => onDone(true), 800);
+    return () => clearTimeout(timer);
+  }, [onDone, state.step]);
 
   function handleSubmit(value: string) {
-    const secret = value.trim()
+    const secret = value.trim();
     if (!secret) {
-      setState({ step: 'input', error: 'E2B credential cannot be empty.' })
-      return
+      setState({ step: "input", error: "E2B credential cannot be empty." });
+      return;
     }
     if (/\s/.test(secret)) {
       setState({
-        step: 'input',
-        error: 'E2B credentials should not contain spaces or newlines.',
-      })
-      return
+        step: "input",
+        error: "E2B credentials should not contain spaces or newlines.",
+      });
+      return;
     }
 
-    saveE2BSecurityCredential(secret)
+    saveE2BSecurityCredential(secret);
     if (!hasE2BSecurityAuth()) {
       setState({
-        step: 'input',
-        error: 'Saved, but Tau could not read the credential back. Check your settings file.',
-      })
-      return
+        step: "input",
+        error:
+          "Saved, but Zen could not read the credential back. Check your settings file.",
+      });
+      return;
     }
     setState({
-      step: 'success',
-      message: 'E2B credential saved. /safetest is ready to use.',
-    })
+      step: "success",
+      message: "E2B credential saved. /safetest is ready to use.",
+    });
   }
 
   return (
@@ -726,15 +736,13 @@ export function E2BSecurityLogin({
       color="permission"
     >
       <Box flexDirection="column" paddingLeft={1}>
-        {!method && state.step === 'input' && (
+        {!method && state.step === "input" && (
           <>
-            <Text dimColor>
-              Choose how to sign in to E2B for /safetest.
-            </Text>
+            <Text dimColor>Choose how to sign in to E2B for /safetest.</Text>
             <Box flexDirection="column" marginTop={1}>
               {E2B_SECURITY_LOGIN_METHODS.map((option, index) => (
                 <Text key={option.method}>
-                  {index === selectedMethodIndex ? '>' : ' '} {option.label}{' '}
+                  {index === selectedMethodIndex ? ">" : " "} {option.label}{" "}
                   <Text dimColor>— {option.description}</Text>
                 </Text>
               ))}
@@ -744,27 +752,30 @@ export function E2BSecurityLogin({
             </Box>
           </>
         )}
-        {method && state.step === 'input' && (
+        {method && state.step === "input" && (
           <>
-            {method === 'authLogin' ? (
+            {method === "authLogin" ? (
               <>
                 <Text>
-                  {browserStatus === 'opening'
-                    ? 'Opening the E2B dashboard in your browser…'
-                    : browserStatus === 'opened'
-                    ? 'E2B dashboard opened in your browser.'
-                    : 'Could not open a browser automatically.'}
+                  {browserStatus === "opening"
+                    ? "Opening the E2B dashboard in your browser…"
+                    : browserStatus === "opened"
+                      ? "E2B dashboard opened in your browser."
+                      : "Could not open a browser automatically."}
                 </Text>
                 <Text dimColor>
-                  Sign in (Google / GitHub / email), copy your API key from{' '}
-                  <Text color="suggestion">{E2B_DASHBOARD_URL}</Text>, then paste it here.
+                  Sign in (Google / GitHub / email), copy your API key from{" "}
+                  <Text color="suggestion">{E2B_DASHBOARD_URL}</Text>, then
+                  paste it here.
                 </Text>
               </>
             ) : (
               <>
                 <Text>Paste your E2B API key.</Text>
                 <Text dimColor>
-                  Get one from <Text color="suggestion">{E2B_DASHBOARD_URL}</Text> if you don't have it yet.
+                  Get one from{" "}
+                  <Text color="suggestion">{E2B_DASHBOARD_URL}</Text> if you
+                  don't have it yet.
                 </Text>
               </>
             )}
@@ -793,20 +804,20 @@ export function E2BSecurityLogin({
             </Box>
           </>
         )}
-        {state.step === 'success' && (
+        {state.step === "success" && (
           <Text color="success">{state.message}</Text>
         )}
       </Box>
     </Dialog>
-  )
+  );
 }
 
 export function Login({
   onDone,
   startingMessage,
 }: {
-  onDone: (success: boolean) => void
-  startingMessage?: string
+  onDone: (success: boolean) => void;
+  startingMessage?: string;
 }) {
   return (
     <Dialog
@@ -831,17 +842,17 @@ export function Login({
         startingMessage={startingMessage}
       />
     </Dialog>
-  )
+  );
 }
 
 function ThirdPartyLogin({
   provider,
   onDone,
 }: {
-  provider: APIProvider
-  onDone: (success: boolean) => void
+  provider: APIProvider;
+  onDone: (success: boolean) => void;
 }) {
-  const name = PROVIDER_DISPLAY_NAMES[provider]
+  const name = PROVIDER_DISPLAY_NAMES[provider];
 
   return (
     <Dialog
@@ -863,5 +874,5 @@ function ThirdPartyLogin({
     >
       <ProviderLoginFlow provider={provider} onDone={onDone} />
     </Dialog>
-  )
+  );
 }

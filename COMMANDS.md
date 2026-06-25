@@ -1,9 +1,9 @@
-# Tau Commands
+# Zen Commands
 
 ## Auth
 
 **`/login` - Start here**
-Pick a provider, enter your credentials, and Tau saves the setup. No env variables, no config hunt.
+Pick a provider, enter your credentials, and Zen saves the setup. No env variables, no config hunt.
 
 ## Models
 
@@ -27,7 +27,7 @@ Setup is one step: `/login` -> **Firecrawl Search** -> paste your Firecrawl API 
 ## Voice
 
 **`/hey` - Start a voice conversation**
-Turns on voice conversation mode. Hold Space to talk, release to send, and Tau shows what it heard before submitting.
+Turns on voice conversation mode. Hold Space to talk, release to send, and Zen shows what it heard before submitting.
 
 **`/bye` - End the voice conversation**
 Turns voice conversation mode off and stops any spoken reply that is still playing.
@@ -68,19 +68,19 @@ Creates a clean content report for the session in Markdown, PDF, or HTML. This i
 Automatic recovery when a model fails mid-session. Configure a fallback and keep working through provider outages.
 
 **`/dangerously-skip-permissions` - Skip permission prompts in a trusted sandbox**
-Session-only Bypass Permissions mode. Tau shows a warning before enabling it, permission prompts include the same session option, and `/dangerously-skip-permissions off` returns to Default mode.
+Session-only Bypass Permissions mode. Zen shows a warning before enabling it, permission prompts include the same session option, and `/dangerously-skip-permissions off` returns to Default mode.
 
-Launch Tau directly in this mode:
+Launch Zen directly in this mode:
 
 ```bash
-tau --dangerously-skip-permissions
+zen --dangerously-skip-permissions
 ```
 
-**`/whatsapp` - Remote control Tau from WhatsApp**
-Link WhatsApp and control Tau from your phone.
+**`/whatsapp` - Remote control Zen from WhatsApp**
+Link WhatsApp and control Zen from your phone.
 
 **`/github` - GitHub automation (gh required)**
-GitHub workflows inside Tau, powered by the GitHub CLI.
+GitHub workflows inside Zen, powered by the GitHub CLI.
 
 - `issue` - Inspect issues for the current repo, or pass an issue URL to inspect that issue.
 - `pr` - Inspect pull requests (repo-local or via PR URL) and generate gh-backed actions.
@@ -95,7 +95,7 @@ Upload one file to a fresh E2B VM, run it there, get a clean report back. The lo
 Setup is one step: `/login` -> **E2B Security** -> pick "Auth login" (opens the E2B dashboard in your browser) or "API key" (just paste). After that, `/safetest` is ready - no env variables, no extra config.
 
 **`/pin` - Pin a constraint to every prompt**
-Save a sentence (or two) and Tau quietly appends it to the end of every message you send - a persistent reminder the model carries through the whole session without you retyping it. Use it for style rules ("reply in French"), guardrails ("never edit files outside `src/`"), or task focus ("stay on the auth refactor"). Cache-safe by design: only the dynamic tail of the user message changes, so your provider's prompt cache stays warm and the cost is a few extra tokens per turn.
+Save a sentence (or two) and Zen quietly appends it to the end of every message you send - a persistent reminder the model carries through the whole session without you retyping it. Use it for style rules ("reply in French"), guardrails ("never edit files outside `src/`"), or task focus ("stay on the auth refactor"). Cache-safe by design: only the dynamic tail of the user message changes, so your provider's prompt cache stays warm and the cost is a few extra tokens per turn.
 
 **`/learned` - Self-learning control hub**
-Tau learns as you work: after a substantial task (or on demand) it proposes one critical, general, reusable lesson - a framework gotcha, a whole class of bug to avoid, a hard-won constraint, or your own preference - for you to Approve / Edit / Skip, then carries approved ones into future sessions and projects. Approve and it's saved and used from the next session, no extra step; lessons are always a single portable principle, never project-specific trivia. Open `/learned` for a navigable menu: view what it has learned, learn from this session, edit or delete a lesson, or toggle self-learning on/off.
+Zen learns as you work: after a substantial task (or on demand) it proposes one critical, general, reusable lesson - a framework gotcha, a whole class of bug to avoid, a hard-won constraint, or your own preference - for you to Approve / Edit / Skip, then carries approved ones into future sessions and projects. Approve and it's saved and used from the next session, no extra step; lessons are always a single portable principle, never project-specific trivia. Open `/learned` for a navigable menu: view what it has learned, learn from this session, edit or delete a lesson, or toggle self-learning on/off.

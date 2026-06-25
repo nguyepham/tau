@@ -1,19 +1,19 @@
-# Tau for VS Code
+# Zen for VS Code
 
-A native chat panel for the **Tau** agent, with its own UI — message bubbles,
+A native chat panel for the **Zen** agent, with its own UI — message bubbles,
 collapsible thoughts, tool-call chips, a model/thinking picker, slash-command
 autocomplete, and a cache-hit bar.
 
-It is an **ACP client**: it spawns `tau acp` and speaks the Agent Client
-Protocol over stdio, then renders everything in a custom webview. All of Tau's
+It is an **ACP client**: it spawns `zen acp` and speaks the Agent Client
+Protocol over stdio, then renders everything in a custom webview. All of Zen's
 engine (auth, tools, models) is reused as-is — this is purely the UI.
 
 ## Run it (development)
 
-1. Make sure `tau` works in your terminal (the bundle is built and on PATH).
+1. Make sure `zen` works in your terminal (the bundle is built and on PATH).
 2. Open **this folder** (`editors/vscode`) in VS Code.
-3. Press **F5** → "Run Tau Extension". A second VS Code window opens with the
-   Tau icon in the Activity Bar. Click it to open the chat.
+3. Press **F5** → "Run Zen Extension". A second VS Code window opens with the
+   Zen icon in the Activity Bar. Click it to open the chat.
 
 The build runs automatically (esbuild) before launch. No `npm install` is
 needed here — `esbuild` and the ACP SDK resolve from the parent repo's
@@ -23,21 +23,21 @@ needed here — `esbuild` and the ACP SDK resolve from the parent repo's
 
 ```sh
 # from editors/vscode
-npx @vscode/vsce package --no-dependencies   # produces tau-vscode-0.1.0.vsix
-code --install-extension tau-vscode-0.1.0.vsix
+npx @vscode/vsce package --no-dependencies   # produces zen-vscode-0.1.0.vsix
+code --install-extension zen-vscode-0.1.0.vsix
 ```
 
-## Settings (`tau.*`)
+## Settings (`zen.*`)
 
-| Setting             | Default   | Notes |
-| ------------------- | --------- | ----- |
-| `tau.command`       | `tau`     | Command that starts the ACP agent. |
-| `tau.args`          | `["acp"]` | Args for that command. |
-| `tau.cwd`           | *(empty)* | Working dir; empty = first workspace folder. |
-| `tau.showCacheBar`  | `true`    | Show the cache-hit / cost bar. |
+| Setting            | Default   | Notes                                        |
+| ------------------ | --------- | -------------------------------------------- |
+| `zen.command`      | `zen`     | Command that starts the ACP agent.           |
+| `zen.args`         | `["acp"]` | Args for that command.                       |
+| `zen.cwd`          | _(empty)_ | Working dir; empty = first workspace folder. |
+| `zen.showCacheBar` | `true`    | Show the cache-hit / cost bar.               |
 
-Running from a checkout instead of the global `tau`? Set
-`tau.command` = `node` and `tau.args` = `["<abs>/dist/tau.mjs", "acp"]`.
+Running from a checkout instead of the global `zen`? Set
+`zen.command` = `node` and `zen.args` = `["<abs>/dist/zen.mjs", "acp"]`.
 
 ## How it maps to ACP
 
@@ -46,5 +46,5 @@ Running from a checkout instead of the global `tau`? Set
 - tool chips → `tool_call` / `tool_call_update`
 - model + thinking pickers → `configOptions` / `setSessionConfigOption`
 - slash-command menu → `available_commands_update`
-- cache bar → parsed from Tau's `⚡ N% cached` usage line
+- cache bar → parsed from Zen's `⚡ N% cached` usage line
 - Stop → `session/cancel`; New Chat → fresh session (restarts the agent)

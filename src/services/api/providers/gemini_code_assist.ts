@@ -32,52 +32,51 @@
  * Ported from router-for-me/CLIProxyAPI internal/auth/antigravity/auth.go.
  */
 
-import { homedir } from 'os'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'fs'
-import type {
-  GeminiGenerateContentResponse,
-  GeminiStreamChunk,
-} from '../adapters/gemini_to_anthropic.js'
-import type { ModelInfo } from './base_provider.js'
+import { randomUUID } from "crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import {
   ANTIGRAVITY_API_VERSION,
   ANTIGRAVITY_ENDPOINT_DAILY,
   ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX,
   ANTIGRAVITY_ENDPOINT_PROD,
-} from '../../../constants/antigravity.js'
+} from "../../../constants/antigravity.js";
+import type {
+  GeminiGenerateContentResponse,
+  GeminiStreamChunk,
+} from "../adapters/gemini_to_anthropic.js";
+import type { ModelInfo } from "./base_provider.js";
 
-export const CODE_ASSIST_BASE = `${ANTIGRAVITY_ENDPOINT_PROD}/v1internal`
-export const ANTIGRAVITY_GENERATION_BASE = `${ANTIGRAVITY_ENDPOINT_DAILY}/v1internal`
+export const CODE_ASSIST_BASE = `${ANTIGRAVITY_ENDPOINT_PROD}/v1internal`;
+export const ANTIGRAVITY_GENERATION_BASE = `${ANTIGRAVITY_ENDPOINT_DAILY}/v1internal`;
 
 // ─── Executor types ──────────────────────────────────────────────────
 // Two distinct executors route to the same Code Assist proxy but with
 // different body envelopes, headers, and quota pools.
 
-export type GeminiExecutor = 'cli' | 'antigravity'
+export type GeminiExecutor = "cli" | "antigravity";
 
 export function codeAssistGenerationBase(executor: GeminiExecutor): string {
-  return executor === 'antigravity' ? ANTIGRAVITY_GENERATION_BASE : CODE_ASSIST_BASE
+  return executor === "antigravity"
+    ? ANTIGRAVITY_GENERATION_BASE
+    : CODE_ASSIST_BASE;
 }
 
-export function codeAssistGenerationBases(executor: GeminiExecutor): readonly string[] {
+export function codeAssistGenerationBases(
+  executor: GeminiExecutor,
+): readonly string[] {
   // Mirrors CLIProxyAPI's fallback order (daily → prod, sandbox dropped):
   // the non-sandbox daily channel is the one the real client uses and the
-  // one with reliable implicit-cache reads. The sandbox host — Tau's old
+  // one with reliable implicit-cache reads. The sandbox host — Zen's old
   // primary — stays as a last-resort 404 fallback only.
-  return executor === 'antigravity'
+  return executor === "antigravity"
     ? [
-      ANTIGRAVITY_GENERATION_BASE,
-      CODE_ASSIST_BASE,
-      `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`,
-    ]
-    : [CODE_ASSIST_BASE]
+        ANTIGRAVITY_GENERATION_BASE,
+        CODE_ASSIST_BASE,
+        `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`,
+      ]
+    : [CODE_ASSIST_BASE];
 }
 
 // ── Gemini-Antigravity endpoint latency tuning ───────────────────
@@ -94,16 +93,16 @@ export function codeAssistGenerationBases(executor: GeminiExecutor): readonly st
 // Tunable per machine: TAU_ANTIGRAVITY_GEMINI_ENDPOINT=prod|daily|sandbox
 // picks the primary (e.g. set `daily` to restore the previous behavior).
 function antigravityGeminiGenerationBases(): readonly string[] {
-  const prod = CODE_ASSIST_BASE
-  const daily = ANTIGRAVITY_GENERATION_BASE
-  const sandbox = `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`
+  const prod = CODE_ASSIST_BASE;
+  const daily = ANTIGRAVITY_GENERATION_BASE;
+  const sandbox = `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`;
   switch (process.env.TAU_ANTIGRAVITY_GEMINI_ENDPOINT?.toLowerCase()) {
-    case 'daily':
-      return [daily, prod, sandbox]
-    case 'sandbox':
-      return [sandbox, prod, daily]
+    case "daily":
+      return [daily, prod, sandbox];
+    case "sandbox":
+      return [sandbox, prod, daily];
     default:
-      return [prod, daily, sandbox] // prod-first: fast + reliable cache
+      return [prod, daily, sandbox]; // prod-first: fast + reliable cache
   }
 }
 
@@ -117,10 +116,10 @@ export function codeAssistGenerationBasesForModel(
   executor: GeminiExecutor,
   model: string,
 ): readonly string[] {
-  if (executor === 'antigravity' && isAntigravityGeminiModel(model)) {
-    return antigravityGeminiGenerationBases()
+  if (executor === "antigravity" && isAntigravityGeminiModel(model)) {
+    return antigravityGeminiGenerationBases();
   }
-  return codeAssistGenerationBases(executor)
+  return codeAssistGenerationBases(executor);
 }
 
 // Antigravity-specific models — everything else is Gemini CLI.
@@ -128,30 +127,50 @@ export function codeAssistGenerationBasesForModel(
 // Code Assist proxy (cloudcode-pa). They share the `userAgent: "antigravity"`
 // envelope but need small content-level fixes (see wrapForCodeAssist).
 export const ANTIGRAVITY_MODELS: readonly ModelInfo[] = [
-  { id: 'gemini-3.5-flash-high', name: 'Gemini 3.5 Flash (High)', contextWindow: 1048576 },
-  { id: 'gemini-3.5-flash-medium', name: 'Gemini 3.5 Flash (Medium)', contextWindow: 1048576 },
-  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)', contextWindow: 1048576 },
-  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', contextWindow: 1048576 },
-  { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)', contextWindow: 1048576 },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 1048576 },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-  { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6' },
-]
+  {
+    id: "gemini-3.5-flash-high",
+    name: "Gemini 3.5 Flash (High)",
+    contextWindow: 1048576,
+  },
+  {
+    id: "gemini-3.5-flash-medium",
+    name: "Gemini 3.5 Flash (Medium)",
+    contextWindow: 1048576,
+  },
+  {
+    id: "gemini-3.5-flash-low",
+    name: "Gemini 3.5 Flash (Low)",
+    contextWindow: 1048576,
+  },
+  {
+    id: "gemini-3.1-pro-high",
+    name: "Gemini 3.1 Pro (High)",
+    contextWindow: 1048576,
+  },
+  {
+    id: "gemini-3.1-pro-low",
+    name: "Gemini 3.1 Pro (Low)",
+    contextWindow: 1048576,
+  },
+  { id: "gemini-3-flash", name: "Gemini 3 Flash", contextWindow: 1048576 },
+  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6" },
+];
 
 const ANTIGRAVITY_WIRE_MODEL_DISPLAY_NAMES = new Map<string, string>([
-  ['gemini-3.5-flash', 'Gemini 3.5 Flash'],
-  ['gemini-3.5-flash-low', 'Gemini 3.5 Flash (Medium)'],
-  ['gemini-3.5-flash-extra-low', 'Gemini 3.5 Flash (Low)'],
-  ['gemini-3-flash-agent', 'Gemini 3.5 Flash (High)'],
-  ['gemini-pro-agent', 'Gemini 3.1 Pro (High)'],
-  ['gemini-3-flash-high', 'Gemini 3 Flash (High)'],
-  ['gemini-3-flash-medium', 'Gemini 3 Flash (Medium)'],
-  ['gemini-3-flash-low', 'Gemini 3 Flash (Low)'],
-])
+  ["gemini-3.5-flash", "Gemini 3.5 Flash"],
+  ["gemini-3.5-flash-low", "Gemini 3.5 Flash (Medium)"],
+  ["gemini-3.5-flash-extra-low", "Gemini 3.5 Flash (Low)"],
+  ["gemini-3-flash-agent", "Gemini 3.5 Flash (High)"],
+  ["gemini-pro-agent", "Gemini 3.1 Pro (High)"],
+  ["gemini-3-flash-high", "Gemini 3 Flash (High)"],
+  ["gemini-3-flash-medium", "Gemini 3 Flash (Medium)"],
+  ["gemini-3-flash-low", "Gemini 3 Flash (Low)"],
+]);
 
 export const ANTIGRAVITY_MODEL_IDS = new Set([
-  ...ANTIGRAVITY_MODELS.map(model => model.id),
-])
+  ...ANTIGRAVITY_MODELS.map((model) => model.id),
+]);
 
 /**
  * Gemini-family models on the Antigravity path — everything in the
@@ -167,66 +186,70 @@ export const ANTIGRAVITY_MODEL_IDS = new Set([
  * from CLI Gemini.
  */
 export function isAntigravityGeminiModel(model: string): boolean {
-  const normalized = model.toLowerCase().replace(/^models\//, '')
-  return ANTIGRAVITY_MODEL_IDS.has(normalized) && !normalized.includes('claude')
+  const normalized = model.toLowerCase().replace(/^models\//, "");
+  return (
+    ANTIGRAVITY_MODEL_IDS.has(normalized) && !normalized.includes("claude")
+  );
 }
 
 export function getAntigravityModelDisplayName(model: string): string | null {
-  const normalized = model.toLowerCase().replace(/^models\//, '')
-  return ANTIGRAVITY_MODELS.find(candidate => candidate.id === normalized)?.name
-    ?? ANTIGRAVITY_WIRE_MODEL_DISPLAY_NAMES.get(normalized)
-    ?? null
+  const normalized = model.toLowerCase().replace(/^models\//, "");
+  return (
+    ANTIGRAVITY_MODELS.find((candidate) => candidate.id === normalized)?.name ??
+    ANTIGRAVITY_WIRE_MODEL_DISPLAY_NAMES.get(normalized) ??
+    null
+  );
 }
 
 export function resolveAntigravityWireModel(model: string): string {
-  const normalized = model.toLowerCase()
-  if (normalized === 'gemini-3.1-pro-high') {
-    return 'gemini-pro-agent'
+  const normalized = model.toLowerCase();
+  if (normalized === "gemini-3.1-pro-high") {
+    return "gemini-pro-agent";
   }
-  if (normalized === 'gemini-3.5-flash-high') {
-    return 'gemini-3-flash-agent'
+  if (normalized === "gemini-3.5-flash-high") {
+    return "gemini-3-flash-agent";
   }
-  if (normalized === 'gemini-3.5-flash-medium') {
-    return 'gemini-3.5-flash-low'
+  if (normalized === "gemini-3.5-flash-medium") {
+    return "gemini-3.5-flash-low";
   }
-  if (normalized === 'gemini-3.5-flash-low') {
-    return 'gemini-3.5-flash-extra-low'
+  if (normalized === "gemini-3.5-flash-low") {
+    return "gemini-3.5-flash-extra-low";
   }
-  return model
+  return model;
 }
 
 /** Determine which executor a model belongs to. */
 export function executorForModel(model: string): GeminiExecutor {
-  return ANTIGRAVITY_MODEL_IDS.has(model.toLowerCase()) ? 'antigravity' : 'cli'
+  return ANTIGRAVITY_MODEL_IDS.has(model.toLowerCase()) ? "antigravity" : "cli";
 }
 
 // CLIProxyAPI's Antigravity onboarding headers. These are used during
 // loadCodeAssist / onboardUser — NOT on generateContent calls.
-const API_USER_AGENT = 'google-api-nodejs-client/9.15.1'
-const API_CLIENT = 'google-cloud-sdk vscode_cloudshelleditor/0.1'
+const API_USER_AGENT = "google-api-nodejs-client/9.15.1";
+const API_CLIENT = "google-cloud-sdk vscode_cloudshelleditor/0.1";
 const CLIENT_METADATA =
-  '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}'
+  '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}';
 
-const CONFIG_DIR = join(homedir(), '.config', 'claude-code')
+const CONFIG_DIR = join(homedir(), ".config", "claude-code");
 
 // Per-executor cache files — each executor type gets its own onboarding
 // and project ID because the Code Assist server tracks them separately.
-const CACHE_FILE_CLI = join(CONFIG_DIR, 'gemini-code-assist-cli.json')
-const CACHE_FILE_ANTIGRAVITY = join(CONFIG_DIR, 'gemini-code-assist.json')
+const CACHE_FILE_CLI = join(CONFIG_DIR, "gemini-code-assist-cli.json");
+const CACHE_FILE_ANTIGRAVITY = join(CONFIG_DIR, "gemini-code-assist.json");
 
-const CACHE_VERSION = 6  // bump: drop allowedTiers from tier detection
+const CACHE_VERSION = 6; // bump: drop allowedTiers from tier detection
 
 interface CodeAssistCache {
-  version: number
-  projectId: string | null
-  onboardedAt: number
+  version: number;
+  projectId: string | null;
+  onboardedAt: number;
   /**
    * Cached `currentTier.id` from loadCodeAssist (e.g. 'free-tier',
    * 'standard-tier', 'legacy-tier'). Kept as a fallback for the picker
    * when the quota lookup is unavailable; entitled model ids below are
    * the canonical signal.
    */
-  tier?: string | null
+  tier?: string | null;
   /**
    * Concrete model ids the user has quota for, sourced from
    * retrieveUserQuota.buckets. This is gemini-cli's source of truth
@@ -236,16 +259,16 @@ interface CodeAssistCache {
    * Empty array means the quota lookup ran but returned nothing
    * actionable; `undefined` means the lookup hasn't run yet.
    */
-  entitledModelIds?: string[]
+  entitledModelIds?: string[];
 }
 
 // ─── Tier-id constants ──────────────────────────────────────────────
 // Mirrors the subset of UserTierId values gemini-cli treats specially
 // (reference/gemini-cli-main/packages/core/src/code_assist/types.ts).
 // Anything outside FREE/LEGACY is treated as a paid tier.
-export const GEMINI_TIER_FREE = 'free-tier'
-export const GEMINI_TIER_LEGACY = 'legacy-tier'
-export const GEMINI_TIER_STANDARD = 'standard-tier'
+export const GEMINI_TIER_FREE = "free-tier";
+export const GEMINI_TIER_LEGACY = "legacy-tier";
+export const GEMINI_TIER_STANDARD = "standard-tier";
 
 /**
  * True when the tier id represents a paid Google account that unlocks
@@ -253,10 +276,10 @@ export const GEMINI_TIER_STANDARD = 'standard-tier'
  * tier is treated as free to avoid showing models the user can't call.
  */
 export function isPaidGeminiTier(tier: string | null | undefined): boolean {
-  if (!tier) return false
-  if (tier === GEMINI_TIER_FREE) return false
-  if (tier === GEMINI_TIER_LEGACY) return false
-  return true
+  if (!tier) return false;
+  if (tier === GEMINI_TIER_FREE) return false;
+  if (tier === GEMINI_TIER_LEGACY) return false;
+  return true;
 }
 
 /**
@@ -266,8 +289,8 @@ export function isPaidGeminiTier(tier: string | null | undefined): boolean {
  * id directly without enumerating tiers.
  */
 export function getGeminiTier(executor: GeminiExecutor): string | null {
-  const cache = _readCache(executor)
-  return cache?.tier ?? null
+  const cache = _readCache(executor);
+  return cache?.tier ?? null;
 }
 
 /**
@@ -280,9 +303,9 @@ export function getGeminiTier(executor: GeminiExecutor): string | null {
 export function getGeminiEntitledModelIds(
   executor: GeminiExecutor,
 ): readonly string[] | null {
-  const cache = _readCache(executor)
-  if (!cache) return null
-  return cache.entitledModelIds ?? null
+  const cache = _readCache(executor);
+  if (!cache) return null;
+  return cache.entitledModelIds ?? null;
 }
 
 /**
@@ -294,18 +317,18 @@ export function getGeminiEntitledModelIds(
 export function hasPaidEntitlement(
   modelIds: readonly string[] | null,
 ): boolean {
-  if (!modelIds || modelIds.length === 0) return false
-  return modelIds.some(id => {
-    const lower = id.toLowerCase()
-    if (lower.includes('flash')) return false
-    if (lower.includes('embedding')) return false
-    return lower.includes('pro') || lower.includes('preview')
-  })
+  if (!modelIds || modelIds.length === 0) return false;
+  return modelIds.some((id) => {
+    const lower = id.toLowerCase();
+    if (lower.includes("flash")) return false;
+    if (lower.includes("embedding")) return false;
+    return lower.includes("pro") || lower.includes("preview");
+  });
 }
 
 // In-memory caches — one per executor type
-let _cachedCli: CodeAssistCache | null = null
-let _cachedAntigravity: CodeAssistCache | null = null
+let _cachedCli: CodeAssistCache | null = null;
+let _cachedAntigravity: CodeAssistCache | null = null;
 
 /**
  * Clear the cached project ID for an executor. Called when we get a 403
@@ -313,71 +336,85 @@ let _cachedAntigravity: CodeAssistCache | null = null
  * next call will re-onboard to get a fresh project ID.
  */
 export function clearCodeAssistCache(executor?: GeminiExecutor): void {
-  if (!executor || executor === 'cli') {
-    _cachedCli = null
-    try { const f = _cacheFileFor('cli'); if (existsSync(f)) writeFileSync(f, '{}') } catch {}
+  if (!executor || executor === "cli") {
+    _cachedCli = null;
+    try {
+      const f = _cacheFileFor("cli");
+      if (existsSync(f)) writeFileSync(f, "{}");
+    } catch {}
   }
-  if (!executor || executor === 'antigravity') {
-    _cachedAntigravity = null
-    try { const f = _cacheFileFor('antigravity'); if (existsSync(f)) writeFileSync(f, '{}') } catch {}
+  if (!executor || executor === "antigravity") {
+    _cachedAntigravity = null;
+    try {
+      const f = _cacheFileFor("antigravity");
+      if (existsSync(f)) writeFileSync(f, "{}");
+    } catch {}
   }
 }
 
 function _cacheFileFor(executor: GeminiExecutor): string {
-  return executor === 'cli' ? CACHE_FILE_CLI : CACHE_FILE_ANTIGRAVITY
+  return executor === "cli" ? CACHE_FILE_CLI : CACHE_FILE_ANTIGRAVITY;
 }
 
 function _readCache(executor: GeminiExecutor): CodeAssistCache | null {
-  const mem = executor === 'cli' ? _cachedCli : _cachedAntigravity
-  if (mem) return mem
+  const mem = executor === "cli" ? _cachedCli : _cachedAntigravity;
+  if (mem) return mem;
   try {
-    const file = _cacheFileFor(executor)
-    if (!existsSync(file)) return null
-    const raw = readFileSync(file, 'utf-8')
-    const parsed = JSON.parse(raw) as CodeAssistCache
-    if ((parsed.version ?? 0) < CACHE_VERSION) return null
-    if (executor === 'cli') _cachedCli = parsed
-    else _cachedAntigravity = parsed
-    return parsed
+    const file = _cacheFileFor(executor);
+    if (!existsSync(file)) return null;
+    const raw = readFileSync(file, "utf-8");
+    const parsed = JSON.parse(raw) as CodeAssistCache;
+    if ((parsed.version ?? 0) < CACHE_VERSION) return null;
+    if (executor === "cli") _cachedCli = parsed;
+    else _cachedAntigravity = parsed;
+    return parsed;
   } catch {
-    return null
+    return null;
   }
 }
 
 function _writeCache(executor: GeminiExecutor, cache: CodeAssistCache): void {
   try {
-    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true })
-    writeFileSync(_cacheFileFor(executor), JSON.stringify(cache, null, 2))
-    if (executor === 'cli') _cachedCli = cache
-    else _cachedAntigravity = cache
+    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(_cacheFileFor(executor), JSON.stringify(cache, null, 2));
+    if (executor === "cli") _cachedCli = cache;
+    else _cachedAntigravity = cache;
   } catch {
     // Cache is best-effort.
   }
 }
 
 /** Onboarding headers for the Antigravity executor. */
-function _antigravityOnboardHeaders(accessToken: string): Record<string, string> {
+function _antigravityOnboardHeaders(
+  accessToken: string,
+): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-    'User-Agent': API_USER_AGENT,
-    'X-Goog-Api-Client': API_CLIENT,
-    'Client-Metadata': CLIENT_METADATA,
-    'Connection': 'keep-alive',
-  }
+    "Content-Type": "application/json",
+    "User-Agent": API_USER_AGENT,
+    "X-Goog-Api-Client": API_CLIENT,
+    "Client-Metadata": CLIENT_METADATA,
+    Connection: "keep-alive",
+  };
 }
 
 /** Onboarding headers for the Gemini CLI executor. */
 function _cliOnboardHeaders(accessToken: string): Record<string, string> {
-  const os = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'
-  const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : 'x86'
+  const os =
+    process.platform === "win32"
+      ? "win32"
+      : process.platform === "darwin"
+        ? "darwin"
+        : "linux";
+  const arch =
+    process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : "x86";
   return {
     Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-    'User-Agent': `GeminiCLI/0.31.0 (${os}; ${arch})`,
-    'X-Goog-Api-Client': 'google-genai-sdk/1.41.0 gl-node/v22.19.0',
-    'Connection': 'keep-alive',
-  }
+    "Content-Type": "application/json",
+    "User-Agent": `GeminiCLI/0.31.0 (${os}; ${arch})`,
+    "X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
+    Connection: "keep-alive",
+  };
 }
 
 // ─── Onboarding ──────────────────────────────────────────────────────
@@ -396,24 +433,24 @@ async function _fetchWithTransientRetry(
   init: RequestInit,
   opts: { maxAttempts?: number } = {},
 ): Promise<Response> {
-  const maxAttempts = opts.maxAttempts ?? 3
-  let lastErr: unknown
+  const maxAttempts = opts.maxAttempts ?? 3;
+  let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetch(url, init)
-      if (res.ok) return res
+      const res = await fetch(url, init);
+      if (res.ok) return res;
       // 4xx → surface immediately; retrying won't help.
-      if (res.status >= 400 && res.status < 500) return res
+      if (res.status >= 400 && res.status < 500) return res;
       // 5xx → retry with backoff unless we're out of attempts.
-      if (attempt >= maxAttempts) return res
-      lastErr = new Error(`HTTP ${res.status}`)
+      if (attempt >= maxAttempts) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
     } catch (e) {
-      lastErr = e
-      if (attempt >= maxAttempts) throw e
+      lastErr = e;
+      if (attempt >= maxAttempts) throw e;
     }
-    await new Promise(r => setTimeout(r, 500 * Math.pow(3, attempt - 1)))
+    await new Promise((r) => setTimeout(r, 500 * Math.pow(3, attempt - 1)));
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /**
@@ -425,51 +462,55 @@ async function _fetchWithTransientRetry(
  */
 export async function ensureCodeAssistReady(
   accessToken: string,
-  executor: GeminiExecutor = 'antigravity',
+  executor: GeminiExecutor = "antigravity",
 ): Promise<string | null> {
-  const cached = _readCache(executor)
-  if (cached) return cached.projectId
+  const cached = _readCache(executor);
+  if (cached) return cached.projectId;
 
   // CLI uses GEMINI_CLI ideType; Antigravity uses ANTIGRAVITY.
-  const ideType = executor === 'cli' ? 'GEMINI_CLI' : 'ANTIGRAVITY'
-  const headers = executor === 'cli'
-    ? _cliOnboardHeaders(accessToken)
-    : _antigravityOnboardHeaders(accessToken)
+  const ideType = executor === "cli" ? "GEMINI_CLI" : "ANTIGRAVITY";
+  const headers =
+    executor === "cli"
+      ? _cliOnboardHeaders(accessToken)
+      : _antigravityOnboardHeaders(accessToken);
 
   const loadReqBody = {
     metadata: {
       ideType,
-      platform: 'PLATFORM_UNSPECIFIED',
-      pluginType: 'GEMINI',
+      platform: "PLATFORM_UNSPECIFIED",
+      pluginType: "GEMINI",
     },
-  }
+  };
 
-  const loadRes = await _fetchWithTransientRetry(`${CODE_ASSIST_BASE}:loadCodeAssist`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(loadReqBody),
-  })
+  const loadRes = await _fetchWithTransientRetry(
+    `${CODE_ASSIST_BASE}:loadCodeAssist`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(loadReqBody),
+    },
+  );
 
   if (!loadRes.ok) {
-    const errText = await loadRes.text().catch(() => '')
+    const errText = await loadRes.text().catch(() => "");
     throw new Error(
       `Gemini Code Assist loadCodeAssist failed (${loadRes.status}): ${errText.slice(0, 300)}`,
-    )
+    );
   }
 
   // The response shape for cloudaicompanionProject is either a plain
   // string or an object with an `id` field (CLIProxyAPI handles both
   // cases — we do too).
   const loadData = (await loadRes.json()) as {
-    cloudaicompanionProject?: string | { id?: string }
-    currentTier?: { id?: string }
-    paidTier?: { id?: string }
+    cloudaicompanionProject?: string | { id?: string };
+    currentTier?: { id?: string };
+    paidTier?: { id?: string };
     allowedTiers?: Array<{
-      id?: string
-      name?: string
-      isDefault?: boolean
-    }>
-  }
+      id?: string;
+      name?: string;
+      isDefault?: boolean;
+    }>;
+  };
 
   // Capture the user's effective tier so the model picker can decide
   // whether to surface Pro models. Use `paidTier.id` first (set when
@@ -487,7 +528,7 @@ export async function ensureCodeAssistReady(
   const observedTier = _pickTier(
     _normalizeTier(loadData.paidTier?.id),
     _normalizeTier(loadData.currentTier?.id),
-  )
+  );
 
   // Workaround for Google's "ghost project" bug
   // (github.com/google-gemini/gemini-cli/issues/24747, /25189): the
@@ -497,24 +538,24 @@ export async function ensureCodeAssistReady(
   // `GOOGLE_CLOUD_PROJECT` (or `GEMINI_CLOUD_PROJECT`) env var to
   // override the auto-discovered project. This matches the env var
   // gemini-cli, gcloud, and the Google AI SDKs already check.
-  const projectOverride = _projectOverrideFromEnv()
+  const projectOverride = _projectOverrideFromEnv();
   if (projectOverride) {
     const entitled = await _fetchEntitledModelIds(
       accessToken,
       projectOverride,
       executor,
-    )
+    );
     _writeCache(executor, {
       version: CACHE_VERSION,
       projectId: projectOverride,
       onboardedAt: Date.now(),
       tier: observedTier,
       entitledModelIds: entitled,
-    })
-    return projectOverride
+    });
+    return projectOverride;
   }
 
-  const directProjectId = _extractProjectId(loadData.cloudaicompanionProject)
+  const directProjectId = _extractProjectId(loadData.cloudaicompanionProject);
   if (directProjectId) {
     // Resolve quota in parallel with returning the project id. The quota
     // call is best-effort — Code Assist returns 403 on some scoped
@@ -524,41 +565,41 @@ export async function ensureCodeAssistReady(
       accessToken,
       directProjectId,
       executor,
-    )
+    );
     _writeCache(executor, {
       version: CACHE_VERSION,
       projectId: directProjectId,
       onboardedAt: Date.now(),
       tier: observedTier,
       entitledModelIds: entitled,
-    })
-    return directProjectId
+    });
+    return directProjectId;
   }
 
   // No project bound yet → run onboardUser. Pick the default allowed
   // tier, or fall back to "legacy-tier" the way CLIProxyAPI does.
-  let tierId = 'legacy-tier'
+  let tierId = "legacy-tier";
   if (loadData.allowedTiers) {
     for (const tier of loadData.allowedTiers) {
-      if (tier.isDefault && tier.id && tier.id.trim() !== '') {
-        tierId = tier.id.trim()
-        break
+      if (tier.isDefault && tier.id && tier.id.trim() !== "") {
+        tierId = tier.id.trim();
+        break;
       }
     }
   }
 
-  const onboardedProject = await _onboardUser(accessToken, tierId, executor)
+  const onboardedProject = await _onboardUser(accessToken, tierId, executor);
   const entitled = onboardedProject
     ? await _fetchEntitledModelIds(accessToken, onboardedProject, executor)
-    : undefined
+    : undefined;
   _writeCache(executor, {
     version: CACHE_VERSION,
     projectId: onboardedProject,
     onboardedAt: Date.now(),
     tier: observedTier ?? _normalizeTier(tierId),
     entitledModelIds: entitled,
-  })
-  return onboardedProject
+  });
+  return onboardedProject;
 }
 
 /**
@@ -578,14 +619,14 @@ async function _fetchEntitledModelIds(
   projectId: string,
   executor: GeminiExecutor,
 ): Promise<string[] | undefined> {
-  const buckets = await _fetchQuotaBuckets(accessToken, projectId, executor)
-  if (!buckets) return undefined
+  const buckets = await _fetchQuotaBuckets(accessToken, projectId, executor);
+  if (!buckets) return undefined;
   const ids = buckets
-    .map(b => (typeof b.modelId === 'string' ? b.modelId.trim() : ''))
-    .filter(id => id.length > 0)
+    .map((b) => (typeof b.modelId === "string" ? b.modelId.trim() : ""))
+    .filter((id) => id.length > 0);
   // Dedupe while preserving order — buckets occasionally repeat the
   // same model under different reset windows.
-  return Array.from(new Set(ids))
+  return Array.from(new Set(ids));
 }
 
 /**
@@ -595,15 +636,15 @@ async function _fetchEntitledModelIds(
  * without re-implementing the wire call.
  */
 export interface GeminiQuotaBucket {
-  modelId?: string
+  modelId?: string;
   /** Remaining count (string-encoded int64 in the proto). */
-  remainingAmount?: string
+  remainingAmount?: string;
   /** 0..1 — what gemini-cli plots as "% remaining". */
-  remainingFraction?: number
+  remainingFraction?: number;
   /** ISO-8601 timestamp for the next quota reset. */
-  resetTime?: string
+  resetTime?: string;
   /** "credit", "throttled", etc. — passed through unmodified. */
-  tokenType?: string
+  tokenType?: string;
 }
 
 async function _fetchQuotaBuckets(
@@ -611,27 +652,28 @@ async function _fetchQuotaBuckets(
   projectId: string,
   executor: GeminiExecutor,
 ): Promise<GeminiQuotaBucket[] | undefined> {
-  const headers = executor === 'cli'
-    ? _cliOnboardHeaders(accessToken)
-    : _antigravityOnboardHeaders(accessToken)
+  const headers =
+    executor === "cli"
+      ? _cliOnboardHeaders(accessToken)
+      : _antigravityOnboardHeaders(accessToken);
 
   try {
     const res = await _fetchWithTransientRetry(
       `${CODE_ASSIST_BASE}:retrieveUserQuota`,
       {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({ project: projectId }),
       },
       { maxAttempts: 2 },
-    )
+    );
 
-    if (!res.ok) return undefined
+    if (!res.ok) return undefined;
 
-    const data = (await res.json()) as { buckets?: GeminiQuotaBucket[] }
-    return data.buckets ?? []
+    const data = (await res.json()) as { buckets?: GeminiQuotaBucket[] };
+    return data.buckets ?? [];
   } catch {
-    return undefined
+    return undefined;
   }
 }
 
@@ -648,13 +690,13 @@ export async function fetchGeminiCliQuotaBuckets(
   accessToken: string,
   projectId: string,
 ): Promise<GeminiQuotaBucket[] | undefined> {
-  return _fetchQuotaBuckets(accessToken, projectId, 'cli')
+  return _fetchQuotaBuckets(accessToken, projectId, "cli");
 }
 
 function _normalizeTier(tier: string | null | undefined): string | null {
-  if (!tier) return null
-  const trimmed = tier.trim()
-  return trimmed ? trimmed : null
+  if (!tier) return null;
+  const trimmed = tier.trim();
+  return trimmed ? trimmed : null;
 }
 
 /**
@@ -666,12 +708,12 @@ function _normalizeTier(tier: string | null | undefined): string | null {
  */
 function _pickTier(...candidates: Array<string | null>): string | null {
   for (const c of candidates) {
-    if (c && c !== GEMINI_TIER_FREE && c !== GEMINI_TIER_LEGACY) return c
+    if (c && c !== GEMINI_TIER_FREE && c !== GEMINI_TIER_LEGACY) return c;
   }
   for (const c of candidates) {
-    if (c) return c
+    if (c) return c;
   }
-  return null
+  return null;
 }
 
 /**
@@ -686,11 +728,11 @@ function _projectOverrideFromEnv(): string | null {
   const candidates = [
     process.env.GEMINI_CLOUD_PROJECT,
     process.env.GOOGLE_CLOUD_PROJECT,
-  ]
+  ];
   for (const raw of candidates) {
-    if (typeof raw === 'string' && raw.trim()) return raw.trim()
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
   }
-  return null
+  return null;
 }
 
 /**
@@ -703,16 +745,16 @@ function _projectOverrideFromEnv(): string | null {
 function _extractProjectId(
   value: string | { id?: string } | undefined,
 ): string | null {
-  if (!value) return null
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    return trimmed ? trimmed : null
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
   }
-  if (typeof value === 'object' && typeof value.id === 'string') {
-    const trimmed = value.id.trim()
-    return trimmed ? trimmed : null
+  if (typeof value === "object" && typeof value.id === "string") {
+    const trimmed = value.id.trim();
+    return trimmed ? trimmed : null;
   }
-  return null
+  return null;
 }
 
 /**
@@ -723,103 +765,106 @@ function _extractProjectId(
 async function _onboardUser(
   accessToken: string,
   tierId: string,
-  executor: GeminiExecutor = 'antigravity',
+  executor: GeminiExecutor = "antigravity",
 ): Promise<string | null> {
-  const ideType = executor === 'cli' ? 'GEMINI_CLI' : 'ANTIGRAVITY'
-  const headers = executor === 'cli'
-    ? _cliOnboardHeaders(accessToken)
-    : _antigravityOnboardHeaders(accessToken)
+  const ideType = executor === "cli" ? "GEMINI_CLI" : "ANTIGRAVITY";
+  const headers =
+    executor === "cli"
+      ? _cliOnboardHeaders(accessToken)
+      : _antigravityOnboardHeaders(accessToken);
   const requestBody = {
     tierId,
     metadata: {
       ideType,
-      platform: 'PLATFORM_UNSPECIFIED',
-      pluginType: 'GEMINI',
+      platform: "PLATFORM_UNSPECIFIED",
+      pluginType: "GEMINI",
     },
-  }
-  const bodyJson = JSON.stringify(requestBody)
+  };
+  const bodyJson = JSON.stringify(requestBody);
 
-  const maxAttempts = 5
-  let lastErr: string | null = null
+  const maxAttempts = 5;
+  let lastErr: string | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const controller = new AbortController()
-    const perRequestTimeout = setTimeout(() => controller.abort(), 30_000)
+    const controller = new AbortController();
+    const perRequestTimeout = setTimeout(() => controller.abort(), 30_000);
 
-    let res: Response
+    let res: Response;
     try {
       res = await _fetchWithTransientRetry(`${CODE_ASSIST_BASE}:onboardUser`, {
-        method: 'POST',
+        method: "POST",
         headers,
         body: bodyJson,
         signal: controller.signal,
-      })
+      });
     } catch (e) {
-      clearTimeout(perRequestTimeout)
-      lastErr = e instanceof Error ? e.message : String(e)
+      clearTimeout(perRequestTimeout);
+      lastErr = e instanceof Error ? e.message : String(e);
       throw new Error(
         `Gemini Code Assist onboardUser request failed: ${lastErr}`,
-      )
+      );
     }
-    clearTimeout(perRequestTimeout)
+    clearTimeout(perRequestTimeout);
 
-    const text = await res.text().catch(() => '')
+    const text = await res.text().catch(() => "");
 
     if (!res.ok) {
-      const preview = text.trim().slice(0, 200)
+      const preview = text.trim().slice(0, 200);
       throw new Error(
         `Gemini Code Assist onboardUser failed (${res.status}): ${preview}`,
-      )
+      );
     }
 
     let data: {
-      done?: boolean
+      done?: boolean;
       response?: {
-        cloudaicompanionProject?: string | { id?: string }
-      }
-    } = {}
+        cloudaicompanionProject?: string | { id?: string };
+      };
+    } = {};
     try {
-      data = text ? JSON.parse(text) : {}
+      data = text ? JSON.parse(text) : {};
     } catch (e) {
       throw new Error(
         `Gemini Code Assist onboardUser returned non-JSON: ${
           e instanceof Error ? e.message : String(e)
         }`,
-      )
+      );
     }
 
     if (data.done === true) {
-      const projectId = _extractProjectId(data.response?.cloudaicompanionProject)
-      if (projectId) return projectId
+      const projectId = _extractProjectId(
+        data.response?.cloudaicompanionProject,
+      );
+      if (projectId) return projectId;
       throw new Error(
-        'Gemini Code Assist onboardUser finished without a project id. ' +
-          'Try signing out and back in with /provider.',
-      )
+        "Gemini Code Assist onboardUser finished without a project id. " +
+          "Try signing out and back in with /provider.",
+      );
     }
 
     // Not done yet — wait and retry. Use 1.5s instead of CLIProxyAPI's 2s
     // cadence to reduce first-request latency.
     if (attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 1500))
+      await new Promise((r) => setTimeout(r, 1500));
     }
   }
 
   throw new Error(
-    'Gemini Code Assist onboardUser did not complete after 5 attempts. ' +
-      'This usually means the Google account is missing Antigravity access — ' +
-      'check the account at https://antigravity.google.com and try again.',
-  )
+    "Gemini Code Assist onboardUser did not complete after 5 attempts. " +
+      "This usually means the Google account is missing Antigravity access — " +
+      "check the account at https://antigravity.google.com and try again.",
+  );
 }
 
 // ─── Request wrapping ────────────────────────────────────────────────
 
 export interface CodeAssistWrapperBody {
-  model: string
-  userAgent: string
-  requestType: string
-  project: string
-  requestId: string
-  request: Record<string, unknown>
+  model: string;
+  userAgent: string;
+  requestType: string;
+  project: string;
+  requestId: string;
+  request: Record<string, unknown>;
 }
 
 /**
@@ -842,14 +887,14 @@ export function wrapForCodeAssist(
   // Strip safetySettings — the Antigravity executor always removes them.
   // Also strip maxOutputTokens for non-Claude models (Antigravity executor
   // deletes request.generationConfig.maxOutputTokens for Gemini models).
-  const wireModel = resolveAntigravityWireModel(model)
-  const request = { ...innerRequest }
-  delete request.safetySettings
-  const isClaude = wireModel.includes('claude')
+  const wireModel = resolveAntigravityWireModel(model);
+  const request = { ...innerRequest };
+  delete request.safetySettings;
+  const isClaude = wireModel.includes("claude");
   if (!isClaude) {
-    const gc = request.generationConfig as Record<string, unknown> | undefined
+    const gc = request.generationConfig as Record<string, unknown> | undefined;
     if (gc) {
-      delete gc.maxOutputTokens
+      delete gc.maxOutputTokens;
     }
   }
 
@@ -859,27 +904,28 @@ export function wrapForCodeAssist(
   // that don't carry a functionCall or text are dropped — Claude rejects
   // them as empty parts otherwise.
   if (isClaude) {
-    _applyClaudeContentFixes(request)
+    _applyClaudeContentFixes(request);
   }
 
   // Generate a stable session ID for Antigravity dedup. Native lanes may
   // provide one from the real message history; otherwise fall back to the
   // CLIProxyAPI-style first-user-message hash.
-  const providedSessionId = typeof request.sessionId === 'string' && request.sessionId.length > 0
-    ? request.sessionId
-    : null
-  request.sessionId = providedSessionId ?? _stableSessionId(request)
+  const providedSessionId =
+    typeof request.sessionId === "string" && request.sessionId.length > 0
+      ? request.sessionId
+      : null;
+  request.sessionId = providedSessionId ?? _stableSessionId(request);
 
   return {
     model: wireModel,
-    userAgent: 'antigravity',
-    requestType: wireModel.includes('image') ? 'image_gen' : 'agent',
+    userAgent: "antigravity",
+    requestType: wireModel.includes("image") ? "image_gen" : "agent",
     project: projectId ?? _randomProjectId(),
-    requestId: wireModel.includes('image')
+    requestId: wireModel.includes("image")
       ? `image_gen/${Date.now()}/${randomUUID()}/12`
       : `agent-${randomUUID()}`,
     request,
-  }
+  };
 }
 
 /**
@@ -900,7 +946,7 @@ export function wrapForGeminiCLI(
     model,
     project: projectId ?? _randomProjectId(),
     request: { ...innerRequest },
-  }
+  };
 }
 
 // ─── Per-executor API call headers ──────────────────────────────────
@@ -914,15 +960,24 @@ export function wrapForGeminiCLI(
  *   User-Agent: GeminiCLI/0.31.0/<model> (<os>; <arch>)
  *   X-Goog-Api-Client: google-genai-sdk/1.41.0 gl-node/v22.19.0
  */
-export function geminiCLIApiHeaders(accessToken: string, model: string): Record<string, string> {
-  const os = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'
-  const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : 'x86'
+export function geminiCLIApiHeaders(
+  accessToken: string,
+  model: string,
+): Record<string, string> {
+  const os =
+    process.platform === "win32"
+      ? "win32"
+      : process.platform === "darwin"
+        ? "darwin"
+        : "linux";
+  const arch =
+    process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : "x86";
   return {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${accessToken}`,
-    'User-Agent': `GeminiCLI/0.31.0/${model} (${os}; ${arch})`,
-    'X-Goog-Api-Client': 'google-genai-sdk/1.41.0 gl-node/v22.19.0',
-  }
+    "User-Agent": `GeminiCLI/0.31.0/${model} (${os}; ${arch})`,
+    "X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
+  };
 }
 
 /**
@@ -931,15 +986,23 @@ export function geminiCLIApiHeaders(accessToken: string, model: string): Record<
  *   User-Agent: antigravity/<version> <os>/<arch>
  *   NO X-Goog-Api-Client header — quota routing relies on body.userAgent instead.
  */
-export function antigravityApiHeaders(accessToken: string): Record<string, string> {
-  const os = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'
-  const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : 'x86'
+export function antigravityApiHeaders(
+  accessToken: string,
+): Record<string, string> {
+  const os =
+    process.platform === "win32"
+      ? "win32"
+      : process.platform === "darwin"
+        ? "darwin"
+        : "linux";
+  const arch =
+    process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : "x86";
   return {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${accessToken}`,
-    'User-Agent': `antigravity/${ANTIGRAVITY_API_VERSION} ${os}/${arch}`,
-    'x-request-source': 'local',
-  }
+    "User-Agent": `antigravity/${ANTIGRAVITY_API_VERSION} ${os}/${arch}`,
+    "x-request-source": "local",
+  };
 }
 
 /**
@@ -960,51 +1023,59 @@ export function antigravityApiHeaders(accessToken: string): Record<string, strin
  * Mirrors CLIProxyAPI's antigravity executor transformRequest().
  */
 function _applyClaudeContentFixes(request: Record<string, unknown>): void {
-  const contents = request.contents
-  if (!Array.isArray(contents)) return
+  const contents = request.contents;
+  if (!Array.isArray(contents)) return;
   for (let i = 0; i < contents.length; i++) {
-    const c = contents[i] as { role?: string; parts?: Array<Record<string, unknown>> } | null
-    if (!c || !Array.isArray(c.parts)) continue
-    const hasFunctionResponse = c.parts.some(p => p && typeof p === 'object' && 'functionResponse' in p)
-    const role = hasFunctionResponse ? 'user' : c.role
-    const parts = c.parts.filter(p => {
-      if (!p || typeof p !== 'object') return true
-      const hasFunctionCall = 'functionCall' in p
-      const hasText = 'text' in p && typeof (p as { text?: unknown }).text === 'string'
-      if ('thought' in p && !hasFunctionCall) return false
-      if ('thoughtSignature' in p && !hasFunctionCall && !hasText) return false
-      return true
-    })
-    contents[i] = { ...c, role, parts }
+    const c = contents[i] as {
+      role?: string;
+      parts?: Array<Record<string, unknown>>;
+    } | null;
+    if (!c || !Array.isArray(c.parts)) continue;
+    const hasFunctionResponse = c.parts.some(
+      (p) => p && typeof p === "object" && "functionResponse" in p,
+    );
+    const role = hasFunctionResponse ? "user" : c.role;
+    const parts = c.parts.filter((p) => {
+      if (!p || typeof p !== "object") return true;
+      const hasFunctionCall = "functionCall" in p;
+      const hasText =
+        "text" in p && typeof (p as { text?: unknown }).text === "string";
+      if ("thought" in p && !hasFunctionCall) return false;
+      if ("thoughtSignature" in p && !hasFunctionCall && !hasText) return false;
+      return true;
+    });
+    contents[i] = { ...c, role, parts };
   }
 }
 
 /** Deterministic session ID from the first user message, for dedup. */
 function _stableSessionId(request: Record<string, unknown>): string {
-  const contents = request.contents as Array<{ role?: string; parts?: Array<{ text?: string }> }> | undefined
+  const contents = request.contents as
+    | Array<{ role?: string; parts?: Array<{ text?: string }> }>
+    | undefined;
   if (Array.isArray(contents)) {
     for (const c of contents) {
-      if (c.role === 'user' && c.parts?.[0]?.text) {
+      if (c.role === "user" && c.parts?.[0]?.text) {
         // Simple hash — doesn't need to be cryptographic, just stable.
-        let h = 0
+        let h = 0;
         for (const ch of c.parts[0].text) {
-          h = ((h << 5) - h + ch.charCodeAt(0)) | 0
+          h = ((h << 5) - h + ch.charCodeAt(0)) | 0;
         }
-        return '-' + Math.abs(h).toString()
+        return "-" + Math.abs(h).toString();
       }
     }
   }
-  return '-' + Math.floor(Math.random() * 9e18).toString()
+  return "-" + Math.floor(Math.random() * 9e18).toString();
 }
 
 /** Random project ID fallback matching CLIProxyAPI's generateProjectID(). */
 function _randomProjectId(): string {
-  const adj = ['useful', 'bright', 'swift', 'calm', 'bold']
-  const noun = ['fuze', 'wave', 'spark', 'flow', 'core']
-  const a = adj[Math.floor(Math.random() * adj.length)]
-  const n = noun[Math.floor(Math.random() * noun.length)]
-  const r = randomUUID().slice(0, 5).toLowerCase()
-  return `${a}-${n}-${r}`
+  const adj = ["useful", "bright", "swift", "calm", "bold"];
+  const noun = ["fuze", "wave", "spark", "flow", "core"];
+  const a = adj[Math.floor(Math.random() * adj.length)];
+  const n = noun[Math.floor(Math.random() * noun.length)];
+  const r = randomUUID().slice(0, 5).toLowerCase();
+  return `${a}-${n}-${r}`;
 }
 
 /**
@@ -1013,9 +1084,9 @@ function _randomProjectId(): string {
 export function unwrapCodeAssistResponse(
   caResponse: unknown,
 ): GeminiGenerateContentResponse {
-  if (!caResponse || typeof caResponse !== 'object') return {}
-  const wrapped = caResponse as { response?: GeminiGenerateContentResponse }
-  return wrapped.response ?? {}
+  if (!caResponse || typeof caResponse !== "object") return {};
+  const wrapped = caResponse as { response?: GeminiGenerateContentResponse };
+  return wrapped.response ?? {};
 }
 
 /**
@@ -1028,10 +1099,10 @@ export function warmupCodeAssist(
   antigravityToken?: string,
 ): void {
   if (cliToken) {
-    ensureCodeAssistReady(cliToken, 'cli').catch(() => {})
+    ensureCodeAssistReady(cliToken, "cli").catch(() => {});
   }
   if (antigravityToken) {
-    ensureCodeAssistReady(antigravityToken, 'antigravity').catch(() => {})
+    ensureCodeAssistReady(antigravityToken, "antigravity").catch(() => {});
   }
 }
 
@@ -1056,102 +1127,107 @@ export function warmupCodeAssist(
 export async function* parseCodeAssistSSE(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<GeminiStreamChunk> {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let dataLines: string[] = []
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let dataLines: string[] = [];
 
-  const tryParseAccumulator = (): { done: boolean; chunks: GeminiStreamChunk[] } => {
-    if (dataLines.length === 0) return { done: false, chunks: [] }
+  const tryParseAccumulator = (): {
+    done: boolean;
+    chunks: GeminiStreamChunk[];
+  } => {
+    if (dataLines.length === 0) return { done: false, chunks: [] };
 
-    const payload = dataLines.join('\n').trim()
+    const payload = dataLines.join("\n").trim();
     if (!payload) {
-      dataLines = []
-      return { done: false, chunks: [] }
+      dataLines = [];
+      return { done: false, chunks: [] };
     }
-    if (payload === '[DONE]') {
-      dataLines = []
-      return { done: true, chunks: [] }
+    if (payload === "[DONE]") {
+      dataLines = [];
+      return { done: true, chunks: [] };
     }
 
     try {
       const wrapped = JSON.parse(payload) as {
-        response?: GeminiStreamChunk
-      }
-      dataLines = []
+        response?: GeminiStreamChunk;
+      };
+      dataLines = [];
       return {
         done: false,
         chunks: wrapped.response ? [wrapped.response] : [],
-      }
+      };
     } catch {
-      return { done: false, chunks: [] }
+      return { done: false, chunks: [] };
     }
-  }
+  };
 
   const flushEvent = (): { done: boolean; chunks: GeminiStreamChunk[] } => {
-    const result = tryParseAccumulator()
+    const result = tryParseAccumulator();
     // Force-clear on flush so a malformed accumulated payload can't poison
     // the next event.
-    dataLines = []
-    return result
-  }
+    dataLines = [];
+    return result;
+  };
 
-  const processLine = (rawLine: string): { done: boolean; chunks: GeminiStreamChunk[] } => {
-    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+  const processLine = (
+    rawLine: string,
+  ): { done: boolean; chunks: GeminiStreamChunk[] } => {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 
-    if (line.trim() === '') {
-      return flushEvent()
+    if (line.trim() === "") {
+      return flushEvent();
     }
 
-    if (!line.startsWith('data:')) {
-      return { done: false, chunks: [] }
+    if (!line.startsWith("data:")) {
+      return { done: false, chunks: [] };
     }
 
-    const value = line.slice(5)
-    dataLines.push(value.startsWith(' ') ? value.slice(1) : value)
-    return tryParseAccumulator()
-  }
+    const value = line.slice(5);
+    dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+    return tryParseAccumulator();
+  };
 
   try {
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      buffer += decoder.decode(value, { stream: true })
+      buffer += decoder.decode(value, { stream: true });
 
       // SSE may deliver payload lines across chunks. Commit complete lines
       // here; processLine yields per-line events eagerly and accumulates
       // multi-line ones until they parse.
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
       for (const rawLine of lines) {
-        const event = processLine(rawLine)
-        if (event.done) return
+        const event = processLine(rawLine);
+        if (event.done) return;
         for (const chunk of event.chunks) {
-          yield chunk
+          yield chunk;
         }
       }
     }
 
-    buffer += decoder.decode()
+    buffer += decoder.decode();
 
     if (buffer) {
-      for (const rawLine of buffer.split('\n')) {
-        const event = processLine(rawLine)
-        if (event.done) return
+      for (const rawLine of buffer.split("\n")) {
+        const event = processLine(rawLine);
+        if (event.done) return;
         for (const chunk of event.chunks) {
-          yield chunk
+          yield chunk;
         }
       }
     }
 
-    const event = flushEvent()
-    if (event.done) return
+    const event = flushEvent();
+    if (event.done) return;
     for (const chunk of event.chunks) {
-      yield chunk
+      yield chunk;
     }
   } finally {
-    reader.releaseLock()
+    reader.releaseLock();
   }
 }

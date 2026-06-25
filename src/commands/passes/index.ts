@@ -1,22 +1,22 @@
-import type { Command } from '../../commands.js'
+import type { Command } from "../../commands.js";
 import {
   checkCachedPassesEligibility,
   getCachedReferrerReward,
-} from '../../services/api/referral.js'
+} from "../../services/api/referral.js";
 
 export default {
-  type: 'local-jsx',
-  name: 'passes',
+  type: "local-jsx",
+  name: "passes",
   get description() {
-    const reward = getCachedReferrerReward()
+    const reward = getCachedReferrerReward();
     if (reward) {
-      return 'Share a free week of Tau with friends and earn extra usage'
+      return "Share a free week of Zen with friends and earn extra usage";
     }
-    return 'Share a free week of Tau with friends'
+    return "Share a free week of Zen with friends";
   },
   get isHidden() {
-    const { eligible, hasCache } = checkCachedPassesEligibility()
-    return !eligible || !hasCache
+    const { eligible, hasCache } = checkCachedPassesEligibility();
+    return !eligible || !hasCache;
   },
-  load: () => import('./passes.js'),
-} satisfies Command
+  load: () => import("./passes.js"),
+} satisfies Command;

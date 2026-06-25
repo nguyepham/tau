@@ -1,21 +1,21 @@
-import { createHash } from 'crypto'
-import type { APIProvider } from '../../utils/model/providers.js'
-import type { AgentId } from '../../types/ids.js'
-import type { QuerySource } from '../../constants/querySource.js'
+import { createHash } from "crypto";
+import type { QuerySource } from "../../constants/querySource.js";
+import type { AgentId } from "../../types/ids.js";
+import type { APIProvider } from "../../utils/model/providers.js";
 
-const FORK_AGENT_QUERY_SOURCE = 'agent:builtin:fork'
+const FORK_AGENT_QUERY_SOURCE = "agent:builtin:fork";
 
 const STABLE_REQUEST_SESSION_PROVIDERS = new Set<string>([
-  'antigravity',
-  'copilot',
-  'openrouter',
-  'agentrouter',
-  'opencode',
-  'opencodego',
-  'moonshot',
-  'mistral',
-  'fireworks',
-])
+  "antigravity",
+  "copilot",
+  "openrouter",
+  "agentrouter",
+  "opencode",
+  "opencodego",
+  "moonshot",
+  "mistral",
+  "fireworks",
+]);
 
 /**
  * Providers whose request shaping depends on a stable conversation/session
@@ -26,7 +26,7 @@ const STABLE_REQUEST_SESSION_PROVIDERS = new Set<string>([
  * between layers.
  */
 export function providerUsesStableRequestSession(provider: string): boolean {
-  return STABLE_REQUEST_SESSION_PROVIDERS.has(provider)
+  return STABLE_REQUEST_SESSION_PROVIDERS.has(provider);
 }
 
 export function resolveProviderRequestSessionId({
@@ -35,31 +35,31 @@ export function resolveProviderRequestSessionId({
   agentId,
   querySource,
 }: {
-  provider: APIProvider
-  rootSessionId: string
-  agentId?: AgentId
-  querySource: QuerySource
+  provider: APIProvider;
+  rootSessionId: string;
+  agentId?: AgentId;
+  querySource: QuerySource;
 }): string | undefined {
-  if (!providerUsesStableRequestSession(provider)) return undefined
+  if (!providerUsesStableRequestSession(provider)) return undefined;
 
-  const root = rootSessionId.trim()
-  if (!root) return undefined
+  const root = rootSessionId.trim();
+  if (!root) return undefined;
 
-  // Other cache-aware providers use the root Tau session as their stable
+  // Other cache-aware providers use the root Zen session as their stable
   // affinity/cache key. Antigravity is the exception: fresh subagents need
   // distinct derived sessions, while forks intentionally reuse the root.
-  if (provider !== 'antigravity') return root
+  if (provider !== "antigravity") return root;
 
   if (!agentId || querySource === FORK_AGENT_QUERY_SOURCE) {
-    return root
+    return root;
   }
 
-  const digest = createHash('sha256')
+  const digest = createHash("sha256")
     .update(root)
-    .update('\0agent\0')
+    .update("\0agent\0")
     .update(agentId)
-    .digest('hex')
-    .slice(0, 32)
+    .digest("hex")
+    .slice(0, 32);
 
-  return `tau-agent-${digest}`
+  return `zen-agent-${digest}`;
 }

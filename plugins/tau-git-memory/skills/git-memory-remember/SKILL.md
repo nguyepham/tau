@@ -1,6 +1,6 @@
 # Git Memory Remember
 
-Save one durable memory into Tau Git Memory.
+Save one durable memory into Zen Git Memory.
 
 Choose a lowercase dot path with 2 to 6 segments, for example:
 

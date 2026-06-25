@@ -1,9 +1,9 @@
 {
-  "name": "tau-vscode",
-  "displayName": "Tau",
-  "description": "Tau agent in a native chat panel — powered by ACP.",
+  "name": "zen-vscode",
+  "displayName": "Zen",
+  "description": "Zen agent in a native chat panel — powered by ACP.",
   "version": "0.1.0",
-  "publisher": "tau",
+  "publisher": "zen",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -20,72 +20,76 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "tau",
-          "title": "Tau",
-          "icon": "media/tau-icon.svg"
+          "id": "zen",
+          "title": "Zen",
+          "icon": "media/zen-icon.svg"
         }
       ]
     },
     "views": {
-      "tau": [
+      "zen": [
         {
           "type": "webview",
-          "id": "tau.chatView",
+          "id": "zen.chatView",
           "name": "Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "tau.newChat",
-        "title": "Tau: New Chat",
+        "command": "zen.newChat",
+        "title": "Zen: New Chat",
         "icon": "$(add)"
       },
       {
-        "command": "tau.stop",
-        "title": "Tau: Stop",
+        "command": "zen.stop",
+        "title": "Zen: Stop",
         "icon": "$(stop-circle)"
       },
       {
-        "command": "tau.restart",
-        "title": "Tau: Restart Agent",
+        "command": "zen.restart",
+        "title": "Zen: Restart Agent",
         "icon": "$(refresh)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "tau.newChat",
-          "when": "view == tau.chatView",
+          "command": "zen.newChat",
+          "when": "view == zen.chatView",
           "group": "navigation@1"
         },
         {
-          "command": "tau.restart",
-          "when": "view == tau.chatView",
+          "command": "zen.restart",
+          "when": "view == zen.chatView",
           "group": "navigation@2"
         }
       ]
     },
     "configuration": {
-      "title": "Tau",
+      "title": "Zen",
       "properties": {
-        "tau.command": {
+        "zen.command": {
           "type": "string",
-          "default": "tau",
-          "markdownDescription": "Command that starts the Tau ACP agent. Defaults to the globally-linked `tau`. Set to `node` (with `tau.args` pointing at `dist/tau.mjs acp`) to run from a checkout."
+          "default": "zen",
+          "markdownDescription": "Command that starts the Zen ACP agent. Defaults to the globally-linked `zen`. Set to `node` (with `zen.args` pointing at `dist/zen.mjs acp`) to run from a checkout."
         },
-        "tau.args": {
+        "zen.args": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["acp"],
-          "description": "Arguments passed to the Tau command to start the ACP server."
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "Arguments passed to the Zen command to start the ACP server."
         },
-        "tau.cwd": {
+        "zen.cwd": {
           "type": "string",
           "default": "",
           "description": "Working directory for the agent. Empty = the first workspace folder."
         },
-        "tau.showCacheBar": {
+        "zen.showCacheBar": {
           "type": "boolean",
           "default": true,
           "description": "Show the cache-hit / cost bar at the bottom of the chat."

@@ -8,14 +8,14 @@
  *   - Concise, direct instructions (Codex prompt is shorter than others)
  */
 
-import type { SystemPromptParts } from '../types.js'
 import {
   type StableSlot,
   type VolatileSlot,
-  stableFrom,
-  renderVolatileSlot,
   flatten,
-} from '../shared/system_slots.js'
+  renderVolatileSlot,
+  stableFrom,
+} from "../shared/system_slots.js";
+import type { SystemPromptParts } from "../types.js";
 
 /**
  * Codex-native lane preamble. Based on the captured Codex CLI system
@@ -28,7 +28,7 @@ import {
  * function. The prompt reflects that.
  */
 const CODEX_LANE_PREAMBLE = [
-  `You are Codex, a coding agent running in the Tau terminal — pair-programming with the user to read, analyze, modify, and ship code. Be concise, direct, and friendly.`,
+  `You are Codex, a coding agent running in the Zen terminal — pair-programming with the user to read, analyze, modify, and ship code. Be concise, direct, and friendly.`,
 
   `## Plan before acting
 
@@ -66,7 +66,7 @@ Include enough context in @@ hunks that anchor lines are unique in the file. For
 - Don't add error handling for scenarios that can't happen.
 - Don't refactor code that wasn't part of the task.
 - When referencing code, cite file paths (and line numbers when specific).`,
-].join('\n\n')
+].join("\n\n");
 
 /**
  * Assemble the Codex system prompt. Returns the cache-safe stable/
@@ -77,8 +77,8 @@ export function assembleCodexSystemPrompt(
   _model: string,
   parts: SystemPromptParts,
 ): { stable: StableSlot; volatile: VolatileSlot; full: string } {
-  const stable = stableFrom(CODEX_LANE_PREAMBLE, parts)
-  const volatile = renderVolatileSlot(parts)
-  const full = flatten(stable, volatile)
-  return { stable, volatile, full }
+  const stable = stableFrom(CODEX_LANE_PREAMBLE, parts);
+  const volatile = renderVolatileSlot(parts);
+  const full = flatten(stable, volatile);
+  return { stable, volatile, full };
 }

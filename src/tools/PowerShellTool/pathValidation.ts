@@ -6,16 +6,19 @@
  * Follows the same patterns as BashTool/pathValidation.ts.
  */
 
-import { homedir } from 'os'
-import { isAbsolute, resolve } from 'path'
-import type { ToolPermissionContext } from '../../Tool.js'
-import type { PermissionRule } from '../../types/permissions.js'
-import { getCwd } from '../../utils/cwd.js'
+import { homedir } from "os";
+import { isAbsolute, resolve } from "path";
+import type { ToolPermissionContext } from "../../Tool.js";
+import type { PermissionRule } from "../../types/permissions.js";
+import { getCwd } from "../../utils/cwd.js";
 import {
   getFsImplementation,
   safeResolvePath,
-} from '../../utils/fsOperations.js'
-import { containsPathTraversal, getDirectoryForPath } from '../../utils/path.js'
+} from "../../utils/fsOperations.js";
+import {
+  containsPathTraversal,
+  getDirectoryForPath,
+} from "../../utils/path.js";
 import {
   allWorkingDirectories,
   checkEditableInternalPath,
@@ -23,42 +26,42 @@ import {
   checkReadableInternalPath,
   matchingRuleForInput,
   pathInAllowedWorkingPath,
-} from '../../utils/permissions/filesystem.js'
-import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
-import { createReadRuleSuggestion } from '../../utils/permissions/PermissionUpdate.js'
-import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js'
+} from "../../utils/permissions/filesystem.js";
 import {
   isDangerousRemovalPath,
   isPathInSandboxWriteAllowlist,
-} from '../../utils/permissions/pathValidation.js'
-import { getPlatform } from '../../utils/platform.js'
+} from "../../utils/permissions/pathValidation.js";
+import type { PermissionResult } from "../../utils/permissions/PermissionResult.js";
+import { createReadRuleSuggestion } from "../../utils/permissions/PermissionUpdate.js";
+import type { PermissionUpdate } from "../../utils/permissions/PermissionUpdateSchema.js";
+import { getPlatform } from "../../utils/platform.js";
 import type {
   ParsedCommandElement,
   ParsedPowerShellCommand,
-} from '../../utils/powershell/parser.js'
+} from "../../utils/powershell/parser.js";
 import {
   isNullRedirectionTarget,
   isPowerShellParameter,
-} from '../../utils/powershell/parser.js'
-import { COMMON_SWITCHES, COMMON_VALUE_PARAMS } from './commonParameters.js'
-import { resolveToCanonical } from './readOnlyValidation.js'
+} from "../../utils/powershell/parser.js";
+import { COMMON_SWITCHES, COMMON_VALUE_PARAMS } from "./commonParameters.js";
+import { resolveToCanonical } from "./readOnlyValidation.js";
 
-const MAX_DIRS_TO_LIST = 5
+const MAX_DIRS_TO_LIST = 5;
 // PowerShell wildcards are only * ? [ ] — braces are LITERAL characters
 // (no brace expansion). Including {} mis-routed paths like `./{x}/passwd`
 // through glob-base truncation instead of full-path symlink resolution.
-const GLOB_PATTERN_REGEX = /[*?[\]]/
+const GLOB_PATTERN_REGEX = /[*?[\]]/;
 
-type FileOperationType = 'read' | 'write' | 'create'
+type FileOperationType = "read" | "write" | "create";
 
 type PathCheckResult = {
-  allowed: boolean
-  decisionReason?: import('../../utils/permissions/PermissionResult.js').PermissionDecisionReason
-}
+  allowed: boolean;
+  decisionReason?: import("../../utils/permissions/PermissionResult.js").PermissionDecisionReason;
+};
 
 type ResolvedPathCheckResult = PathCheckResult & {
-  resolvedPath: string
-}
+  resolvedPath: string;
+};
 
 /**
  * Per-cmdlet parameter configuration.
@@ -86,13 +89,13 @@ type ResolvedPathCheckResult = PathCheckResult & {
  * Parameter names are lowercase with leading dash to match runtime comparison.
  */
 type CmdletPathConfig = {
-  operationType: FileOperationType
+  operationType: FileOperationType;
   /** Parameter names that accept file paths (validated against allowed directories) */
-  pathParams: string[]
+  pathParams: string[];
   /** Switch parameters that take no value (next arg is NOT consumed) */
-  knownSwitches: string[]
+  knownSwitches: string[];
   /** Value-taking parameters that are not paths (next arg IS consumed, not path-validated) */
-  knownValueParams: string[]
+  knownValueParams: string[];
   /**
    * Parameter names that accept a leaf filename resolved by PowerShell
    * relative to ANOTHER parameter (not cwd). Safe to extract only when the
@@ -101,7 +104,7 @@ type CmdletPathConfig = {
    * the actual base — joining against -Path would need cross-parameter
    * tracking.
    */
-  leafOnlyPathParams?: string[]
+  leafOnlyPathParams?: string[];
   /**
    * Number of leading positional arguments to skip (NOT extracted as paths).
    * Used for cmdlets where positional-0 is a non-path value — e.g.,
@@ -110,7 +113,7 @@ type CmdletPathConfig = {
    * a path, and validatePath's provider-path regex (^[a-z]{2,}:) misfires on
    * the URL scheme with a confusing "non-filesystem provider" message.
    */
-  positionalSkip?: number
+  positionalSkip?: number;
   /**
    * When true, this cmdlet only writes to disk when a pathParam is present.
    * Without a path (e.g., `Invoke-WebRequest https://example.com` with no
@@ -118,143 +121,143 @@ type CmdletPathConfig = {
    * not the filesystem. Skips the "write with no target path" forced-ask.
    * Cmdlets like Set-Content that ALWAYS write should NOT set this.
    */
-  optionalWrite?: boolean
-}
+  optionalWrite?: boolean;
+};
 
 const CMDLET_PATH_CONFIG: Record<string, CmdletPathConfig> = {
   // ─── Write/create operations ──────────────────────────────────────────────
-  'set-content': {
-    operationType: 'write',
+  "set-content": {
+    operationType: "write",
     // -PSPath and -LP are runtime aliases for -LiteralPath on all provider
     // cmdlets. Without them, colon syntax (-PSPath:/etc/x) falls to the
     // unknown-param branch → path trapped → paths=[] → deny never consulted.
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-passthru',
-      '-force',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
-      '-nonewline',
-      '-asbytestream', // PS 6+
+      "-passthru",
+      "-force",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
+      "-nonewline",
+      "-asbytestream", // PS 6+
     ],
     knownValueParams: [
-      '-value',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-encoding',
-      '-stream',
+      "-value",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-encoding",
+      "-stream",
     ],
   },
-  'add-content': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "add-content": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-passthru',
-      '-force',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
-      '-nonewline',
-      '-asbytestream', // PS 6+
+      "-passthru",
+      "-force",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
+      "-nonewline",
+      "-asbytestream", // PS 6+
     ],
     knownValueParams: [
-      '-value',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-encoding',
-      '-stream',
+      "-value",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-encoding",
+      "-stream",
     ],
   },
-  'remove-item': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "remove-item": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-recurse',
-      '-force',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-recurse",
+      "-force",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-stream',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-stream",
     ],
   },
-  'clear-content': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-whatif', '-confirm', '-usetransaction'],
+  "clear-content": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-whatif", "-confirm", "-usetransaction"],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-stream',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-stream",
     ],
   },
   // Out-File/Tee-Object/Export-Csv/Export-Clixml were absent, so path-level
   // deny rules (Edit(/etc/**)) hard-blocked `Set-Content /etc/x` but only
   // *asked* for `Out-File /etc/x`. All four are write cmdlets that accept
   // file paths positionally.
-  'out-file': {
-    operationType: 'write',
+  "out-file": {
+    operationType: "write",
     // Out-File uses -FilePath (position 0). -Path is PowerShell's documented
     // ALIAS for -FilePath — must be in pathParams or `Out-File -Path:./x`
     // (colon syntax, one token) falls to unknown-param → value trapped →
     // paths=[] → Edit deny never consulted → ask (fail-safe but deny downgrade).
-    pathParams: ['-filepath', '-path', '-literalpath', '-pspath', '-lp'],
+    pathParams: ["-filepath", "-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-append',
-      '-force',
-      '-noclobber',
-      '-nonewline',
-      '-whatif',
-      '-confirm',
+      "-append",
+      "-force",
+      "-noclobber",
+      "-nonewline",
+      "-whatif",
+      "-confirm",
     ],
-    knownValueParams: ['-inputobject', '-encoding', '-width'],
+    knownValueParams: ["-inputobject", "-encoding", "-width"],
   },
-  'tee-object': {
-    operationType: 'write',
+  "tee-object": {
+    operationType: "write",
     // Tee-Object uses -FilePath (position 0, alias: -Path). -Variable NOT a path.
-    pathParams: ['-filepath', '-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-append'],
-    knownValueParams: ['-inputobject', '-variable', '-encoding'],
+    pathParams: ["-filepath", "-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-append"],
+    knownValueParams: ["-inputobject", "-variable", "-encoding"],
   },
-  'export-csv': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "export-csv": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-append',
-      '-force',
-      '-noclobber',
-      '-notypeinformation',
-      '-includetypeinformation',
-      '-useculture',
-      '-noheader',
-      '-whatif',
-      '-confirm',
+      "-append",
+      "-force",
+      "-noclobber",
+      "-notypeinformation",
+      "-includetypeinformation",
+      "-useculture",
+      "-noheader",
+      "-whatif",
+      "-confirm",
     ],
     knownValueParams: [
-      '-inputobject',
-      '-delimiter',
-      '-encoding',
-      '-quotefields',
-      '-usequotes',
+      "-inputobject",
+      "-delimiter",
+      "-encoding",
+      "-quotefields",
+      "-usequotes",
     ],
   },
-  'export-clixml': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-noclobber', '-whatif', '-confirm'],
-    knownValueParams: ['-inputobject', '-depth', '-encoding'],
+  "export-clixml": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-noclobber", "-whatif", "-confirm"],
+    knownValueParams: ["-inputobject", "-depth", "-encoding"],
   },
   // New-Item/Copy-Item/Move-Item were missing: `mkdir /etc/cron.d/evil` →
   // resolveToCanonical('mkdir') = 'new-item' via COMMON_ALIASES → not in
@@ -265,8 +268,8 @@ const CMDLET_PATH_CONFIG: Record<string, CmdletPathConfig> = {
   // — but it means BOTH paths get Edit-deny validation, which is strictly
   // safer than extracting neither. A per-param operationType would be ideal
   // but that's a bigger schema change; blunt 'write' closes the gap now.
-  'new-item': {
-    operationType: 'write',
+  "new-item": {
+    operationType: "write",
     // -Path is position 0. -Name (position 1) is resolved by PowerShell
     // RELATIVE TO -Path (per MS docs: "you can specify the path of the new
     // item in Name"), including `..` traversal. We resolve against CWD
@@ -281,304 +284,304 @@ const CMDLET_PATH_CONFIG: Record<string, CmdletPathConfig> = {
     // any value with `/`, `\`, `.`, `..` flags hasUnvalidatablePathArg →
     // ask. Joining -Name against -Path would be correct but needs
     // cross-parameter tracking — out of scope here.
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    leafOnlyPathParams: ['-name'],
-    knownSwitches: ['-force', '-whatif', '-confirm', '-usetransaction'],
-    knownValueParams: ['-itemtype', '-value', '-credential', '-type'],
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    leafOnlyPathParams: ["-name"],
+    knownSwitches: ["-force", "-whatif", "-confirm", "-usetransaction"],
+    knownValueParams: ["-itemtype", "-value", "-credential", "-type"],
   },
-  'copy-item': {
-    operationType: 'write',
+  "copy-item": {
+    operationType: "write",
     // -Path (position 0) is source, -Destination (position 1) is dest.
     // Both extracted; both validated as write.
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp', '-destination'],
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp", "-destination"],
     knownSwitches: [
-      '-container',
-      '-force',
-      '-passthru',
-      '-recurse',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-container",
+      "-force",
+      "-passthru",
+      "-recurse",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-fromsession',
-      '-tosession',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-fromsession",
+      "-tosession",
     ],
   },
-  'move-item': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp', '-destination'],
+  "move-item": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp", "-destination"],
     knownSwitches: [
-      '-force',
-      '-passthru',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-force",
+      "-passthru",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
-    knownValueParams: ['-filter', '-include', '-exclude', '-credential'],
+    knownValueParams: ["-filter", "-include", "-exclude", "-credential"],
   },
   // rename-item/set-item: same class — ren/rni/si in COMMON_ALIASES, neither
   // was in config. `ren /etc/passwd passwd.bak` → resolves to rename-item
   // → not in config → {paths:[], 'read'} → Edit deny bypassed. This closes
   // the COMMON_ALIASES→CMDLET_PATH_CONFIG coverage audit: every
   // write-cmdlet alias now resolves to a config entry.
-  'rename-item': {
-    operationType: 'write',
+  "rename-item": {
+    operationType: "write",
     // -Path position 0, -NewName position 1. -NewName is leaf-only (docs:
     // "You cannot specify a new drive or a different path") and Rename-Item
     // explicitly rejects `..` in it — so knownValueParams is correct here,
     // unlike New-Item -Name which accepts traversal.
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-force',
-      '-passthru',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-force",
+      "-passthru",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
     knownValueParams: [
-      '-newname',
-      '-credential',
-      '-filter',
-      '-include',
-      '-exclude',
+      "-newname",
+      "-credential",
+      "-filter",
+      "-include",
+      "-exclude",
     ],
   },
-  'set-item': {
-    operationType: 'write',
+  "set-item": {
+    operationType: "write",
     // FileSystem provider throws NotSupportedException for Set-Item content,
     // so the practical write surface is registry/env/function/alias providers.
     // Provider-qualified paths (HKLM:\\, Env:\\) are independently caught at
     // step 3.5 in powershellPermissions.ts, but classifying set-item as write
     // here is defense-in-depth — powershellSecurity.ts:379 already lists it
     // in ENV_WRITE_CMDLETS; this makes pathValidation consistent.
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-force',
-      '-passthru',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-force",
+      "-passthru",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
     knownValueParams: [
-      '-value',
-      '-credential',
-      '-filter',
-      '-include',
-      '-exclude',
+      "-value",
+      "-credential",
+      "-filter",
+      "-include",
+      "-exclude",
     ],
   },
   // ─── Read operations ──────────────────────────────────────────────────────
-  'get-content': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "get-content": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-force',
-      '-usetransaction',
-      '-wait',
-      '-raw',
-      '-asbytestream', // PS 6+
+      "-force",
+      "-usetransaction",
+      "-wait",
+      "-raw",
+      "-asbytestream", // PS 6+
     ],
     knownValueParams: [
-      '-readcount',
-      '-totalcount',
-      '-tail',
-      '-first', // alias for -TotalCount
-      '-head', // alias for -TotalCount
-      '-last', // alias for -Tail
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-delimiter',
-      '-encoding',
-      '-stream',
+      "-readcount",
+      "-totalcount",
+      "-tail",
+      "-first", // alias for -TotalCount
+      "-head", // alias for -TotalCount
+      "-last", // alias for -Tail
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-delimiter",
+      "-encoding",
+      "-stream",
     ],
   },
-  'get-childitem': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "get-childitem": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-recurse',
-      '-force',
-      '-name',
-      '-usetransaction',
-      '-followsymlink',
-      '-directory',
-      '-file',
-      '-hidden',
-      '-readonly',
-      '-system',
+      "-recurse",
+      "-force",
+      "-name",
+      "-usetransaction",
+      "-followsymlink",
+      "-directory",
+      "-file",
+      "-hidden",
+      "-readonly",
+      "-system",
     ],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-depth',
-      '-attributes',
-      '-credential',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-depth",
+      "-attributes",
+      "-credential",
     ],
   },
-  'get-item': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-usetransaction'],
+  "get-item": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-usetransaction"],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-stream',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-stream",
     ],
   },
-  'get-itemproperty': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-usetransaction'],
+  "get-itemproperty": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-usetransaction"],
     knownValueParams: [
-      '-name',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
+      "-name",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
     ],
   },
-  'get-itempropertyvalue': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-usetransaction'],
+  "get-itempropertyvalue": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-usetransaction"],
     knownValueParams: [
-      '-name',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
+      "-name",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
     ],
   },
-  'get-filehash': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "get-filehash": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [],
-    knownValueParams: ['-algorithm', '-inputstream'],
+    knownValueParams: ["-algorithm", "-inputstream"],
   },
-  'get-acl': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-audit', '-allcentralaccesspolicies', '-usetransaction'],
-    knownValueParams: ['-inputobject', '-filter', '-include', '-exclude'],
+  "get-acl": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-audit", "-allcentralaccesspolicies", "-usetransaction"],
+    knownValueParams: ["-inputobject", "-filter", "-include", "-exclude"],
   },
-  'format-hex': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-raw'],
+  "format-hex": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-raw"],
     knownValueParams: [
-      '-inputobject',
-      '-encoding',
-      '-count', // PS 6+
-      '-offset', // PS 6+
+      "-inputobject",
+      "-encoding",
+      "-count", // PS 6+
+      "-offset", // PS 6+
     ],
   },
-  'test-path': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-isvalid', '-usetransaction'],
+  "test-path": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-isvalid", "-usetransaction"],
     knownValueParams: [
-      '-filter',
-      '-include',
-      '-exclude',
-      '-pathtype',
-      '-credential',
-      '-olderthan',
-      '-newerthan',
+      "-filter",
+      "-include",
+      "-exclude",
+      "-pathtype",
+      "-credential",
+      "-olderthan",
+      "-newerthan",
     ],
   },
-  'resolve-path': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-relative', '-usetransaction', '-force'],
-    knownValueParams: ['-credential', '-relativebasepath'],
+  "resolve-path": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-relative", "-usetransaction", "-force"],
+    knownValueParams: ["-credential", "-relativebasepath"],
   },
-  'convert-path': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-usetransaction'],
+  "convert-path": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-usetransaction"],
     knownValueParams: [],
   },
-  'select-string': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "select-string": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-simplematch',
-      '-casesensitive',
-      '-quiet',
-      '-list',
-      '-notmatch',
-      '-allmatches',
-      '-noemphasis', // PS 7+
-      '-raw', // PS 7+
+      "-simplematch",
+      "-casesensitive",
+      "-quiet",
+      "-list",
+      "-notmatch",
+      "-allmatches",
+      "-noemphasis", // PS 7+
+      "-raw", // PS 7+
     ],
     knownValueParams: [
-      '-inputobject',
-      '-pattern',
-      '-include',
-      '-exclude',
-      '-encoding',
-      '-context',
-      '-culture', // PS 7+
+      "-inputobject",
+      "-pattern",
+      "-include",
+      "-exclude",
+      "-encoding",
+      "-context",
+      "-culture", // PS 7+
     ],
   },
-  'set-location': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-passthru', '-usetransaction'],
-    knownValueParams: ['-stackname'],
+  "set-location": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-passthru", "-usetransaction"],
+    knownValueParams: ["-stackname"],
   },
-  'push-location': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-passthru', '-usetransaction'],
-    knownValueParams: ['-stackname'],
+  "push-location": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-passthru", "-usetransaction"],
+    knownValueParams: ["-stackname"],
   },
-  'pop-location': {
-    operationType: 'read',
+  "pop-location": {
+    operationType: "read",
     // Pop-Location has no -Path/-LiteralPath (it pops from the stack),
     // but we keep the entry so it passes through path validation gracefully.
     pathParams: [],
-    knownSwitches: ['-passthru', '-usetransaction'],
-    knownValueParams: ['-stackname'],
+    knownSwitches: ["-passthru", "-usetransaction"],
+    knownValueParams: ["-stackname"],
   },
-  'select-xml': {
-    operationType: 'read',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "select-xml": {
+    operationType: "read",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [],
-    knownValueParams: ['-xml', '-content', '-xpath', '-namespace'],
+    knownValueParams: ["-xml", "-content", "-xpath", "-namespace"],
   },
-  'get-winevent': {
-    operationType: 'read',
+  "get-winevent": {
+    operationType: "read",
     // Get-WinEvent only has -Path, no -LiteralPath
-    pathParams: ['-path'],
-    knownSwitches: ['-force', '-oldest'],
+    pathParams: ["-path"],
+    knownSwitches: ["-force", "-oldest"],
     knownValueParams: [
-      '-listlog',
-      '-logname',
-      '-listprovider',
-      '-providername',
-      '-maxevents',
-      '-computername',
-      '-credential',
-      '-filterxpath',
-      '-filterxml',
-      '-filterhashtable',
+      "-listlog",
+      "-logname",
+      "-listprovider",
+      "-providername",
+      "-maxevents",
+      "-computername",
+      "-credential",
+      "-filterxpath",
+      "-filterxml",
+      "-filterhashtable",
     ],
   },
   // Write-path cmdlets with output parameters. Without these entries,
   // -OutFile / -DestinationPath would write to arbitrary paths unvalidated.
-  'invoke-webrequest': {
-    operationType: 'write',
+  "invoke-webrequest": {
+    operationType: "write",
     // -OutFile is the write target; -InFile is a read source (uploads a local
     // file). Both are in pathParams so Edit deny rules are consulted (this
     // config is operationType:write → permissionType:edit). A user with
@@ -586,183 +589,183 @@ const CMDLET_PATH_CONFIG: Record<string, CmdletPathConfig> = {
     // -InFile ~/.ssh/id_rsa` exfil. Read-only deny rules are not consulted
     // for write-type cmdlets — that's a known limitation of the
     // operationType→permissionType mapping.
-    pathParams: ['-outfile', '-infile'],
+    pathParams: ["-outfile", "-infile"],
     positionalSkip: 1, // positional-0 is -Uri (URL), not a filesystem path
     optionalWrite: true, // only writes with -OutFile; bare iwr is pipeline-only
     knownSwitches: [
-      '-allowinsecureredirect',
-      '-allowunencryptedauthentication',
-      '-disablekeepalive',
-      '-nobodyprogress',
-      '-passthru',
-      '-preservefileauthorizationmetadata',
-      '-resume',
-      '-skipcertificatecheck',
-      '-skipheadervalidation',
-      '-skiphttperrorcheck',
-      '-usebasicparsing',
-      '-usedefaultcredentials',
+      "-allowinsecureredirect",
+      "-allowunencryptedauthentication",
+      "-disablekeepalive",
+      "-nobodyprogress",
+      "-passthru",
+      "-preservefileauthorizationmetadata",
+      "-resume",
+      "-skipcertificatecheck",
+      "-skipheadervalidation",
+      "-skiphttperrorcheck",
+      "-usebasicparsing",
+      "-usedefaultcredentials",
     ],
     knownValueParams: [
-      '-uri',
-      '-method',
-      '-body',
-      '-contenttype',
-      '-headers',
-      '-maximumredirection',
-      '-maximumretrycount',
-      '-proxy',
-      '-proxycredential',
-      '-retryintervalsec',
-      '-sessionvariable',
-      '-timeoutsec',
-      '-token',
-      '-transferencoding',
-      '-useragent',
-      '-websession',
-      '-credential',
-      '-authentication',
-      '-certificate',
-      '-certificatethumbprint',
-      '-form',
-      '-httpversion',
+      "-uri",
+      "-method",
+      "-body",
+      "-contenttype",
+      "-headers",
+      "-maximumredirection",
+      "-maximumretrycount",
+      "-proxy",
+      "-proxycredential",
+      "-retryintervalsec",
+      "-sessionvariable",
+      "-timeoutsec",
+      "-token",
+      "-transferencoding",
+      "-useragent",
+      "-websession",
+      "-credential",
+      "-authentication",
+      "-certificate",
+      "-certificatethumbprint",
+      "-form",
+      "-httpversion",
     ],
   },
-  'invoke-restmethod': {
-    operationType: 'write',
+  "invoke-restmethod": {
+    operationType: "write",
     // -OutFile is the write target; -InFile is a read source (uploads a local
     // file). Both must be in pathParams so deny rules are consulted.
-    pathParams: ['-outfile', '-infile'],
+    pathParams: ["-outfile", "-infile"],
     positionalSkip: 1, // positional-0 is -Uri (URL), not a filesystem path
     optionalWrite: true, // only writes with -OutFile; bare irm is pipeline-only
     knownSwitches: [
-      '-allowinsecureredirect',
-      '-allowunencryptedauthentication',
-      '-disablekeepalive',
-      '-followrellink',
-      '-nobodyprogress',
-      '-passthru',
-      '-preservefileauthorizationmetadata',
-      '-resume',
-      '-skipcertificatecheck',
-      '-skipheadervalidation',
-      '-skiphttperrorcheck',
-      '-usebasicparsing',
-      '-usedefaultcredentials',
+      "-allowinsecureredirect",
+      "-allowunencryptedauthentication",
+      "-disablekeepalive",
+      "-followrellink",
+      "-nobodyprogress",
+      "-passthru",
+      "-preservefileauthorizationmetadata",
+      "-resume",
+      "-skipcertificatecheck",
+      "-skipheadervalidation",
+      "-skiphttperrorcheck",
+      "-usebasicparsing",
+      "-usedefaultcredentials",
     ],
     knownValueParams: [
-      '-uri',
-      '-method',
-      '-body',
-      '-contenttype',
-      '-headers',
-      '-maximumfollowrellink',
-      '-maximumredirection',
-      '-maximumretrycount',
-      '-proxy',
-      '-proxycredential',
-      '-responseheaderstvariable',
-      '-retryintervalsec',
-      '-sessionvariable',
-      '-statuscodevariable',
-      '-timeoutsec',
-      '-token',
-      '-transferencoding',
-      '-useragent',
-      '-websession',
-      '-credential',
-      '-authentication',
-      '-certificate',
-      '-certificatethumbprint',
-      '-form',
-      '-httpversion',
+      "-uri",
+      "-method",
+      "-body",
+      "-contenttype",
+      "-headers",
+      "-maximumfollowrellink",
+      "-maximumredirection",
+      "-maximumretrycount",
+      "-proxy",
+      "-proxycredential",
+      "-responseheaderstvariable",
+      "-retryintervalsec",
+      "-sessionvariable",
+      "-statuscodevariable",
+      "-timeoutsec",
+      "-token",
+      "-transferencoding",
+      "-useragent",
+      "-websession",
+      "-credential",
+      "-authentication",
+      "-certificate",
+      "-certificatethumbprint",
+      "-form",
+      "-httpversion",
     ],
   },
-  'expand-archive': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp', '-destinationpath'],
-    knownSwitches: ['-force', '-passthru', '-whatif', '-confirm'],
+  "expand-archive": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp", "-destinationpath"],
+    knownSwitches: ["-force", "-passthru", "-whatif", "-confirm"],
     knownValueParams: [],
   },
-  'compress-archive': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp', '-destinationpath'],
-    knownSwitches: ['-force', '-update', '-passthru', '-whatif', '-confirm'],
-    knownValueParams: ['-compressionlevel'],
+  "compress-archive": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp", "-destinationpath"],
+    knownSwitches: ["-force", "-update", "-passthru", "-whatif", "-confirm"],
+    knownValueParams: ["-compressionlevel"],
   },
   // *-ItemProperty cmdlets: primary use is the Registry provider (set/new/
   // remove a registry VALUE under a key). Provider-qualified paths (HKLM:\,
   // HKCU:\) are independently caught at step 3.5 in powershellPermissions.ts.
   // Entries here are defense-in-depth for Edit-deny-rule consultation, mirroring
   // set-item's rationale.
-  'set-itemproperty': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "set-itemproperty": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-passthru',
-      '-force',
-      '-whatif',
-      '-confirm',
-      '-usetransaction',
+      "-passthru",
+      "-force",
+      "-whatif",
+      "-confirm",
+      "-usetransaction",
     ],
     knownValueParams: [
-      '-name',
-      '-value',
-      '-type',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
-      '-inputobject',
+      "-name",
+      "-value",
+      "-type",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
+      "-inputobject",
     ],
   },
-  'new-itemproperty': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-whatif', '-confirm', '-usetransaction'],
+  "new-itemproperty": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-whatif", "-confirm", "-usetransaction"],
     knownValueParams: [
-      '-name',
-      '-value',
-      '-propertytype',
-      '-type',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
+      "-name",
+      "-value",
+      "-propertytype",
+      "-type",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
     ],
   },
-  'remove-itemproperty': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-whatif', '-confirm', '-usetransaction'],
+  "remove-itemproperty": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-whatif", "-confirm", "-usetransaction"],
     knownValueParams: [
-      '-name',
-      '-filter',
-      '-include',
-      '-exclude',
-      '-credential',
+      "-name",
+      "-filter",
+      "-include",
+      "-exclude",
+      "-credential",
     ],
   },
-  'clear-item': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
-    knownSwitches: ['-force', '-whatif', '-confirm', '-usetransaction'],
-    knownValueParams: ['-filter', '-include', '-exclude', '-credential'],
+  "clear-item": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
+    knownSwitches: ["-force", "-whatif", "-confirm", "-usetransaction"],
+    knownValueParams: ["-filter", "-include", "-exclude", "-credential"],
   },
-  'export-alias': {
-    operationType: 'write',
-    pathParams: ['-path', '-literalpath', '-pspath', '-lp'],
+  "export-alias": {
+    operationType: "write",
+    pathParams: ["-path", "-literalpath", "-pspath", "-lp"],
     knownSwitches: [
-      '-append',
-      '-force',
-      '-noclobber',
-      '-passthru',
-      '-whatif',
-      '-confirm',
+      "-append",
+      "-force",
+      "-noclobber",
+      "-passthru",
+      "-whatif",
+      "-confirm",
     ],
-    knownValueParams: ['-name', '-description', '-scope', '-as'],
+    knownValueParams: ["-name", "-description", "-scope", "-as"],
   },
-}
+};
 
 /**
  * Checks if a lowercase parameter name (with leading dash) matches any entry
@@ -775,10 +778,10 @@ function matchesParam(paramLower: string, paramList: string[]): boolean {
       p === paramLower ||
       (paramLower.length > 1 && p.startsWith(paramLower))
     ) {
-      return true
+      return true;
     }
   }
-  return false
+  return false;
 }
 
 /**
@@ -792,26 +795,26 @@ function matchesParam(paramLower: string, paramList: string[]): boolean {
  */
 function hasComplexColonValue(rawValue: string): boolean {
   return (
-    rawValue.includes(',') ||
-    rawValue.startsWith('(') ||
-    rawValue.startsWith('[') ||
-    rawValue.includes('`') ||
-    rawValue.includes('@(') ||
-    rawValue.startsWith('@{') ||
-    rawValue.includes('$')
-  )
+    rawValue.includes(",") ||
+    rawValue.startsWith("(") ||
+    rawValue.startsWith("[") ||
+    rawValue.includes("`") ||
+    rawValue.includes("@(") ||
+    rawValue.startsWith("@{") ||
+    rawValue.includes("$")
+  );
 }
 
 function formatDirectoryList(directories: string[]): string {
-  const dirCount = directories.length
+  const dirCount = directories.length;
   if (dirCount <= MAX_DIRS_TO_LIST) {
-    return directories.map(dir => `'${dir}'`).join(', ')
+    return directories.map((dir) => `'${dir}'`).join(", ");
   }
   const firstDirs = directories
     .slice(0, MAX_DIRS_TO_LIST)
-    .map(dir => `'${dir}'`)
-    .join(', ')
-  return `${firstDirs}, and ${dirCount - MAX_DIRS_TO_LIST} more`
+    .map((dir) => `'${dir}'`)
+    .join(", ");
+  return `${firstDirs}, and ${dirCount - MAX_DIRS_TO_LIST} more`;
 }
 
 /**
@@ -819,13 +822,13 @@ function formatDirectoryList(directories: string[]): string {
  */
 function expandTilde(filePath: string): string {
   if (
-    filePath === '~' ||
-    filePath.startsWith('~/') ||
-    filePath.startsWith('~\\')
+    filePath === "~" ||
+    filePath.startsWith("~/") ||
+    filePath.startsWith("~\\")
   ) {
-    return homedir() + filePath.slice(1)
+    return homedir() + filePath.slice(1);
   }
-  return filePath
+  return filePath;
 }
 
 /**
@@ -838,22 +841,22 @@ function expandTilde(filePath: string): string {
  * as the user typed them.
  */
 export function isDangerousRemovalRawPath(filePath: string): boolean {
-  const expanded = expandTilde(filePath.replace(/^['"]|['"]$/g, '')).replace(
+  const expanded = expandTilde(filePath.replace(/^['"]|['"]$/g, "")).replace(
     /\\/g,
-    '/',
-  )
-  return isDangerousRemovalPath(expanded)
+    "/",
+  );
+  return isDangerousRemovalPath(expanded);
 }
 
 export function dangerousRemovalDeny(path: string): PermissionResult {
   return {
-    behavior: 'deny',
+    behavior: "deny",
     message: `Remove-Item on system path '${path}' is blocked. This path is protected from removal.`,
     decisionReason: {
-      type: 'other',
-      reason: 'Removal targets a protected system path',
+      type: "other",
+      reason: "Removal targets a protected system path",
     },
-  }
+  };
 }
 
 /**
@@ -866,51 +869,51 @@ function isPathAllowed(
   operationType: FileOperationType,
   precomputedPathsToCheck?: readonly string[],
 ): PathCheckResult {
-  const permissionType = operationType === 'read' ? 'read' : 'edit'
+  const permissionType = operationType === "read" ? "read" : "edit";
 
   // 1. Check deny rules first
   const denyRule = matchingRuleForInput(
     resolvedPath,
     context,
     permissionType,
-    'deny',
-  )
+    "deny",
+  );
   if (denyRule !== null) {
     return {
       allowed: false,
-      decisionReason: { type: 'rule', rule: denyRule },
-    }
+      decisionReason: { type: "rule", rule: denyRule },
+    };
   }
 
   // 2. For write/create operations, check internal editable paths (plan files, scratchpad, agent memory, job dirs)
   // This MUST come before checkPathSafetyForAutoEdit since .claude is a dangerous directory
   // and internal editable paths live under ~/.claude/ — matching the ordering in
   // checkWritePermissionForTool (filesystem.ts step 1.5)
-  if (operationType !== 'read') {
-    const internalEditResult = checkEditableInternalPath(resolvedPath, {})
-    if (internalEditResult.behavior === 'allow') {
+  if (operationType !== "read") {
+    const internalEditResult = checkEditableInternalPath(resolvedPath, {});
+    if (internalEditResult.behavior === "allow") {
       return {
         allowed: true,
         decisionReason: internalEditResult.decisionReason,
-      }
+      };
     }
   }
 
   // 2.5. For write/create operations, check safety validations
-  if (operationType !== 'read') {
+  if (operationType !== "read") {
     const safetyCheck = checkPathSafetyForAutoEdit(
       resolvedPath,
       precomputedPathsToCheck,
-    )
+    );
     if (!safetyCheck.safe) {
       return {
         allowed: false,
         decisionReason: {
-          type: 'safetyCheck',
+          type: "safetyCheck",
           reason: safetyCheck.message,
           classifierApprovable: safetyCheck.classifierApprovable,
         },
-      }
+      };
     }
   }
 
@@ -919,21 +922,21 @@ function isPathAllowed(
     resolvedPath,
     context,
     precomputedPathsToCheck,
-  )
+  );
   if (isInWorkingDir) {
-    if (operationType === 'read' || context.mode === 'acceptEdits') {
-      return { allowed: true }
+    if (operationType === "read" || context.mode === "acceptEdits") {
+      return { allowed: true };
     }
   }
 
   // 3.5. For read operations, check internal readable paths
-  if (operationType === 'read') {
-    const internalReadResult = checkReadableInternalPath(resolvedPath, {})
-    if (internalReadResult.behavior === 'allow') {
+  if (operationType === "read") {
+    const internalReadResult = checkReadableInternalPath(resolvedPath, {});
+    if (internalReadResult.behavior === "allow") {
       return {
         allowed: true,
         decisionReason: internalReadResult.decisionReason,
-      }
+      };
     }
   }
 
@@ -945,17 +948,17 @@ function isPathAllowed(
   // excluded: the sandbox allowlist always seeds '.' (cwd), which would
   // bypass the acceptEdits gate at step 3.
   if (
-    operationType !== 'read' &&
+    operationType !== "read" &&
     !isInWorkingDir &&
     isPathInSandboxWriteAllowlist(resolvedPath)
   ) {
     return {
       allowed: true,
       decisionReason: {
-        type: 'other',
-        reason: 'Path is in sandbox write allowlist',
+        type: "other",
+        reason: "Path is in sandbox write allowlist",
       },
-    }
+    };
   }
 
   // 4. Check allow rules
@@ -963,17 +966,17 @@ function isPathAllowed(
     resolvedPath,
     context,
     permissionType,
-    'allow',
-  )
+    "allow",
+  );
   if (allowRule !== null) {
     return {
       allowed: true,
-      decisionReason: { type: 'rule', rule: allowRule },
-    }
+      decisionReason: { type: "rule", rule: allowRule },
+    };
   }
 
   // 5. Path is not allowed
-  return { allowed: false }
+  return { allowed: false };
 }
 
 /**
@@ -989,22 +992,22 @@ function checkDenyRuleForGuessedPath(
 ): { resolvedPath: string; rule: PermissionRule } | null {
   // Red-team P7: null bytes make expandPath throw. Pre-existing but
   // defend here since we're introducing a new call path.
-  if (!strippedPath || strippedPath.includes('\0')) return null
+  if (!strippedPath || strippedPath.includes("\0")) return null;
   // Red-team P3: `~/.ssh/x strips to ~/.ssh/x but expandTilde only fires
   // on leading ~ — the backtick was in front of it. Re-run here.
-  const tildeExpanded = expandTilde(strippedPath)
+  const tildeExpanded = expandTilde(strippedPath);
   const abs = isAbsolute(tildeExpanded)
     ? tildeExpanded
-    : resolve(cwd, tildeExpanded)
-  const { resolvedPath } = safeResolvePath(getFsImplementation(), abs)
-  const permissionType = operationType === 'read' ? 'read' : 'edit'
+    : resolve(cwd, tildeExpanded);
+  const { resolvedPath } = safeResolvePath(getFsImplementation(), abs);
+  const permissionType = operationType === "read" ? "read" : "edit";
   const denyRule = matchingRuleForInput(
     resolvedPath,
     toolPermissionContext,
     permissionType,
-    'deny',
-  )
-  return denyRule ? { resolvedPath, rule: denyRule } : null
+    "deny",
+  );
+  return denyRule ? { resolvedPath, rule: denyRule } : null;
 }
 
 /**
@@ -1017,88 +1020,90 @@ function validatePath(
   operationType: FileOperationType,
 ): ResolvedPathCheckResult {
   // Remove surrounding quotes if present
-  const cleanPath = expandTilde(filePath.replace(/^['"]|['"]$/g, ''))
+  const cleanPath = expandTilde(filePath.replace(/^['"]|['"]$/g, ""));
 
   // SECURITY: PowerShell Core normalizes backslashes to forward slashes on all
   // platforms, but path.resolve on Linux/Mac treats them as literal characters.
   // Normalize before resolution so traversal patterns like dir\..\..\etc\shadow
   // are correctly detected.
-  const normalizedPath = cleanPath.replace(/\\/g, '/')
+  const normalizedPath = cleanPath.replace(/\\/g, "/");
 
   // SECURITY: Backtick (`) is PowerShell's escape character. It is a no-op in
   // many positions (e.g., `/ === /) but defeats Node.js path checks like
   // isAbsolute(). Redirection targets use raw .Extent.Text which preserves
   // backtick escapes. Treat any path containing a backtick as unvalidatable.
-  if (normalizedPath.includes('`')) {
+  if (normalizedPath.includes("`")) {
     // Red-team P3: backtick is already resolved for StringConstant args
     // (parser uses .value); this guard primarily fires for redirection
     // targets which use raw .Extent.Text. Strip is a no-op for most special
     // escapes (`n → n) but that's fine — wrong guess → no deny match →
     // falls to ask.
-    const backtickStripped = normalizedPath.replace(/`/g, '')
+    const backtickStripped = normalizedPath.replace(/`/g, "");
     const denyHit = checkDenyRuleForGuessedPath(
       backtickStripped,
       cwd,
       toolPermissionContext,
       operationType,
-    )
+    );
     if (denyHit) {
       return {
         allowed: false,
         resolvedPath: denyHit.resolvedPath,
-        decisionReason: { type: 'rule', rule: denyHit.rule },
-      }
+        decisionReason: { type: "rule", rule: denyHit.rule },
+      };
     }
     return {
       allowed: false,
       resolvedPath: normalizedPath,
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason:
-          'Backtick escape characters in paths cannot be statically validated and require manual approval',
+          "Backtick escape characters in paths cannot be statically validated and require manual approval",
       },
-    }
+    };
   }
 
   // SECURITY: Block module-qualified provider paths. PowerShell allows
   // `Microsoft.PowerShell.Core\FileSystem::/etc/passwd` which resolves to
   // `/etc/passwd` via the FileSystem provider. The `::` is the provider
   // path separator and doesn't match the simple `^[a-z]{2,}:` regex.
-  if (normalizedPath.includes('::')) {
+  if (normalizedPath.includes("::")) {
     // Strip everything up to and including the first :: — handles both
     // FileSystem::/path and Microsoft.PowerShell.Core\FileSystem::/path.
     // Double-:: (Foo::Bar::/x) strips first only → 'Bar::/x' → resolve
     // makes it {cwd}/Bar::/x → won't match real deny rules → falls to ask.
     // Safe.
-    const afterProvider = normalizedPath.slice(normalizedPath.indexOf('::') + 2)
+    const afterProvider = normalizedPath.slice(
+      normalizedPath.indexOf("::") + 2,
+    );
     const denyHit = checkDenyRuleForGuessedPath(
       afterProvider,
       cwd,
       toolPermissionContext,
       operationType,
-    )
+    );
     if (denyHit) {
       return {
         allowed: false,
         resolvedPath: denyHit.resolvedPath,
-        decisionReason: { type: 'rule', rule: denyHit.rule },
-      }
+        decisionReason: { type: "rule", rule: denyHit.rule },
+      };
     }
     return {
       allowed: false,
       resolvedPath: normalizedPath,
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason:
-          'Module-qualified provider paths (::) cannot be statically validated and require manual approval',
+          "Module-qualified provider paths (::) cannot be statically validated and require manual approval",
       },
-    }
+    };
   }
 
   // SECURITY: Block UNC paths — they can trigger network requests and
   // leak NTLM/Kerberos credentials
   if (
-    normalizedPath.startsWith('//') ||
+    normalizedPath.startsWith("//") ||
     /DavWWWRoot/i.test(normalizedPath) ||
     /@SSL@/i.test(normalizedPath)
   ) {
@@ -1106,23 +1111,23 @@ function validatePath(
       allowed: false,
       resolvedPath: normalizedPath,
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason:
-          'UNC paths are blocked because they can trigger network requests and credential leakage',
+          "UNC paths are blocked because they can trigger network requests and credential leakage",
       },
-    }
+    };
   }
 
   // SECURITY: Reject paths containing shell expansion syntax
-  if (normalizedPath.includes('$') || normalizedPath.includes('%')) {
+  if (normalizedPath.includes("$") || normalizedPath.includes("%")) {
     return {
       allowed: false,
       resolvedPath: normalizedPath,
       decisionReason: {
-        type: 'other',
-        reason: 'Variable expansion syntax in paths requires manual approval',
+        type: "other",
+        reason: "Variable expansion syntax in paths requires manual approval",
       },
-    }
+    };
   }
 
   // SECURITY: Block non-filesystem provider paths (env:, HKLM:, alias:, function:, etc.)
@@ -1146,30 +1151,30 @@ function validatePath(
   // PSDrive names like `a1:`, `1a:` — the previous alternation `[a-z]{2,}|[0-9]+`
   // missed those since `a1` is neither pure letters nor pure digits.
   const providerPathRegex =
-    getPlatform() === 'windows' ? /^[a-z0-9]{2,}:/i : /^[a-z0-9]+:/i
+    getPlatform() === "windows" ? /^[a-z0-9]{2,}:/i : /^[a-z0-9]+:/i;
   if (providerPathRegex.test(normalizedPath)) {
     return {
       allowed: false,
       resolvedPath: normalizedPath,
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason: `Path '${normalizedPath}' uses a non-filesystem provider and requires manual approval`,
       },
-    }
+    };
   }
 
   // SECURITY: Block glob patterns in write/create operations
   if (GLOB_PATTERN_REGEX.test(normalizedPath)) {
-    if (operationType === 'write' || operationType === 'create') {
+    if (operationType === "write" || operationType === "create") {
       return {
         allowed: false,
         resolvedPath: normalizedPath,
         decisionReason: {
-          type: 'other',
+          type: "other",
           reason:
-            'Glob patterns are not allowed in write operations. Please specify an exact file path.',
+            "Glob patterns are not allowed in write operations. Please specify an exact file path.",
         },
-      }
+      };
     }
 
     // For read operations with path traversal (e.g., /project/*/../../../etc/shadow),
@@ -1178,22 +1183,22 @@ function validatePath(
     if (containsPathTraversal(normalizedPath)) {
       const absolutePath = isAbsolute(normalizedPath)
         ? normalizedPath
-        : resolve(cwd, normalizedPath)
+        : resolve(cwd, normalizedPath);
       const { resolvedPath, isCanonical } = safeResolvePath(
         getFsImplementation(),
         absolutePath,
-      )
+      );
       const result = isPathAllowed(
         resolvedPath,
         toolPermissionContext,
         operationType,
         isCanonical ? [resolvedPath] : undefined,
-      )
+      );
       return {
         allowed: result.allowed,
         resolvedPath,
         decisionReason: result.decisionReason,
-      }
+      };
     }
 
     // SECURITY (finding #15): Glob patterns for read operations cannot be
@@ -1208,73 +1213,73 @@ function validatePath(
     //
     // Still check deny rules on the base directory so explicit Read(/project/**)
     // deny rules fire. If no deny matches, force ask.
-    const basePath = getGlobBaseDirectory(normalizedPath)
+    const basePath = getGlobBaseDirectory(normalizedPath);
     const absoluteBasePath = isAbsolute(basePath)
       ? basePath
-      : resolve(cwd, basePath)
+      : resolve(cwd, basePath);
     const { resolvedPath } = safeResolvePath(
       getFsImplementation(),
       absoluteBasePath,
-    )
-    const permissionType = operationType === 'read' ? 'read' : 'edit'
+    );
+    const permissionType = operationType === "read" ? "read" : "edit";
     const denyRule = matchingRuleForInput(
       resolvedPath,
       toolPermissionContext,
       permissionType,
-      'deny',
-    )
+      "deny",
+    );
     if (denyRule !== null) {
       return {
         allowed: false,
         resolvedPath,
-        decisionReason: { type: 'rule', rule: denyRule },
-      }
+        decisionReason: { type: "rule", rule: denyRule },
+      };
     }
     return {
       allowed: false,
       resolvedPath,
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason:
-          'Glob patterns in paths cannot be statically validated — symlinks inside the glob expansion are not examined. Requires manual approval.',
+          "Glob patterns in paths cannot be statically validated — symlinks inside the glob expansion are not examined. Requires manual approval.",
       },
-    }
+    };
   }
 
   // Resolve path
   const absolutePath = isAbsolute(normalizedPath)
     ? normalizedPath
-    : resolve(cwd, normalizedPath)
+    : resolve(cwd, normalizedPath);
   const { resolvedPath, isCanonical } = safeResolvePath(
     getFsImplementation(),
     absolutePath,
-  )
+  );
 
   const result = isPathAllowed(
     resolvedPath,
     toolPermissionContext,
     operationType,
     isCanonical ? [resolvedPath] : undefined,
-  )
+  );
   return {
     allowed: result.allowed,
     resolvedPath,
     decisionReason: result.decisionReason,
-  }
+  };
 }
 
 function getGlobBaseDirectory(filePath: string): string {
-  const globMatch = filePath.match(GLOB_PATTERN_REGEX)
+  const globMatch = filePath.match(GLOB_PATTERN_REGEX);
   if (!globMatch || globMatch.index === undefined) {
-    return filePath
+    return filePath;
   }
-  const beforeGlob = filePath.substring(0, globMatch.index)
+  const beforeGlob = filePath.substring(0, globMatch.index);
   const lastSepIndex = Math.max(
-    beforeGlob.lastIndexOf('/'),
-    beforeGlob.lastIndexOf('\\'),
-  )
-  if (lastSepIndex === -1) return '.'
-  return beforeGlob.substring(0, lastSepIndex + 1) || '/'
+    beforeGlob.lastIndexOf("/"),
+    beforeGlob.lastIndexOf("\\"),
+  );
+  if (lastSepIndex === -1) return ".";
+  return beforeGlob.substring(0, lastSepIndex + 1) || "/";
 }
 
 /**
@@ -1291,7 +1296,10 @@ function getGlobBaseDirectory(filePath: string): string {
  * 'ScriptBlock', 'Variable', 'ExpandableString') cannot be statically validated
  * and must force an ask.
  */
-const SAFE_PATH_ELEMENT_TYPES = new Set<string>(['StringConstant', 'Parameter'])
+const SAFE_PATH_ELEMENT_TYPES = new Set<string>([
+  "StringConstant",
+  "Parameter",
+]);
 
 /**
  * Extract file paths from a parsed PowerShell command element.
@@ -1302,47 +1310,47 @@ const SAFE_PATH_ELEMENT_TYPES = new Set<string>(['StringConstant', 'Parameter'])
  * hasUnvalidatablePathArg so the caller can force an ask.
  */
 function extractPathsFromCommand(cmd: ParsedCommandElement): {
-  paths: string[]
-  operationType: FileOperationType
-  hasUnvalidatablePathArg: boolean
-  optionalWrite: boolean
+  paths: string[];
+  operationType: FileOperationType;
+  hasUnvalidatablePathArg: boolean;
+  optionalWrite: boolean;
 } {
-  const canonical = resolveToCanonical(cmd.name)
-  const config = CMDLET_PATH_CONFIG[canonical]
+  const canonical = resolveToCanonical(cmd.name);
+  const config = CMDLET_PATH_CONFIG[canonical];
 
   if (!config) {
     return {
       paths: [],
-      operationType: 'read',
+      operationType: "read",
       hasUnvalidatablePathArg: false,
       optionalWrite: false,
-    }
+    };
   }
 
   // Build per-cmdlet known-param sets, merging in common parameters.
-  const switchParams = [...config.knownSwitches, ...COMMON_SWITCHES]
-  const valueParams = [...config.knownValueParams, ...COMMON_VALUE_PARAMS]
+  const switchParams = [...config.knownSwitches, ...COMMON_SWITCHES];
+  const valueParams = [...config.knownValueParams, ...COMMON_VALUE_PARAMS];
 
-  const paths: string[] = []
-  const args = cmd.args
+  const paths: string[] = [];
+  const args = cmd.args;
   // elementTypes[0] is the command name; elementTypes[i+1] corresponds to args[i]
-  const elementTypes = cmd.elementTypes
-  let hasUnvalidatablePathArg = false
-  let positionalsSeen = 0
-  const positionalSkip = config.positionalSkip ?? 0
+  const elementTypes = cmd.elementTypes;
+  let hasUnvalidatablePathArg = false;
+  let positionalsSeen = 0;
+  const positionalSkip = config.positionalSkip ?? 0;
 
   function checkArgElementType(argIdx: number): void {
-    if (!elementTypes) return
-    const et = elementTypes[argIdx + 1]
+    if (!elementTypes) return;
+    const et = elementTypes[argIdx + 1];
     if (et && !SAFE_PATH_ELEMENT_TYPES.has(et)) {
-      hasUnvalidatablePathArg = true
+      hasUnvalidatablePathArg = true;
     }
   }
 
   // Extract named parameter values (e.g., -Path "C:\foo")
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    if (!arg) continue
+    const arg = args[i];
+    if (!arg) continue;
 
     // Check if this arg is a parameter name.
     // SECURITY: Use elementTypes as ground truth. PowerShell's tokenizer
@@ -1351,42 +1359,42 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
     // parser maps CommandParameterAst → 'Parameter' regardless of dash char.
     // isPowerShellParameter also correctly rejects quoted "-Include"
     // (StringConstant, not a parameter).
-    const argElementType = elementTypes ? elementTypes[i + 1] : undefined
+    const argElementType = elementTypes ? elementTypes[i + 1] : undefined;
     if (isPowerShellParameter(arg, argElementType)) {
       // Handle colon syntax: -Path:C:\secret
       // Normalize Unicode dash to ASCII `-` (pathParams are stored with `-`).
-      const normalized = '-' + arg.slice(1)
-      const colonIdx = normalized.indexOf(':', 1) // skip first char (the dash)
+      const normalized = "-" + arg.slice(1);
+      const colonIdx = normalized.indexOf(":", 1); // skip first char (the dash)
       const paramName =
-        colonIdx > 0 ? normalized.substring(0, colonIdx) : normalized
-      const paramLower = paramName.toLowerCase()
+        colonIdx > 0 ? normalized.substring(0, colonIdx) : normalized;
+      const paramLower = paramName.toLowerCase();
 
       if (matchesParam(paramLower, config.pathParams)) {
         // Known path parameter — extract its value as a path.
-        let value: string | undefined
+        let value: string | undefined;
         if (colonIdx > 0) {
           // Colon syntax: -Path:value — the whole thing is one element.
           // SECURITY: comma-separated values (e.g., -Path:safe.txt,/etc/passwd)
           // produce ArrayLiteralExpressionAst inside the CommandParameterAst.
           // PowerShell writes to ALL paths, but we see a single string.
-          const rawValue = arg.substring(colonIdx + 1)
+          const rawValue = arg.substring(colonIdx + 1);
           if (hasComplexColonValue(rawValue)) {
-            hasUnvalidatablePathArg = true
+            hasUnvalidatablePathArg = true;
           } else {
-            value = rawValue
+            value = rawValue;
           }
         } else {
           // Standard syntax: -Path value
-          const nextVal = args[i + 1]
-          const nextType = elementTypes ? elementTypes[i + 2] : undefined
+          const nextVal = args[i + 1];
+          const nextType = elementTypes ? elementTypes[i + 2] : undefined;
           if (nextVal && !isPowerShellParameter(nextVal, nextType)) {
-            value = nextVal
-            checkArgElementType(i + 1)
-            i++ // Skip the value
+            value = nextVal;
+            checkArgElementType(i + 1);
+            i++; // Skip the value
           }
         }
         if (value) {
-          paths.push(value)
+          paths.push(value);
         }
       } else if (
         config.leafOnlyPathParams &&
@@ -1398,38 +1406,38 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
         // traversal) resolve to the WRONG location and can miss deny rules
         // (deny→ask downgrade). Extract simple leaf filenames; flag anything
         // path-like.
-        let value: string | undefined
+        let value: string | undefined;
         if (colonIdx > 0) {
-          const rawValue = arg.substring(colonIdx + 1)
+          const rawValue = arg.substring(colonIdx + 1);
           if (hasComplexColonValue(rawValue)) {
-            hasUnvalidatablePathArg = true
+            hasUnvalidatablePathArg = true;
           } else {
-            value = rawValue
+            value = rawValue;
           }
         } else {
-          const nextVal = args[i + 1]
-          const nextType = elementTypes ? elementTypes[i + 2] : undefined
+          const nextVal = args[i + 1];
+          const nextType = elementTypes ? elementTypes[i + 2] : undefined;
           if (nextVal && !isPowerShellParameter(nextVal, nextType)) {
-            value = nextVal
-            checkArgElementType(i + 1)
-            i++
+            value = nextVal;
+            checkArgElementType(i + 1);
+            i++;
           }
         }
         if (value !== undefined) {
           if (
-            value.includes('/') ||
-            value.includes('\\') ||
-            value === '.' ||
-            value === '..'
+            value.includes("/") ||
+            value.includes("\\") ||
+            value === "." ||
+            value === ".."
           ) {
             // Non-leaf: separators or traversal. Can't resolve correctly
             // without joining against -Path. Force ask.
-            hasUnvalidatablePathArg = true
+            hasUnvalidatablePathArg = true;
           } else {
             // Simple leaf: extract. Resolves to cwd/leaf (slightly wrong —
             // should be <-Path>/leaf) but -Path extraction covers the
             // directory, and a leaf filename can't traverse out of anywhere.
-            paths.push(value)
+            paths.push(value);
           }
         }
       } else if (matchesParam(paramLower, switchParams)) {
@@ -1448,16 +1456,16 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
           // The outer CommandParameterAst 'Parameter' type masks the inner
           // expression type. Check for expression markers that indicate a
           // non-static value (mirrors pathParams colon-syntax guards).
-          const rawValue = arg.substring(colonIdx + 1)
+          const rawValue = arg.substring(colonIdx + 1);
           if (hasComplexColonValue(rawValue)) {
-            hasUnvalidatablePathArg = true
+            hasUnvalidatablePathArg = true;
           }
         } else {
-          const nextArg = args[i + 1]
-          const nextArgType = elementTypes ? elementTypes[i + 2] : undefined
+          const nextArg = args[i + 1];
+          const nextArgType = elementTypes ? elementTypes[i + 2] : undefined;
           if (nextArg && !isPowerShellParameter(nextArg, nextArgType)) {
-            checkArgElementType(i + 1)
-            i++ // Skip the parameter's value
+            checkArgElementType(i + 1);
+            i++; // Skip the parameter's value
           }
         }
       } else {
@@ -1467,7 +1475,7 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
         // (and risk swallowing a positional path) or takes a value (and
         // risk the same), we flag the whole command as unvalidatable.
         // The caller will force an ask.
-        hasUnvalidatablePathArg = true
+        hasUnvalidatablePathArg = true;
         // SECURITY: Even though we don't recognize this param, if it uses
         // colon syntax (-UnknownParam:/etc/hosts) the bound value might be
         // a filesystem path. Extract it into paths[] so deny-rule matching
@@ -1476,27 +1484,27 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
         // downgrading deny to ask. This is defense-in-depth: the primary
         // fix is adding all known aliases to pathParams above.
         if (colonIdx > 0) {
-          const rawValue = arg.substring(colonIdx + 1)
+          const rawValue = arg.substring(colonIdx + 1);
           if (!hasComplexColonValue(rawValue)) {
-            paths.push(rawValue)
+            paths.push(rawValue);
           }
         }
         // Continue the loop so we still extract any recognizable paths
         // (useful for the ask message), but the flag ensures overall 'ask'.
       }
-      continue
+      continue;
     }
 
     // Positional arguments: extract as paths (e.g., Get-Content file.txt)
     // The first positional arg is typically the source path.
     // Skip leading positionals that are non-path values (e.g., iwr's -Uri).
     if (positionalsSeen < positionalSkip) {
-      positionalsSeen++
-      continue
+      positionalsSeen++;
+      continue;
     }
-    positionalsSeen++
-    checkArgElementType(i)
-    paths.push(arg)
+    positionalsSeen++;
+    checkArgElementType(i);
+    paths.push(arg);
   }
 
   return {
@@ -1504,7 +1512,7 @@ function extractPathsFromCommand(cmd: ParsedCommandElement): {
     operationType: config.operationType,
     hasUnvalidatablePathArg,
     optionalWrite: config.optionalWrite ?? false,
-  }
+  };
 }
 
 /**
@@ -1533,46 +1541,46 @@ export function checkPathConstraints(
 ): PermissionResult {
   if (!parsed.valid) {
     return {
-      behavior: 'passthrough',
-      message: 'Cannot validate paths for unparsed command',
-    }
+      behavior: "passthrough",
+      message: "Cannot validate paths for unparsed command",
+    };
   }
 
   // SECURITY: Two-pass approach — check ALL statements/paths so deny rules
   // always take precedence over ask. Without this, an ask on statement 1
   // could return before checking statement 2 for deny rules, letting the
   // user approve a command that includes a denied path.
-  let firstAsk: PermissionResult | undefined
+  let firstAsk: PermissionResult | undefined;
 
   for (const statement of parsed.statements) {
     const result = checkPathConstraintsForStatement(
       statement,
       toolPermissionContext,
       compoundCommandHasCd,
-    )
-    if (result.behavior === 'deny') {
-      return result
+    );
+    if (result.behavior === "deny") {
+      return result;
     }
-    if (result.behavior === 'ask' && !firstAsk) {
-      firstAsk = result
+    if (result.behavior === "ask" && !firstAsk) {
+      firstAsk = result;
     }
   }
 
   return (
     firstAsk ?? {
-      behavior: 'passthrough',
-      message: 'All path constraints validated successfully',
+      behavior: "passthrough",
+      message: "All path constraints validated successfully",
     }
-  )
+  );
 }
 
 function checkPathConstraintsForStatement(
-  statement: ParsedPowerShellCommand['statements'][number],
+  statement: ParsedPowerShellCommand["statements"][number],
   toolPermissionContext: ToolPermissionContext,
   compoundCommandHasCd = false,
 ): PermissionResult {
-  const cwd = getCwd()
-  let firstAsk: PermissionResult | undefined
+  const cwd = getCwd();
+  let firstAsk: PermissionResult | undefined;
 
   // SECURITY: BashTool parity — block path operations in compound commands
   // containing a cwd-changing cmdlet (BashTool/pathValidation.ts:630-655).
@@ -1605,15 +1613,15 @@ function checkPathConstraintsForStatement(
   // honored — deny > ask in the caller's reduce.
   if (compoundCommandHasCd) {
     firstAsk = {
-      behavior: 'ask',
+      behavior: "ask",
       message:
-        'Compound command changes working directory (Set-Location/Push-Location/Pop-Location/New-PSDrive) — relative paths cannot be validated against the original cwd and require manual approval',
+        "Compound command changes working directory (Set-Location/Push-Location/Pop-Location/New-PSDrive) — relative paths cannot be validated against the original cwd and require manual approval",
       decisionReason: {
-        type: 'other',
+        type: "other",
         reason:
-          'Compound command contains cd with path operation — manual approval required to prevent path resolution bypass',
+          "Compound command contains cd with path operation — manual approval required to prevent path resolution bypass",
       },
-    }
+    };
   }
 
   // SECURITY: Track whether this statement contains a non-CommandAst pipeline
@@ -1625,23 +1633,23 @@ function checkPathConstraintsForStatement(
   // appears alongside an expression source, we force an ask — the piped
   // path is unvalidatable regardless of operation type (reads leak data;
   // writes destroy it).
-  let hasExpressionPipelineSource = false
+  let hasExpressionPipelineSource = false;
   // Track the non-CommandAst element's text for deny-rule guessing (finding #23).
   // `'.git/hooks/pre-commit' | Remove-Item` — path comes via pipeline, paths=[]
   // from extractPathsFromCommand, so the deny loop below never iterates. We
   // feed the pipeline-source text through checkDenyRuleForGuessedPath so
   // explicit Edit(.git/**) deny rules still fire.
-  let pipelineSourceText: string | undefined
+  let pipelineSourceText: string | undefined;
 
   for (const cmd of statement.commands) {
-    if (cmd.elementType !== 'CommandAst') {
-      hasExpressionPipelineSource = true
-      pipelineSourceText = cmd.text
-      continue
+    if (cmd.elementType !== "CommandAst") {
+      hasExpressionPipelineSource = true;
+      pipelineSourceText = cmd.text;
+      continue;
     }
 
     const { paths, operationType, hasUnvalidatablePathArg, optionalWrite } =
-      extractPathsFromCommand(cmd)
+      extractPathsFromCommand(cmd);
 
     // SECURITY: Cmdlet receiving piped path from expression source.
     // `'/etc/shadow' | Get-Content` — Get-Content extracts zero paths
@@ -1650,32 +1658,32 @@ function checkPathConstraintsForStatement(
     // but that was a bypass (review comment 2885739292): reads from
     // unvalidatable paths are still a security risk. Ask regardless of op type.
     if (hasExpressionPipelineSource) {
-      const canonical = resolveToCanonical(cmd.name)
+      const canonical = resolveToCanonical(cmd.name);
       // SECURITY (finding #23): Before falling back to ask, check if the
       // pipeline-source text matches a deny rule. `'.git/hooks/pre-commit' |
       // Remove-Item` should DENY (not ask) when Edit(.git/**) is configured.
       // Strip surrounding quotes (string literals are quoted in .text) and
       // feed through the same deny-guess helper used for ::/backtick paths.
       if (pipelineSourceText !== undefined) {
-        const stripped = pipelineSourceText.replace(/^['"]|['"]$/g, '')
+        const stripped = pipelineSourceText.replace(/^['"]|['"]$/g, "");
         const denyHit = checkDenyRuleForGuessedPath(
           stripped,
           cwd,
           toolPermissionContext,
           operationType,
-        )
+        );
         if (denyHit) {
           return {
-            behavior: 'deny',
+            behavior: "deny",
             message: `${canonical} targeting '${denyHit.resolvedPath}' was blocked by a deny rule`,
-            decisionReason: { type: 'rule', rule: denyHit.rule },
-          }
+            decisionReason: { type: "rule", rule: denyHit.rule },
+          };
         }
       }
       firstAsk ??= {
-        behavior: 'ask',
+        behavior: "ask",
         message: `${canonical} receives its path from a pipeline expression source that cannot be statically validated and requires manual approval`,
-      }
+      };
       // Don't continue — fall through to path loop so deny rules on
       // extracted paths are still checked.
     }
@@ -1686,11 +1694,11 @@ function checkPathConstraintsForStatement(
     // element whose combined text may resolve within CWD while
     // PowerShell actually writes to ALL paths in the array.
     if (hasUnvalidatablePathArg) {
-      const canonical = resolveToCanonical(cmd.name)
+      const canonical = resolveToCanonical(cmd.name);
       firstAsk ??= {
-        behavior: 'ask',
+        behavior: "ask",
         message: `${canonical} uses a parameter or complex path expression (array literal, subexpression, unknown parameter, etc.) that cannot be statically validated and requires manual approval`,
-      }
+      };
       // Don't continue — fall through to path loop so deny rules on
       // extracted paths are still checked.
     }
@@ -1707,17 +1715,17 @@ function checkPathConstraintsForStatement(
     // present; without one, output goes to the pipeline. The
     // hasUnvalidatablePathArg check above already covers unknown-param cases.
     if (
-      operationType !== 'read' &&
+      operationType !== "read" &&
       !optionalWrite &&
       paths.length === 0 &&
       CMDLET_PATH_CONFIG[resolveToCanonical(cmd.name)]
     ) {
-      const canonical = resolveToCanonical(cmd.name)
+      const canonical = resolveToCanonical(cmd.name);
       firstAsk ??= {
-        behavior: 'ask',
+        behavior: "ask",
         message: `${canonical} is a write operation but no target path could be determined; requires manual approval`,
-      }
-      continue
+      };
+      continue;
     }
 
     // SECURITY: bash-parity hard-deny for removal cmdlets on
@@ -1725,7 +1733,7 @@ function checkPathConstraintsForStatement(
     // hard-DENIES `rm /`, `rm ~`, `rm /etc`, etc. regardless of user config.
     // Port: remove-item (and aliases rm/del/ri/rd/rmdir/erase → resolveToCanonical)
     // on a dangerous path → deny (not ask). User cannot approve system32 deletion.
-    const isRemoval = resolveToCanonical(cmd.name) === 'remove-item'
+    const isRemoval = resolveToCanonical(cmd.name) === "remove-item";
 
     for (const filePath of paths) {
       // Hard-deny removal of dangerous system paths (/, ~, /etc, etc.).
@@ -1733,7 +1741,7 @@ function checkPathConstraintsForStatement(
       // canonicalize '/' → 'C:\' (Windows) or '/var/...' → '/private/var/...'
       // (macOS) which defeats isDangerousRemovalPath's string comparisons.
       if (isRemoval && isDangerousRemovalRawPath(filePath)) {
-        return dangerousRemovalDeny(filePath)
+        return dangerousRemovalDeny(filePath);
       }
 
       const { allowed, resolvedPath, decisionReason } = validatePath(
@@ -1741,69 +1749,69 @@ function checkPathConstraintsForStatement(
         cwd,
         toolPermissionContext,
         operationType,
-      )
+      );
 
       // Also check the resolved path — catches symlinks that resolve to a
       // protected location.
       if (isRemoval && isDangerousRemovalPath(resolvedPath)) {
-        return dangerousRemovalDeny(resolvedPath)
+        return dangerousRemovalDeny(resolvedPath);
       }
 
       if (!allowed) {
-        const canonical = resolveToCanonical(cmd.name)
+        const canonical = resolveToCanonical(cmd.name);
         const workingDirs = Array.from(
           allWorkingDirectories(toolPermissionContext),
-        )
-        const dirListStr = formatDirectoryList(workingDirs)
+        );
+        const dirListStr = formatDirectoryList(workingDirs);
 
         const message =
-          decisionReason?.type === 'other' ||
-          decisionReason?.type === 'safetyCheck'
+          decisionReason?.type === "other" ||
+          decisionReason?.type === "safetyCheck"
             ? decisionReason.reason
-            : `${canonical} targeting '${resolvedPath}' was blocked. For security, Tau may only access files in the allowed working directories for this session: ${dirListStr}.`
+            : `${canonical} targeting '${resolvedPath}' was blocked. For security, Zen may only access files in the allowed working directories for this session: ${dirListStr}.`;
 
-        if (decisionReason?.type === 'rule') {
+        if (decisionReason?.type === "rule") {
           return {
-            behavior: 'deny',
+            behavior: "deny",
             message,
             decisionReason,
-          }
+          };
         }
 
-        const suggestions: PermissionUpdate[] = []
+        const suggestions: PermissionUpdate[] = [];
         if (resolvedPath) {
-          if (operationType === 'read') {
+          if (operationType === "read") {
             const suggestion = createReadRuleSuggestion(
               getDirectoryForPath(resolvedPath),
-              'session',
-            )
+              "session",
+            );
             if (suggestion) {
-              suggestions.push(suggestion)
+              suggestions.push(suggestion);
             }
           } else {
             suggestions.push({
-              type: 'addDirectories',
+              type: "addDirectories",
               directories: [getDirectoryForPath(resolvedPath)],
-              destination: 'session',
-            })
+              destination: "session",
+            });
           }
         }
 
-        if (operationType === 'write' || operationType === 'create') {
+        if (operationType === "write" || operationType === "create") {
           suggestions.push({
-            type: 'setMode',
-            mode: 'acceptEdits',
-            destination: 'session',
-          })
+            type: "setMode",
+            mode: "acceptEdits",
+            destination: "session",
+          });
         }
 
         firstAsk ??= {
-          behavior: 'ask',
+          behavior: "ask",
           message,
           blockedPath: resolvedPath,
           decisionReason,
           suggestions,
-        }
+        };
       }
     }
   }
@@ -1812,43 +1820,43 @@ function checkPathConstraintsForStatement(
   if (statement.nestedCommands) {
     for (const cmd of statement.nestedCommands) {
       const { paths, operationType, hasUnvalidatablePathArg, optionalWrite } =
-        extractPathsFromCommand(cmd)
+        extractPathsFromCommand(cmd);
 
       if (hasUnvalidatablePathArg) {
-        const canonical = resolveToCanonical(cmd.name)
+        const canonical = resolveToCanonical(cmd.name);
         firstAsk ??= {
-          behavior: 'ask',
+          behavior: "ask",
           message: `${canonical} uses a parameter or complex path expression (array literal, subexpression, unknown parameter, etc.) that cannot be statically validated and requires manual approval`,
-        }
+        };
         // Don't continue — fall through to path loop for deny checks.
       }
 
       // SECURITY: Write cmdlet with zero extracted paths (mirrors main loop).
       // optionalWrite cmdlets exempt — see main-loop comment.
       if (
-        operationType !== 'read' &&
+        operationType !== "read" &&
         !optionalWrite &&
         paths.length === 0 &&
         CMDLET_PATH_CONFIG[resolveToCanonical(cmd.name)]
       ) {
-        const canonical = resolveToCanonical(cmd.name)
+        const canonical = resolveToCanonical(cmd.name);
         firstAsk ??= {
-          behavior: 'ask',
+          behavior: "ask",
           message: `${canonical} is a write operation but no target path could be determined; requires manual approval`,
-        }
-        continue
+        };
+        continue;
       }
 
       // SECURITY: bash-parity hard-deny for removal on system-critical
       // paths — mirror the main-loop check above. Without this,
       // `if ($true) { Remove-Item / }` routes through nestedCommands and
       // downgrades deny→ask, letting the user approve root deletion.
-      const isRemoval = resolveToCanonical(cmd.name) === 'remove-item'
+      const isRemoval = resolveToCanonical(cmd.name) === "remove-item";
 
       for (const filePath of paths) {
         // Check the RAW path first (pre-realpath); see main-loop comment.
         if (isRemoval && isDangerousRemovalRawPath(filePath)) {
-          return dangerousRemovalDeny(filePath)
+          return dangerousRemovalDeny(filePath);
         }
 
         const { allowed, resolvedPath, decisionReason } = validatePath(
@@ -1856,67 +1864,67 @@ function checkPathConstraintsForStatement(
           cwd,
           toolPermissionContext,
           operationType,
-        )
+        );
 
         if (isRemoval && isDangerousRemovalPath(resolvedPath)) {
-          return dangerousRemovalDeny(resolvedPath)
+          return dangerousRemovalDeny(resolvedPath);
         }
 
         if (!allowed) {
-          const canonical = resolveToCanonical(cmd.name)
+          const canonical = resolveToCanonical(cmd.name);
           const workingDirs = Array.from(
             allWorkingDirectories(toolPermissionContext),
-          )
-          const dirListStr = formatDirectoryList(workingDirs)
+          );
+          const dirListStr = formatDirectoryList(workingDirs);
 
           const message =
-            decisionReason?.type === 'other' ||
-            decisionReason?.type === 'safetyCheck'
+            decisionReason?.type === "other" ||
+            decisionReason?.type === "safetyCheck"
               ? decisionReason.reason
-              : `${canonical} targeting '${resolvedPath}' was blocked. For security, Tau may only access files in the allowed working directories for this session: ${dirListStr}.`
+              : `${canonical} targeting '${resolvedPath}' was blocked. For security, Zen may only access files in the allowed working directories for this session: ${dirListStr}.`;
 
-          if (decisionReason?.type === 'rule') {
+          if (decisionReason?.type === "rule") {
             return {
-              behavior: 'deny',
+              behavior: "deny",
               message,
               decisionReason,
-            }
+            };
           }
 
-          const suggestions: PermissionUpdate[] = []
+          const suggestions: PermissionUpdate[] = [];
           if (resolvedPath) {
-            if (operationType === 'read') {
+            if (operationType === "read") {
               const suggestion = createReadRuleSuggestion(
                 getDirectoryForPath(resolvedPath),
-                'session',
-              )
+                "session",
+              );
               if (suggestion) {
-                suggestions.push(suggestion)
+                suggestions.push(suggestion);
               }
             } else {
               suggestions.push({
-                type: 'addDirectories',
+                type: "addDirectories",
                 directories: [getDirectoryForPath(resolvedPath)],
-                destination: 'session',
-              })
+                destination: "session",
+              });
             }
           }
 
-          if (operationType === 'write' || operationType === 'create') {
+          if (operationType === "write" || operationType === "create") {
             suggestions.push({
-              type: 'setMode',
-              mode: 'acceptEdits',
-              destination: 'session',
-            })
+              type: "setMode",
+              mode: "acceptEdits",
+              destination: "session",
+            });
           }
 
           firstAsk ??= {
-            behavior: 'ask',
+            behavior: "ask",
             message,
             blockedPath: resolvedPath,
             decisionReason,
             suggestions,
-          }
+          };
         }
       }
 
@@ -1927,9 +1935,9 @@ function checkPathConstraintsForStatement(
       // suggestions) win via ??=.
       if (hasExpressionPipelineSource) {
         firstAsk ??= {
-          behavior: 'ask',
+          behavior: "ask",
           message: `${resolveToCanonical(cmd.name)} appears inside a control-flow or chain statement where piped expression sources cannot be statically validated and requires manual approval`,
-        }
+        };
       }
     }
   }
@@ -1939,50 +1947,50 @@ function checkPathConstraintsForStatement(
     for (const cmd of statement.nestedCommands) {
       if (cmd.redirections) {
         for (const redir of cmd.redirections) {
-          if (redir.isMerging) continue
-          if (!redir.target) continue
-          if (isNullRedirectionTarget(redir.target)) continue
+          if (redir.isMerging) continue;
+          if (!redir.target) continue;
+          if (isNullRedirectionTarget(redir.target)) continue;
 
           const { allowed, resolvedPath, decisionReason } = validatePath(
             redir.target,
             cwd,
             toolPermissionContext,
-            'create',
-          )
+            "create",
+          );
 
           if (!allowed) {
             const workingDirs = Array.from(
               allWorkingDirectories(toolPermissionContext),
-            )
-            const dirListStr = formatDirectoryList(workingDirs)
+            );
+            const dirListStr = formatDirectoryList(workingDirs);
 
             const message =
-              decisionReason?.type === 'other' ||
-              decisionReason?.type === 'safetyCheck'
+              decisionReason?.type === "other" ||
+              decisionReason?.type === "safetyCheck"
                 ? decisionReason.reason
-                : `Output redirection to '${resolvedPath}' was blocked. For security, Tau may only write to files in the allowed working directories for this session: ${dirListStr}.`
+                : `Output redirection to '${resolvedPath}' was blocked. For security, Zen may only write to files in the allowed working directories for this session: ${dirListStr}.`;
 
-            if (decisionReason?.type === 'rule') {
+            if (decisionReason?.type === "rule") {
               return {
-                behavior: 'deny',
+                behavior: "deny",
                 message,
                 decisionReason,
-              }
+              };
             }
 
             firstAsk ??= {
-              behavior: 'ask',
+              behavior: "ask",
               message,
               blockedPath: resolvedPath,
               decisionReason,
               suggestions: [
                 {
-                  type: 'addDirectories',
+                  type: "addDirectories",
                   directories: [getDirectoryForPath(resolvedPath)],
-                  destination: 'session',
+                  destination: "session",
                 },
               ],
-            }
+            };
           }
         }
       }
@@ -1992,58 +2000,58 @@ function checkPathConstraintsForStatement(
   // Check file redirections
   if (statement.redirections) {
     for (const redir of statement.redirections) {
-      if (redir.isMerging) continue
-      if (!redir.target) continue
-      if (isNullRedirectionTarget(redir.target)) continue
+      if (redir.isMerging) continue;
+      if (!redir.target) continue;
+      if (isNullRedirectionTarget(redir.target)) continue;
 
       const { allowed, resolvedPath, decisionReason } = validatePath(
         redir.target,
         cwd,
         toolPermissionContext,
-        'create',
-      )
+        "create",
+      );
 
       if (!allowed) {
         const workingDirs = Array.from(
           allWorkingDirectories(toolPermissionContext),
-        )
-        const dirListStr = formatDirectoryList(workingDirs)
+        );
+        const dirListStr = formatDirectoryList(workingDirs);
 
         const message =
-          decisionReason?.type === 'other' ||
-          decisionReason?.type === 'safetyCheck'
+          decisionReason?.type === "other" ||
+          decisionReason?.type === "safetyCheck"
             ? decisionReason.reason
-            : `Output redirection to '${resolvedPath}' was blocked. For security, Tau may only write to files in the allowed working directories for this session: ${dirListStr}.`
+            : `Output redirection to '${resolvedPath}' was blocked. For security, Zen may only write to files in the allowed working directories for this session: ${dirListStr}.`;
 
-        if (decisionReason?.type === 'rule') {
+        if (decisionReason?.type === "rule") {
           return {
-            behavior: 'deny',
+            behavior: "deny",
             message,
             decisionReason,
-          }
+          };
         }
 
         firstAsk ??= {
-          behavior: 'ask',
+          behavior: "ask",
           message,
           blockedPath: resolvedPath,
           decisionReason,
           suggestions: [
             {
-              type: 'addDirectories',
+              type: "addDirectories",
               directories: [getDirectoryForPath(resolvedPath)],
-              destination: 'session',
+              destination: "session",
             },
           ],
-        }
+        };
       }
     }
   }
 
   return (
     firstAsk ?? {
-      behavior: 'passthrough',
-      message: 'All path constraints validated successfully',
+      behavior: "passthrough",
+      message: "All path constraints validated successfully",
     }
-  )
+  );
 }

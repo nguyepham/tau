@@ -1,47 +1,47 @@
-import { feature } from 'bun:bundle'
-import { prependBullets } from '../../constants/prompts.js'
-import { getAttributionTexts } from '../../utils/attribution.js'
-import { hasEmbeddedSearchTools } from '../../utils/embeddedTools.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
-import { shouldIncludeGitInstructions } from '../../utils/gitSettings.js'
-import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
-import { getPlatform } from '../../utils/platform.js'
-import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
+import { feature } from "bun:bundle";
+import { prependBullets } from "../../constants/prompts.js";
+import { getAttributionTexts } from "../../utils/attribution.js";
+import { hasEmbeddedSearchTools } from "../../utils/embeddedTools.js";
+import { isEnvTruthy } from "../../utils/envUtils.js";
+import { shouldIncludeGitInstructions } from "../../utils/gitSettings.js";
+import { getClaudeTempDir } from "../../utils/permissions/filesystem.js";
+import { getPlatform } from "../../utils/platform.js";
+import { SandboxManager } from "../../utils/sandbox/sandbox-adapter.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
 import {
   getDefaultBashTimeoutMs,
   getMaxBashTimeoutMs,
-} from '../../utils/timeouts.js'
+} from "../../utils/timeouts.js";
 import {
   getUndercoverInstructions,
   isUndercover,
-} from '../../utils/undercover.js'
-import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
-import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
-import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
-import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
-import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
-import { GREP_TOOL_NAME } from '../GrepTool/prompt.js'
-import { TodoWriteTool } from '../TodoWriteTool/TodoWriteTool.js'
+} from "../../utils/undercover.js";
+import { AGENT_TOOL_NAME } from "../AgentTool/constants.js";
+import { FILE_EDIT_TOOL_NAME } from "../FileEditTool/constants.js";
+import { FILE_READ_TOOL_NAME } from "../FileReadTool/prompt.js";
+import { FILE_WRITE_TOOL_NAME } from "../FileWriteTool/prompt.js";
+import { GLOB_TOOL_NAME } from "../GlobTool/prompt.js";
+import { GREP_TOOL_NAME } from "../GrepTool/prompt.js";
+import { TodoWriteTool } from "../TodoWriteTool/TodoWriteTool.js";
 import {
   getBashCommandBestPractices,
   getBashPlatformBestPractices,
-} from './bashBestPractices.js'
-import { BASH_TOOL_NAME } from './toolName.js'
+} from "./bashBestPractices.js";
+import { BASH_TOOL_NAME } from "./toolName.js";
 
 export function getDefaultTimeoutMs(): number {
-  return getDefaultBashTimeoutMs()
+  return getDefaultBashTimeoutMs();
 }
 
 export function getMaxTimeoutMs(): number {
-  return getMaxBashTimeoutMs()
+  return getMaxBashTimeoutMs();
 }
 
 function getBackgroundUsageNote(): string | null {
   if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)) {
-    return null
+    return null;
   }
-  return "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter."
+  return "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter.";
 }
 
 function getCommitAndPRInstructions(): string {
@@ -51,14 +51,14 @@ function getCommitAndPRInstructions(): string {
   // your cover" instructions are the last line of defense against the model
   // volunteering an internal codename in a commit message.
   const undercoverSection =
-    process.env.USER_TYPE === 'ant' && isUndercover()
-      ? getUndercoverInstructions() + '\n'
-      : ''
+    process.env.USER_TYPE === "ant" && isUndercover()
+      ? getUndercoverInstructions() + "\n"
+      : "";
 
-  if (!shouldIncludeGitInstructions()) return undercoverSection
+  if (!shouldIncludeGitInstructions()) return undercoverSection;
 
   // For ant users, use the short version pointing to skills
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.USER_TYPE === "ant") {
     const skillsSection = !isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
       ? `For git commits and pull requests, use the \`/commit\` and \`/commit-push-pr\` skills:
 - \`/commit\` - Create a git commit with staged changes
@@ -69,7 +69,7 @@ These skills handle git safety protocols, proper commit message formatting, and 
 Before creating a pull request, run \`/simplify\` to review your changes, then test end-to-end (e.g. via \`/tmux\` for interactive features).
 
 `
-      : ''
+      : "";
     return `${undercoverSection}# Git operations
 
 ${skillsSection}IMPORTANT: NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it.
@@ -77,11 +77,12 @@ ${skillsSection}IMPORTANT: NEVER skip hooks (--no-verify, --no-gpg-sign, etc) un
 Use the gh command via the Bash tool for other GitHub-related tasks including working with issues, checks, and releases. If given a Github URL use the gh command to get the information needed.
 
 # Other common operations
-- View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`
+- View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`;
   }
 
   // For external users, include full inline instructions
-  const { commit: commitAttribution, pr: prAttribution } = getAttributionTexts()
+  const { commit: commitAttribution, pr: prAttribution } =
+    getAttributionTexts();
 
   return `# Committing changes with git
 
@@ -91,7 +92,7 @@ You can call multiple tools in a single response. When multiple independent piec
 
 Git Safety Protocol:
 - NEVER update the git config
-- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions 
+- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions
 - NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
 - NEVER run force push to main/master, warn the user if they request it
 - CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
@@ -109,7 +110,7 @@ Git Safety Protocol:
   - Ensure it accurately reflects the changes and their purpose
 3. Run the following commands in parallel:
    - Add relevant untracked files to the staging area.
-   - Create the commit with a message${commitAttribution ? ` ending with:\n   ${commitAttribution}` : '.'}
+   - Create the commit with a message${commitAttribution ? ` ending with:\n   ${commitAttribution}` : "."}
    - Run git status after the commit completes to verify success.
    Note: git status depends on the commit completing, so run it sequentially after the commit.
 4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit
@@ -124,7 +125,7 @@ Important notes:
 - In order to ensure good formatting, ALWAYS pass the commit message via a HEREDOC, a la this example:
 <example>
 git commit -m "$(cat <<'EOF'
-   Commit message here.${commitAttribution ? `\n\n   ${commitAttribution}` : ''}
+   Commit message here.${commitAttribution ? `\n\n   ${commitAttribution}` : ""}
    EOF
    )"
 </example>
@@ -152,7 +153,7 @@ gh pr create --title "the pr title" --body "$(cat <<'EOF'
 <1-3 bullet points>
 
 ## Test plan
-[Bulleted markdown checklist of TODOs for testing the pull request...]${prAttribution ? `\n\n${prAttribution}` : ''}
+[Bulleted markdown checklist of TODOs for testing the pull request...]${prAttribution ? `\n\n${prAttribution}` : ""}
 EOF
 )"
 </example>
@@ -162,7 +163,7 @@ Important:
 - Return the PR URL when you're done, so the user can see it
 
 # Other common operations
-- View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`
+- View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`;
 }
 
 // SandboxManager merges config from multiple sources (settings layers, defaults,
@@ -170,29 +171,29 @@ Important:
 // Dedup here before inlining into the prompt — affects only what the model sees,
 // not sandbox enforcement. Saves ~150-200 tokens/request when sandbox is enabled.
 function dedup<T>(arr: T[] | undefined): T[] | undefined {
-  if (!arr || arr.length === 0) return arr
-  return [...new Set(arr)]
+  if (!arr || arr.length === 0) return arr;
+  return [...new Set(arr)];
 }
 
 function getSimpleSandboxSection(): string {
   if (!SandboxManager.isSandboxingEnabled()) {
-    return ''
+    return "";
   }
 
-  const fsReadConfig = SandboxManager.getFsReadConfig()
-  const fsWriteConfig = SandboxManager.getFsWriteConfig()
-  const networkRestrictionConfig = SandboxManager.getNetworkRestrictionConfig()
-  const allowUnixSockets = SandboxManager.getAllowUnixSockets()
-  const ignoreViolations = SandboxManager.getIgnoreViolations()
+  const fsReadConfig = SandboxManager.getFsReadConfig();
+  const fsWriteConfig = SandboxManager.getFsWriteConfig();
+  const networkRestrictionConfig = SandboxManager.getNetworkRestrictionConfig();
+  const allowUnixSockets = SandboxManager.getAllowUnixSockets();
+  const ignoreViolations = SandboxManager.getIgnoreViolations();
   const allowUnsandboxedCommands =
-    SandboxManager.areUnsandboxedCommandsAllowed()
+    SandboxManager.areUnsandboxedCommandsAllowed();
 
   // Replace the per-UID temp dir literal (e.g. /private/tmp/claude-1001/) with
   // "$TMPDIR" so the prompt is identical across users — avoids busting the
   // cross-user global prompt cache. The sandbox already sets $TMPDIR at runtime.
-  const claudeTempDir = getClaudeTempDir()
+  const claudeTempDir = getClaudeTempDir();
   const normalizeAllowOnly = (paths: string[]): string[] =>
-    [...new Set(paths)].map(p => (p === claudeTempDir ? '$TMPDIR' : p))
+    [...new Set(paths)].map((p) => (p === claudeTempDir ? "$TMPDIR" : p));
 
   const filesystemConfig = {
     read: {
@@ -205,7 +206,7 @@ function getSimpleSandboxSection(): string {
       allowOnly: normalizeAllowOnly(fsWriteConfig.allowOnly),
       denyWithinAllow: dedup(fsWriteConfig.denyWithinAllow),
     },
-  }
+  };
 
   const networkConfig = {
     ...(networkRestrictionConfig?.allowedHosts && {
@@ -215,72 +216,72 @@ function getSimpleSandboxSection(): string {
       deniedHosts: dedup(networkRestrictionConfig.deniedHosts),
     }),
     ...(allowUnixSockets && { allowUnixSockets: dedup(allowUnixSockets) }),
-  }
+  };
 
-  const restrictionsLines = []
+  const restrictionsLines = [];
   if (Object.keys(filesystemConfig).length > 0) {
-    restrictionsLines.push(`Filesystem: ${jsonStringify(filesystemConfig)}`)
+    restrictionsLines.push(`Filesystem: ${jsonStringify(filesystemConfig)}`);
   }
   if (Object.keys(networkConfig).length > 0) {
-    restrictionsLines.push(`Network: ${jsonStringify(networkConfig)}`)
+    restrictionsLines.push(`Network: ${jsonStringify(networkConfig)}`);
   }
   if (ignoreViolations) {
     restrictionsLines.push(
       `Ignored violations: ${jsonStringify(ignoreViolations)}`,
-    )
+    );
   }
 
   const sandboxOverrideItems: Array<string | string[]> =
     allowUnsandboxedCommands
       ? [
-          'You should always default to running commands within the sandbox. Do NOT attempt to set `dangerouslyDisableSandbox: true` unless:',
+          "You should always default to running commands within the sandbox. Do NOT attempt to set `dangerouslyDisableSandbox: true` unless:",
           [
-            'The user *explicitly* asks you to bypass sandbox',
-            'A specific command just failed and you see evidence of sandbox restrictions causing the failure. Note that commands can fail for many reasons unrelated to the sandbox (missing files, wrong arguments, network issues, etc.).',
+            "The user *explicitly* asks you to bypass sandbox",
+            "A specific command just failed and you see evidence of sandbox restrictions causing the failure. Note that commands can fail for many reasons unrelated to the sandbox (missing files, wrong arguments, network issues, etc.).",
           ],
-          'Evidence of sandbox-caused failures includes:',
+          "Evidence of sandbox-caused failures includes:",
           [
             '"Operation not permitted" errors for file/network operations',
-            'Access denied to specific paths outside allowed directories',
-            'Network connection failures to non-whitelisted hosts',
-            'Unix socket connection errors',
+            "Access denied to specific paths outside allowed directories",
+            "Network connection failures to non-whitelisted hosts",
+            "Unix socket connection errors",
           ],
-          'When you see evidence of sandbox-caused failure:',
+          "When you see evidence of sandbox-caused failure:",
           [
             "Immediately retry with `dangerouslyDisableSandbox: true` (don't ask, just do it)",
-            'Briefly explain what sandbox restriction likely caused the failure. Be sure to mention that the user can use the `/sandbox` command to manage restrictions.',
-            'This will prompt the user for permission',
+            "Briefly explain what sandbox restriction likely caused the failure. Be sure to mention that the user can use the `/sandbox` command to manage restrictions.",
+            "This will prompt the user for permission",
           ],
-          'Treat each command you execute with `dangerouslyDisableSandbox: true` individually. Even if you have recently run a command with this setting, you should default to running future commands within the sandbox.',
-          'Do not suggest adding sensitive paths like ~/.bashrc, ~/.zshrc, ~/.ssh/*, or credential files to the sandbox allowlist.',
+          "Treat each command you execute with `dangerouslyDisableSandbox: true` individually. Even if you have recently run a command with this setting, you should default to running future commands within the sandbox.",
+          "Do not suggest adding sensitive paths like ~/.bashrc, ~/.zshrc, ~/.ssh/*, or credential files to the sandbox allowlist.",
         ]
       : [
-          'All commands MUST run in sandbox mode - the `dangerouslyDisableSandbox` parameter is disabled by policy.',
-          'Commands cannot run outside the sandbox under any circumstances.',
-          'If a command fails due to sandbox restrictions, work with the user to adjust sandbox settings instead.',
-        ]
+          "All commands MUST run in sandbox mode - the `dangerouslyDisableSandbox` parameter is disabled by policy.",
+          "Commands cannot run outside the sandbox under any circumstances.",
+          "If a command fails due to sandbox restrictions, work with the user to adjust sandbox settings instead.",
+        ];
 
   const items: Array<string | string[]> = [
     ...sandboxOverrideItems,
-    'For temporary files, always use the `$TMPDIR` environment variable. TMPDIR is automatically set to the correct sandbox-writable directory in sandbox mode. Do NOT use `/tmp` directly - use `$TMPDIR` instead.',
-  ]
+    "For temporary files, always use the `$TMPDIR` environment variable. TMPDIR is automatically set to the correct sandbox-writable directory in sandbox mode. Do NOT use `/tmp` directly - use `$TMPDIR` instead.",
+  ];
 
   return [
-    '',
-    '## Command sandbox',
-    'By default, your command will be run in a sandbox. This sandbox controls which directories and network hosts commands may access or modify without an explicit override.',
-    '',
-    'The sandbox has the following restrictions:',
-    restrictionsLines.join('\n'),
-    '',
+    "",
+    "## Command sandbox",
+    "By default, your command will be run in a sandbox. This sandbox controls which directories and network hosts commands may access or modify without an explicit override.",
+    "",
+    "The sandbox has the following restrictions:",
+    restrictionsLines.join("\n"),
+    "",
     ...prependBullets(items),
-  ].join('\n')
+  ].join("\n");
 }
 
 export function getSimplePrompt(): string {
   // Ant-native builds alias find/grep to embedded bfs/ugrep in Claude's shell,
   // so we don't steer away from them (and Glob/Grep tools are removed).
-  const embedded = hasEmbeddedSearchTools()
+  const embedded = hasEmbeddedSearchTools();
 
   const toolPreferenceItems = [
     ...(embedded
@@ -292,75 +293,75 @@ export function getSimplePrompt(): string {
     `Read files: Use ${FILE_READ_TOOL_NAME} (NOT cat/head/tail)`,
     `Edit files: Use ${FILE_EDIT_TOOL_NAME} (NOT sed/awk)`,
     `Write files: Use ${FILE_WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)`,
-    'Communication: Output text directly (NOT echo/printf)',
-  ]
+    "Communication: Output text directly (NOT echo/printf)",
+  ];
 
   const avoidCommands = embedded
-    ? '`cat`, `head`, `tail`, `sed`, `awk`, or `echo`'
-    : '`find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo`'
+    ? "`cat`, `head`, `tail`, `sed`, `awk`, or `echo`"
+    : "`find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo`";
 
   const multipleCommandsSubitems = [
     `If the commands are independent and can run in parallel, make multiple ${BASH_TOOL_NAME} tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two ${BASH_TOOL_NAME} tool calls in parallel.`,
     `If the commands depend on each other and must run sequentially, use a single ${BASH_TOOL_NAME} call with '&&' to chain them together.`,
     "Use ';' only when you need to run commands sequentially but don't care if earlier commands fail.",
-    'DO NOT use newlines to separate commands (newlines are ok in quoted strings).',
-  ]
+    "DO NOT use newlines to separate commands (newlines are ok in quoted strings).",
+  ];
 
   const gitSubitems = [
-    'Prefer to create a new commit rather than amending an existing commit.',
-    'Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative that achieves the same goal. Only use destructive operations when they are truly the best approach.',
-    'Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue.',
-  ]
+    "Prefer to create a new commit rather than amending an existing commit.",
+    "Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative that achieves the same goal. Only use destructive operations when they are truly the best approach.",
+    "Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue.",
+  ];
 
   const sleepSubitems = [
-    'Do not sleep between commands that can run immediately — just run them.',
-    ...(feature('MONITOR_TOOL')
+    "Do not sleep between commands that can run immediately — just run them.",
+    ...(feature("MONITOR_TOOL")
       ? [
           'Use the Monitor tool to stream events from a background process (each stdout line is a notification). For one-shot "wait until done," use Bash with run_in_background instead.',
         ]
       : []),
-    'If your command is long running and you would like to be notified when it finishes — use `run_in_background`. No sleep needed.',
-    'Do not retry failing commands in a sleep loop — diagnose the root cause.',
-    'If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.',
-    ...(feature('MONITOR_TOOL')
+    "If your command is long running and you would like to be notified when it finishes — use `run_in_background`. No sleep needed.",
+    "Do not retry failing commands in a sleep loop — diagnose the root cause.",
+    "If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.",
+    ...(feature("MONITOR_TOOL")
       ? [
-          '`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.',
+          "`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.",
         ]
       : [
-          'If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.',
-          'If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.',
+          "If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.",
+          "If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.",
         ]),
-  ]
-  const backgroundNote = getBackgroundUsageNote()
-  const platform = getPlatform()
-  const platformBestPractices = getBashPlatformBestPractices(platform)
-  const commandBestPractices = getBashCommandBestPractices()
-  if (platform === 'windows') {
+  ];
+  const backgroundNote = getBackgroundUsageNote();
+  const platform = getPlatform();
+  const platformBestPractices = getBashPlatformBestPractices(platform);
+  const commandBestPractices = getBashCommandBestPractices();
+  if (platform === "windows") {
     platformBestPractices.push(
-      'Prefer forward slashes in arguments to native Windows binaries. Windows-native CLIs (tasklist, taskkill, reg, netsh, ipconfig, findstr, …) take `/FLAG` arguments that Git Bash may rewrite as paths; Tau auto-doubles recognized flags (`//FLAG`), but prefer PowerShell equivalents when available. Git Bash has no lsof/fuser.',
-      'Quote every path containing spaces. In Git Bash on Windows, spell absolute paths directly in command arguments using Git Bash paths for POSIX tools (for example `/c/Path/To/Project`) or drive paths with forward slashes for native Windows tools (for example `C:/Path/To/Project`); this avoids backslash escaping and keeps Linux/macOS absolute paths unchanged.',
-    )
+      "Prefer forward slashes in arguments to native Windows binaries. Windows-native CLIs (tasklist, taskkill, reg, netsh, ipconfig, findstr, …) take `/FLAG` arguments that Git Bash may rewrite as paths; Zen auto-doubles recognized flags (`//FLAG`), but prefer PowerShell equivalents when available. Git Bash has no lsof/fuser.",
+      "Quote every path containing spaces. In Git Bash on Windows, spell absolute paths directly in command arguments using Git Bash paths for POSIX tools (for example `/c/Path/To/Project`) or drive paths with forward slashes for native Windows tools (for example `C:/Path/To/Project`); this avoids backslash escaping and keeps Linux/macOS absolute paths unchanged.",
+    );
   }
 
   const instructionItems: Array<string | string[]> = [
-    'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
+    "If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.",
     'Always quote filepaths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
-    'To target a different directory, resolve it to an absolute path and put that path in the command itself. Prefer the command\'s own path/directory flag when one exists (for example `git -C /absolute/path status`, `npm --prefix /absolute/path run build`, `docker compose -f /absolute/path/docker-compose.yml down`) or pass the exact absolute file/directory path as an argument. Avoid `cd <dir> && <command>` unless the user explicitly asks.',
+    "To target a different directory, resolve it to an absolute path and put that path in the command itself. Prefer the command's own path/directory flag when one exists (for example `git -C /absolute/path status`, `npm --prefix /absolute/path run build`, `docker compose -f /absolute/path/docker-compose.yml down`) or pass the exact absolute file/directory path as an argument. Avoid `cd <dir> && <command>` unless the user explicitly asks.",
     'When the user names a specific directory to act on (e.g. "stop the container in C:/proj/TP1", "run the build in ./service-b"), you MUST target that exact directory by using its absolute path or the command\'s own path flag. NEVER fall back to running in the current session cwd just because a command would succeed there: the cwd may hold a DIFFERENT project (another compose file, another package), so a bare `docker compose down` / `npm run` / `mvn ...` would silently act on the wrong target. If the named directory is outside the current tree, pass its absolute path.',
-    'Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run `pwd` plus a directory listing or manifest search first; do not assume folders like `frontend` exist under the current session cwd.',
-    'CRITICAL: Before running commands that depend on a specific directory (docker compose, npm, python, etc.), ALWAYS verify the target exists first using Glob or Read. Do NOT guess or hallucinate paths. If the target is not in the current directory, use ABSOLUTE PATHS with command flags (e.g., `docker compose -f /absolute/path/to/compose.yml up -d`) or absolute path arguments instead of relying on the current directory.',
-    'Run normal Bash commands directly. Use `plan_only: true` only when the user explicitly asks for a dry-run plan; do not use it as a routine preflight for Python, package-manager, build, test, or cleanup commands.',
+    "Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run `pwd` plus a directory listing or manifest search first; do not assume folders like `frontend` exist under the current session cwd.",
+    "CRITICAL: Before running commands that depend on a specific directory (docker compose, npm, python, etc.), ALWAYS verify the target exists first using Glob or Read. Do NOT guess or hallucinate paths. If the target is not in the current directory, use ABSOLUTE PATHS with command flags (e.g., `docker compose -f /absolute/path/to/compose.yml up -d`) or absolute path arguments instead of relying on the current directory.",
+    "Run normal Bash commands directly. Use `plan_only: true` only when the user explicitly asks for a dry-run plan; do not use it as a routine preflight for Python, package-manager, build, test, or cleanup commands.",
     `You may specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). By default, your command will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).`,
     ...(backgroundNote !== null ? [backgroundNote] : []),
-    'Shell correctness rules:',
+    "Shell correctness rules:",
     commandBestPractices,
-    'Platform-specific shell rules:',
+    "Platform-specific shell rules:",
     platformBestPractices,
-    'When issuing multiple commands:',
+    "When issuing multiple commands:",
     multipleCommandsSubitems,
-    'For git commands:',
+    "For git commands:",
     gitSubitems,
-    'Avoid unnecessary `sleep` commands:',
+    "Avoid unnecessary `sleep` commands:",
     sleepSubitems,
     ...(embedded
       ? [
@@ -371,23 +372,23 @@ export function getSimplePrompt(): string {
           "When using `find -regex` with alternation, put the longest alternative first. Example: use `'.*\\.\\(tsx\\|ts\\)'` not `'.*\\.\\(ts\\|tsx\\)'` — the second form silently skips `.tsx` files.",
         ]
       : []),
-  ]
+  ];
 
   return [
-    'Executes a given bash command and returns its output.',
-    '',
+    "Executes a given bash command and returns its output.",
+    "",
     "The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile (bash or zsh).",
-    '',
-    'Directory awareness: whenever a command runs anywhere other than the session cwd — or the session cwd itself moves or drifts from the project root — the result includes a bracketed note stating the directory it actually ran in. ALWAYS trust these notes over your memory of earlier `cd` calls, especially in long sessions. To run a command against another directory, use that directory\'s absolute path in the command itself or use the command\'s native path flag; do not rely on remembered shell cwd state.',
-    '',
+    "",
+    "Directory awareness: whenever a command runs anywhere other than the session cwd — or the session cwd itself moves or drifts from the project root — the result includes a bracketed note stating the directory it actually ran in. ALWAYS trust these notes over your memory of earlier `cd` calls, especially in long sessions. To run a command against another directory, use that directory's absolute path in the command itself or use the command's native path flag; do not rely on remembered shell cwd state.",
+    "",
     `IMPORTANT: Avoid using this tool to run ${avoidCommands} commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:`,
-    '',
+    "",
     ...prependBullets(toolPreferenceItems),
     `While the ${BASH_TOOL_NAME} tool can do similar things, it’s better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.`,
-    '',
-    '# Instructions',
+    "",
+    "# Instructions",
     ...prependBullets(instructionItems),
     getSimpleSandboxSection(),
-    ...(getCommitAndPRInstructions() ? ['', getCommitAndPRInstructions()] : []),
-  ].join('\n')
+    ...(getCommitAndPRInstructions() ? ["", getCommitAndPRInstructions()] : []),
+  ].join("\n");
 }

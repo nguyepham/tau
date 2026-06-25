@@ -1,56 +1,60 @@
 #!/usr/bin/env node
 
-import { chmodSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
-import { spawnSync } from 'child_process'
+import { spawnSync } from "child_process";
+import { chmodSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
-const root = process.cwd()
-const sourceDir = join(root, 'native', 'shell-parser')
-const outDir = join(root, 'dist', 'native')
-const binaryName = process.platform === 'win32' ? 'tau-shell-parse.exe' : 'tau-shell-parse'
-const outPath = join(outDir, binaryName)
-const required = process.env.TAU_REQUIRE_NATIVE_SHELL_PARSER === '1'
+const root = process.cwd();
+const sourceDir = join(root, "native", "shell-parser");
+const outDir = join(root, "dist", "native");
+const binaryName =
+  process.platform === "win32" ? "zen-shell-parse.exe" : "zen-shell-parse";
+const outPath = join(outDir, binaryName);
+const required = process.env.TAU_REQUIRE_NATIVE_SHELL_PARSER === "1";
 
 function finish(status, message) {
   if (message) {
-    const stream = status === 0 ? process.stdout : process.stderr
-    stream.write(`${message}\n`)
+    const stream = status === 0 ? process.stdout : process.stderr;
+    stream.write(`${message}\n`);
   }
-  process.exit(status)
+  process.exit(status);
 }
 
 if (!existsSync(sourceDir)) {
-  finish(required ? 1 : 0, 'Native shell parser source not found; skipping.')
+  finish(required ? 1 : 0, "Native shell parser source not found; skipping.");
 }
 
-const goProbe = spawnSync('go', ['version'], {
-  encoding: 'utf8',
+const goProbe = spawnSync("go", ["version"], {
+  encoding: "utf8",
   windowsHide: true,
-})
+});
 if (goProbe.status !== 0) {
   finish(
     required ? 1 : 0,
-    'Go is not available; skipping native shell parser build.',
-  )
+    "Go is not available; skipping native shell parser build.",
+  );
 }
 
-mkdirSync(outDir, { recursive: true })
+mkdirSync(outDir, { recursive: true });
 
 const build = spawnSync(
-  'go',
-  ['-C', sourceDir, 'build', '-buildvcs=false', '-o', outPath, '.'],
+  "go",
+  ["-C", sourceDir, "build", "-buildvcs=false", "-o", outPath, "."],
   {
-    stdio: 'inherit',
+    stdio: "inherit",
     windowsHide: true,
   },
-)
+);
 
 if (build.status !== 0) {
-  finish(required ? build.status ?? 1 : 0, 'Native shell parser build failed.')
+  finish(
+    required ? (build.status ?? 1) : 0,
+    "Native shell parser build failed.",
+  );
 }
 
-if (process.platform !== 'win32') {
-  chmodSync(outPath, 0o755)
+if (process.platform !== "win32") {
+  chmodSync(outPath, 0o755);
 }
 
-finish(0, `✓ Built native shell parser ${outPath}`)
+finish(0, `✓ Built native shell parser ${outPath}`);

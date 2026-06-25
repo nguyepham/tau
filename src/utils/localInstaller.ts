@@ -2,38 +2,38 @@
  * Utilities for handling local installation
  */
 
-import { access, chmod, writeFile } from 'fs/promises'
-import { join } from 'path'
-import { type ReleaseChannel, saveGlobalConfig } from './config.js'
-import { getClaudeConfigHomeDir } from './envUtils.js'
-import { getErrnoCode } from './errors.js'
-import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
-import { verifyInstalledPackage } from './installIntegrity.js'
-import { logError } from './log.js'
-import { jsonStringify } from './slowOperations.js'
+import { access, chmod, writeFile } from "fs/promises";
+import { join } from "path";
+import { type ReleaseChannel, saveGlobalConfig } from "./config.js";
+import { getClaudeConfigHomeDir } from "./envUtils.js";
+import { getErrnoCode } from "./errors.js";
+import { execFileNoThrowWithCwd } from "./execFileNoThrow.js";
+import { getFsImplementation } from "./fsOperations.js";
+import { verifyInstalledPackage } from "./installIntegrity.js";
+import { logError } from "./log.js";
+import { jsonStringify } from "./slowOperations.js";
 
 // Lazy getters: getClaudeConfigHomeDir() is memoized and reads process.env.
 // Evaluating at module scope would capture the value before entrypoints like
 // hfi.tsx get a chance to set CLAUDE_CONFIG_DIR in main(), and would also
 // populate the memoize cache with that stale value for all 150+ other callers.
 function getLocalInstallDir(): string {
-  return join(getClaudeConfigHomeDir(), 'local')
+  return join(getClaudeConfigHomeDir(), "local");
 }
 export function getLocalClaudePath(): string {
-  return join(getLocalInstallDir(), 'claude')
+  return join(getLocalInstallDir(), "claude");
 }
-export function getLocalTauPath(): string {
-  return join(getLocalInstallDir(), 'tau')
+export function getLocalZenPath(): string {
+  return join(getLocalInstallDir(), "zen");
 }
 
 /**
  * Check if we're running from our managed local installation
  */
 export function isRunningFromLocalInstallation(): boolean {
-  const execPath = process.argv[1] || ''
-  const normalized = execPath.replace(/\\/g, '/')
-  return normalized.includes('/.claude/local/node_modules/')
+  const execPath = process.argv[1] || "";
+  const normalized = execPath.replace(/\\/g, "/");
+  return normalized.includes("/.claude/local/node_modules/");
 }
 
 /**
@@ -46,11 +46,11 @@ async function writeIfMissing(
   mode?: number,
 ): Promise<boolean> {
   try {
-    await writeFile(path, content, { encoding: 'utf8', flag: 'wx', mode })
-    return true
+    await writeFile(path, content, { encoding: "utf8", flag: "wx", mode });
+    return true;
   } catch (e) {
-    if (getErrnoCode(e) === 'EEXIST') return false
-    throw e
+    if (getErrnoCode(e) === "EEXIST") return false;
+    throw e;
   }
 }
 
@@ -60,99 +60,99 @@ async function writeIfMissing(
  */
 export async function ensureLocalPackageEnvironment(): Promise<boolean> {
   try {
-    const localInstallDir = getLocalInstallDir()
+    const localInstallDir = getLocalInstallDir();
 
     // Create installation directory (recursive, idempotent)
-    await getFsImplementation().mkdir(localInstallDir)
+    await getFsImplementation().mkdir(localInstallDir);
 
     // Create package.json if it doesn't exist
     await writeIfMissing(
-      join(localInstallDir, 'package.json'),
+      join(localInstallDir, "package.json"),
       jsonStringify(
-        { name: 'tau-local', version: '0.0.1', private: true },
+        { name: "zen-local", version: "0.0.1", private: true },
         null,
         2,
       ),
-    )
+    );
 
-    // Keep both wrappers so old local aliases still land on the Tau binary.
-    for (const wrapperName of ['tau', 'claude']) {
-      const wrapperPath = join(localInstallDir, wrapperName)
+    // Keep both wrappers so old local aliases still land on the Zen binary.
+    for (const wrapperName of ["zen", "claude"]) {
+      const wrapperPath = join(localInstallDir, wrapperName);
       await writeFile(
         wrapperPath,
-        `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/tau" "$@"`,
-        { encoding: 'utf8', mode: 0o755 },
-      )
+        `#!/bin/sh\nexec "${localInstallDir}/node_modules/.bin/zen" "$@"`,
+        { encoding: "utf8", mode: 0o755 },
+      );
       // Mode in writeFile is masked by umask; chmod to ensure executable bit.
-      await chmod(wrapperPath, 0o755)
+      await chmod(wrapperPath, 0o755);
     }
 
-    return true
+    return true;
   } catch (error) {
-    logError(error)
-    return false
+    logError(error);
+    return false;
   }
 }
 
 /**
- * Install or update Tau CLI package in the local directory
+ * Install or update Zen CLI package in the local directory
  * @param channel - Release channel to use (latest or stable)
  * @param specificVersion - Optional specific version to install (overrides channel)
  */
-export async function installOrUpdateTauPackage(
+export async function installOrUpdateZenPackage(
   channel: ReleaseChannel,
   specificVersion?: string | null,
-): Promise<'in_progress' | 'success' | 'install_failed'> {
+): Promise<"in_progress" | "success" | "install_failed"> {
   try {
     // First ensure the environment is set up
     if (!(await ensureLocalPackageEnvironment())) {
-      return 'install_failed'
+      return "install_failed";
     }
 
     // Use specific version if provided, otherwise use channel tag
     const versionSpec = specificVersion
       ? specificVersion
-      : channel === 'stable'
-        ? 'stable'
-        : 'latest'
+      : channel === "stable"
+        ? "stable"
+        : "latest";
     const result = await execFileNoThrowWithCwd(
-      'npm',
-      ['install', `${MACRO.PACKAGE_URL}@${versionSpec}`],
+      "npm",
+      ["install", `${MACRO.PACKAGE_URL}@${versionSpec}`],
       { cwd: getLocalInstallDir(), maxBuffer: 1000000 },
-    )
+    );
 
     if (result.code !== 0) {
       const error = new Error(
-        `Failed to install Tau CLI package: ${result.stderr}`,
-      )
-      logError(error)
-      return result.code === 190 ? 'in_progress' : 'install_failed'
+        `Failed to install Zen CLI package: ${result.stderr}`,
+      );
+      logError(error);
+      return result.code === 190 ? "in_progress" : "install_failed";
     }
 
     // Verify the dependency tree landed completely (interrupted installs on
     // Windows can leave holes that crash the CLI at runtime).
     const installedRoot = join(
       getLocalInstallDir(),
-      'node_modules',
-      ...MACRO.PACKAGE_URL.split('/'),
-    )
+      "node_modules",
+      ...MACRO.PACKAGE_URL.split("/"),
+    );
     if (!(await verifyInstalledPackage(installedRoot))) {
       logError(
-        new Error('Local Tau install has an incomplete dependency tree'),
-      )
-      return 'install_failed'
+        new Error("Local Zen install has an incomplete dependency tree"),
+      );
+      return "install_failed";
     }
 
     // Set installMethod to 'local' to prevent npm permission warnings
-    saveGlobalConfig(current => ({
+    saveGlobalConfig((current) => ({
       ...current,
-      installMethod: 'local',
-    }))
+      installMethod: "local",
+    }));
 
-    return 'success'
+    return "success";
   } catch (error) {
-    logError(error)
-    return 'install_failed'
+    logError(error);
+    return "install_failed";
   }
 }
 
@@ -163,14 +163,16 @@ export async function installOrUpdateTauPackage(
 export async function localInstallationExists(): Promise<boolean> {
   try {
     try {
-      await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'tau'))
-      return true
+      await access(join(getLocalInstallDir(), "node_modules", ".bin", "zen"));
+      return true;
     } catch {
-      await access(join(getLocalInstallDir(), 'node_modules', '.bin', 'claude'))
+      await access(
+        join(getLocalInstallDir(), "node_modules", ".bin", "claude"),
+      );
     }
-    return true
+    return true;
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -178,9 +180,9 @@ export async function localInstallationExists(): Promise<boolean> {
  * Get shell type to determine appropriate path setup
  */
 export function getShellType(): string {
-  const shellPath = process.env.SHELL || ''
-  if (shellPath.includes('zsh')) return 'zsh'
-  if (shellPath.includes('bash')) return 'bash'
-  if (shellPath.includes('fish')) return 'fish'
-  return 'unknown'
+  const shellPath = process.env.SHELL || "";
+  if (shellPath.includes("zsh")) return "zsh";
+  if (shellPath.includes("bash")) return "bash";
+  if (shellPath.includes("fish")) return "fish";
+  return "unknown";
 }

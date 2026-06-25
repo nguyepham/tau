@@ -20,7 +20,7 @@ var (
 func runRenderMarkdown(args []string) error {
 	fs := newFlagSet("render-markdown")
 	inputPath := fs.String("in", "", "Read Markdown from this file instead of stdin")
-	style := fs.String("style", "tau-compact-dark", "Glamour style name, Tau compact style, or style file path")
+	style := fs.String("style", "zen-compact-dark", "Glamour style name, Zen compact style, or style file path")
 	width := fs.Int("width", 100, "Word-wrap width")
 
 	if err := parseFlags(fs, args); err != nil {
@@ -104,9 +104,9 @@ func stripANSI(value string) string {
 
 func markdownStyleOption(style string) glamour.TermRendererOption {
 	switch style {
-	case "tau-compact", "tau-compact-dark":
+	case "zen-compact", "zen-compact-dark":
 		return glamour.WithStyles(compactMarkdownStyle(false))
-	case "tau-compact-light":
+	case "zen-compact-light":
 		return glamour.WithStyles(compactMarkdownStyle(true))
 	default:
 		return glamour.WithStylePath(style)

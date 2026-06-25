@@ -3,7 +3,7 @@
  *
  * Modeled on OpenCode's Drizzle schema (packages/opencode/src/session/session.sql.ts).
  * Kept dependency-free by using Bun's built-in bun:sqlite (which is the
- * target runtime for Tau). On non-Bun runtimes the module no-ops
+ * target runtime for Zen). On non-Bun runtimes the module no-ops
  * gracefully — callers treat write failures as non-fatal.
  *
  * Tables (normalized for fast per-session lookup):
@@ -18,19 +18,19 @@
  * lets the UI filter parts by session without joining through messages.
  */
 
-import { homedir } from 'os'
-import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 
 // bun:sqlite is only present when running under Bun. We probe at import
 // time and expose a no-op shim when unavailable so the rest of the code
 // can call store methods without guarding every call site.
-let BunDatabase: any = null
+let BunDatabase: any = null;
 try {
   // @ts-ignore — bun:sqlite only resolves under Bun runtime.
-  BunDatabase = (await import('bun:sqlite')).Database
+  BunDatabase = (await import("bun:sqlite")).Database;
 } catch {
-  BunDatabase = null
+  BunDatabase = null;
 }
 
 // ─── Schema ─────────────────────────────────────────────────────
@@ -94,98 +94,104 @@ CREATE TABLE IF NOT EXISTS usage (
   reasoning      INTEGER NOT NULL DEFAULT 0,
   cost           REAL    NOT NULL DEFAULT 0
 );
-`.trim()
+`.trim();
 
 // ─── Types ──────────────────────────────────────────────────────
 
 export interface SessionRow {
-  id: string
-  parentId?: string
-  directory: string
-  title?: string
-  timeCreated: number
-  timeUpdated: number
+  id: string;
+  parentId?: string;
+  directory: string;
+  title?: string;
+  timeCreated: number;
+  timeUpdated: number;
 }
 
 export interface MessageRow {
-  id: string
-  sessionId: string
-  role: 'user' | 'assistant'
-  model?: string
-  provider?: string
-  timeCreated: number
-  data: unknown
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  model?: string;
+  provider?: string;
+  timeCreated: number;
+  data: unknown;
 }
 
 export interface PartRow {
-  id: string
-  messageId: string
-  sessionId: string
-  type: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'file' | string
-  timeCreated: number
-  data: unknown
+  id: string;
+  messageId: string;
+  sessionId: string;
+  type: "text" | "thinking" | "tool_use" | "tool_result" | "file" | string;
+  timeCreated: number;
+  data: unknown;
 }
 
 export interface UsageRow {
-  messageId: string
-  inputTokens: number
-  outputTokens: number
-  cacheRead: number
-  cacheWrite: number
-  reasoning: number
-  cost: number
+  messageId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  cost: number;
 }
 
 // ─── Store ──────────────────────────────────────────────────────
 
 export class SessionStore {
-  private db: any = null
+  private db: any = null;
 
   constructor(private readonly path: string) {
-    if (!BunDatabase) return
-    this.db = new BunDatabase(path, { create: true })
-    this.db.exec('PRAGMA journal_mode = WAL')
-    this.db.exec('PRAGMA synchronous = NORMAL')
-    this.db.exec(`PRAGMA cache_size = -${64 * 1024}`) // 64 MB page cache
-    this.db.exec(SCHEMA_SQL)
+    if (!BunDatabase) return;
+    this.db = new BunDatabase(path, { create: true });
+    this.db.exec("PRAGMA journal_mode = WAL");
+    this.db.exec("PRAGMA synchronous = NORMAL");
+    this.db.exec(`PRAGMA cache_size = -${64 * 1024}`); // 64 MB page cache
+    this.db.exec(SCHEMA_SQL);
   }
 
   /** True when persistent storage is available (we're running under Bun). */
-  get enabled(): boolean { return this.db !== null }
+  get enabled(): boolean {
+    return this.db !== null;
+  }
 
   // ── Sessions ────────────────────────────────────────────────
 
   upsertSession(s: SessionRow): void {
-    if (!this.db) return
-    this.db.prepare(`
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `
       INSERT INTO sessions (id, parent_id, directory, title, time_created, time_updated)
       VALUES ($id, $parent_id, $directory, $title, $time_created, $time_updated)
       ON CONFLICT(id) DO UPDATE SET
         directory = excluded.directory,
         title = excluded.title,
         time_updated = excluded.time_updated
-    `).run({
-      $id: s.id,
-      $parent_id: s.parentId ?? null,
-      $directory: s.directory,
-      $title: s.title ?? null,
-      $time_created: s.timeCreated,
-      $time_updated: s.timeUpdated,
-    })
+    `,
+      )
+      .run({
+        $id: s.id,
+        $parent_id: s.parentId ?? null,
+        $directory: s.directory,
+        $title: s.title ?? null,
+        $time_created: s.timeCreated,
+        $time_updated: s.timeUpdated,
+      });
   }
 
   getSession(id: string): SessionRow | null {
-    if (!this.db) return null
-    const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id)
-    return row ? this.rowToSession(row) : null
+    if (!this.db) return null;
+    const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
+    return row ? this.rowToSession(row) : null;
   }
 
   listSessions(limit = 50): SessionRow[] {
-    if (!this.db) return []
-    const rows = this.db.prepare(
-      'SELECT * FROM sessions ORDER BY time_updated DESC LIMIT ?',
-    ).all(limit)
-    return rows.map((r: any) => this.rowToSession(r))
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM sessions ORDER BY time_updated DESC LIMIT ?")
+      .all(limit);
+    return rows.map((r: any) => this.rowToSession(r));
   }
 
   private rowToSession(row: any): SessionRow {
@@ -196,33 +202,39 @@ export class SessionStore {
       title: row.title ?? undefined,
       timeCreated: row.time_created,
       timeUpdated: row.time_updated,
-    }
+    };
   }
 
   // ── Messages ────────────────────────────────────────────────
 
   appendMessage(m: MessageRow): void {
-    if (!this.db) return
-    this.db.prepare(`
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO messages
         (id, session_id, role, model, provider, time_created, data)
       VALUES ($id, $session_id, $role, $model, $provider, $time_created, $data)
-    `).run({
-      $id: m.id,
-      $session_id: m.sessionId,
-      $role: m.role,
-      $model: m.model ?? null,
-      $provider: m.provider ?? null,
-      $time_created: m.timeCreated,
-      $data: JSON.stringify(m.data),
-    })
+    `,
+      )
+      .run({
+        $id: m.id,
+        $session_id: m.sessionId,
+        $role: m.role,
+        $model: m.model ?? null,
+        $provider: m.provider ?? null,
+        $time_created: m.timeCreated,
+        $data: JSON.stringify(m.data),
+      });
   }
 
   getMessages(sessionId: string, limit = 1000): MessageRow[] {
-    if (!this.db) return []
-    const rows = this.db.prepare(
-      'SELECT * FROM messages WHERE session_id = ? ORDER BY time_created ASC, id ASC LIMIT ?',
-    ).all(sessionId, limit)
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM messages WHERE session_id = ? ORDER BY time_created ASC, id ASC LIMIT ?",
+      )
+      .all(sessionId, limit);
     return rows.map((r: any) => ({
       id: r.id,
       sessionId: r.session_id,
@@ -231,32 +243,36 @@ export class SessionStore {
       provider: r.provider ?? undefined,
       timeCreated: r.time_created,
       data: tryParse(r.data),
-    }))
+    }));
   }
 
   // ── Parts ───────────────────────────────────────────────────
 
   appendPart(p: PartRow): void {
-    if (!this.db) return
-    this.db.prepare(`
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO parts
         (id, message_id, session_id, type, time_created, data)
       VALUES ($id, $message_id, $session_id, $type, $time_created, $data)
-    `).run({
-      $id: p.id,
-      $message_id: p.messageId,
-      $session_id: p.sessionId,
-      $type: p.type,
-      $time_created: p.timeCreated,
-      $data: JSON.stringify(p.data),
-    })
+    `,
+      )
+      .run({
+        $id: p.id,
+        $message_id: p.messageId,
+        $session_id: p.sessionId,
+        $type: p.type,
+        $time_created: p.timeCreated,
+        $data: JSON.stringify(p.data),
+      });
   }
 
   getParts(messageId: string): PartRow[] {
-    if (!this.db) return []
-    const rows = this.db.prepare(
-      'SELECT * FROM parts WHERE message_id = ? ORDER BY id ASC',
-    ).all(messageId)
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM parts WHERE message_id = ? ORDER BY id ASC")
+      .all(messageId);
     return rows.map((r: any) => ({
       id: r.id,
       messageId: r.message_id,
@@ -264,32 +280,38 @@ export class SessionStore {
       type: r.type,
       timeCreated: r.time_created,
       data: tryParse(r.data),
-    }))
+    }));
   }
 
   // ── Usage ───────────────────────────────────────────────────
 
   recordUsage(u: UsageRow): void {
-    if (!this.db) return
-    this.db.prepare(`
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO usage
         (message_id, input_tokens, output_tokens, cache_read, cache_write, reasoning, cost)
       VALUES ($m, $i, $o, $cr, $cw, $r, $c)
-    `).run({
-      $m: u.messageId,
-      $i: u.inputTokens,
-      $o: u.outputTokens,
-      $cr: u.cacheRead,
-      $cw: u.cacheWrite,
-      $r: u.reasoning,
-      $c: u.cost,
-    })
+    `,
+      )
+      .run({
+        $m: u.messageId,
+        $i: u.inputTokens,
+        $o: u.outputTokens,
+        $cr: u.cacheRead,
+        $cw: u.cacheWrite,
+        $r: u.reasoning,
+        $c: u.cost,
+      });
   }
 
   getUsage(messageId: string): UsageRow | null {
-    if (!this.db) return null
-    const r = this.db.prepare('SELECT * FROM usage WHERE message_id = ?').get(messageId)
-    if (!r) return null
+    if (!this.db) return null;
+    const r = this.db
+      .prepare("SELECT * FROM usage WHERE message_id = ?")
+      .get(messageId);
+    if (!r) return null;
     return {
       messageId: r.message_id,
       inputTokens: r.input_tokens,
@@ -298,33 +320,45 @@ export class SessionStore {
       cacheWrite: r.cache_write,
       reasoning: r.reasoning,
       cost: r.cost,
-    }
+    };
   }
 
   // ── Lifecycle ───────────────────────────────────────────────
 
   close(): void {
     if (this.db) {
-      try { this.db.close() } catch { /* already closed */ }
-      this.db = null
+      try {
+        this.db.close();
+      } catch {
+        /* already closed */
+      }
+      this.db = null;
     }
   }
 }
 
 function tryParse(s: string): unknown {
-  try { return JSON.parse(s) } catch { return s }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────
 
-let _default: SessionStore | null = null
+let _default: SessionStore | null = null;
 
 export function getDefaultSessionStore(): SessionStore {
-  if (_default) return _default
-  const dir = join(homedir(), '.claudex')
+  if (_default) return _default;
+  const dir = join(homedir(), ".claudex");
   if (!existsSync(dir)) {
-    try { mkdirSync(dir, { recursive: true }) } catch { /* continue */ }
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      /* continue */
+    }
   }
-  _default = new SessionStore(join(dir, 'sessions.db'))
-  return _default
+  _default = new SessionStore(join(dir, "sessions.db"));
+  return _default;
 }

@@ -1,5 +1,5 @@
 {
-  "description": "Initialize the Git-backed Tau memory store and surface lightweight recall context.",
+  "description": "Initialize the Git-backed Zen memory store and surface lightweight recall context.",
   "hooks": {
     "SessionStart": [
       {

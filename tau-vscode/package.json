@@ -1,7 +1,7 @@
 {
-  "name": "tau-vscode",
-  "displayName": "Tau",
-  "description": "Tau companion for VS Code: one-click launch with full IDE awareness - diagnostics, inline diffs, selection context, and provider switching.",
+  "name": "zen-vscode",
+  "displayName": "Zen",
+  "description": "Zen companion for VS Code: one-click launch with full IDE awareness - diagnostics, inline diffs, selection context, and provider switching.",
   "version": "0.6.0",
   "publisher": "devnull-bootloader",
   "engines": {
@@ -30,49 +30,49 @@
     "commands": [
       {
         "command": "claudex.start",
-        "title": "Tau: Launch in Terminal",
-        "category": "Tau"
+        "title": "Zen: Launch in Terminal",
+        "category": "Zen"
       },
       {
         "command": "claudex.startInWorkspaceRoot",
-        "title": "Tau: Launch in Workspace Root",
-        "category": "Tau"
+        "title": "Zen: Launch in Workspace Root",
+        "category": "Zen"
       },
       {
         "command": "claudex.openDocs",
-        "title": "Tau: Open Repository",
-        "category": "Tau"
+        "title": "Zen: Open Repository",
+        "category": "Zen"
       },
       {
         "command": "claudex.openSetupDocs",
-        "title": "Tau: Open Setup Guide",
-        "category": "Tau"
+        "title": "Zen: Open Setup Guide",
+        "category": "Zen"
       },
       {
         "command": "claudex.openWorkspaceProfile",
-        "title": "Tau: Open Workspace Profile",
-        "category": "Tau"
+        "title": "Zen: Open Workspace Profile",
+        "category": "Zen"
       },
       {
         "command": "claudex.openControlCenter",
-        "title": "Tau: Open Control Center",
-        "category": "Tau"
+        "title": "Zen: Open Control Center",
+        "category": "Zen"
       },
       {
         "command": "claudex.switchProvider",
-        "title": "Tau: Switch Provider",
-        "category": "Tau"
+        "title": "Zen: Switch Provider",
+        "category": "Zen"
       },
       {
         "command": "claudex.acceptDiff",
-        "title": "Tau: Accept Diff",
-        "category": "Tau",
+        "title": "Zen: Accept Diff",
+        "category": "Zen",
         "icon": "$(check)"
       },
       {
         "command": "claudex.rejectDiff",
-        "title": "Tau: Reject Diff",
-        "category": "Tau",
+        "title": "Zen: Reject Diff",
+        "category": "Zen",
         "icon": "$(close)"
       }
     ],
@@ -94,7 +94,7 @@
       "activitybar": [
         {
           "id": "claudex",
-          "title": "Tau",
+          "title": "Zen",
           "icon": "media/claudex.svg"
         }
       ]
@@ -109,22 +109,32 @@
       ]
     },
     "configuration": {
-      "title": "Tau",
+      "title": "Zen",
       "properties": {
         "claudex.launchCommand": {
           "type": "string",
-          "default": "tau",
-          "description": "Command run in the integrated terminal when launching Tau."
+          "default": "zen",
+          "description": "Command run in the integrated terminal when launching Zen."
         },
         "claudex.terminalName": {
           "type": "string",
-          "default": "Tau",
-          "description": "Integrated terminal tab name for Tau sessions."
+          "default": "Zen",
+          "description": "Integrated terminal tab name for Zen sessions."
         },
         "claudex.activeProvider": {
           "type": "string",
           "default": "",
-          "enum": ["", "anthropic", "openai", "gemini", "openrouter", "groq", "nim", "deepseek", "ollama"],
+          "enum": [
+            "",
+            "anthropic",
+            "openai",
+            "gemini",
+            "openrouter",
+            "groq",
+            "nim",
+            "deepseek",
+            "ollama"
+          ],
           "enumDescriptions": [
             "Auto-detect from environment",
             "Anthropic (first-party)",
@@ -142,12 +152,12 @@
     },
     "themes": [
       {
-        "label": "Tau Dark",
+        "label": "Zen Dark",
         "uiTheme": "vs-dark",
         "path": "./themes/claudex-dark.json"
       },
       {
-        "label": "Tau Light",
+        "label": "Zen Light",
         "uiTheme": "vs",
         "path": "./themes/claudex-light.json"
       }
@@ -162,7 +172,7 @@
     "ws": "^8.18.0"
   },
   "keywords": [
-    "tau",
+    "zen",
     "multi-provider",
     "terminal",
     "theme",

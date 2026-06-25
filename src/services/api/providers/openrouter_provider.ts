@@ -10,33 +10,39 @@
  * X-OpenRouter-Categories (for app rankings)
  */
 
-import { OpenAIProvider } from './openai_provider.js'
-import type { ModelInfo, ProviderConfig, ProviderRequestParams } from './base_provider.js'
 import {
-  toOpenRouterModelInfo,
   OPENROUTER_ALLOWLIST,
+  toOpenRouterModelInfo,
   type OpenRouterCatalogModel,
-} from '../../../utils/model/openrouterCatalog.js'
+} from "../../../utils/model/openrouterCatalog.js";
+import type {
+  ModelInfo,
+  ProviderConfig,
+  ProviderRequestParams,
+} from "./base_provider.js";
+import { OpenAIProvider } from "./openai_provider.js";
 
 export class OpenRouterProvider extends OpenAIProvider {
-  readonly name = 'openrouter'
+  readonly name = "openrouter";
 
   constructor(config: ProviderConfig) {
     super({
       apiKey: config.apiKey,
-      baseUrl: 'https://openrouter.ai/api/v1',
+      baseUrl: "https://openrouter.ai/api/v1",
       extraHeaders: {
         // OpenRouter uses these for app rankings and attribution.
-        'HTTP-Referer': process.env.OPENROUTER_REFERER ?? 'https://github.com/AbdoKnbGit/tau',
-        'X-OpenRouter-Title': process.env.OPENROUTER_TITLE ?? 'Tau',
-        'X-OpenRouter-Categories': process.env.OPENROUTER_CATEGORIES ?? 'cli-agent',
-        'X-Title': process.env.OPENROUTER_TITLE ?? 'Tau',
+        "HTTP-Referer":
+          process.env.OPENROUTER_REFERER ?? "https://github.com/AbdoKnbGit/zen",
+        "X-OpenRouter-Title": process.env.OPENROUTER_TITLE ?? "Zen",
+        "X-OpenRouter-Categories":
+          process.env.OPENROUTER_CATEGORIES ?? "cli-agent",
+        "X-Title": process.env.OPENROUTER_TITLE ?? "Zen",
         ...(config.extraHeaders ?? {}),
       },
-    })
+    });
     // OpenRouter passes cache_control through to underlying providers
     // (Anthropic, Google, etc.) enabling prompt caching.
-    this.preserveCacheControl = true
+    this.preserveCacheControl = true;
   }
 
   /**
@@ -45,8 +51,10 @@ export class OpenRouterProvider extends OpenAIProvider {
    * Skip the payload optimization that strips tools down to core-only —
    * send the full tool set so all claudex features work.
    */
-  protected optimizeParams(params: ProviderRequestParams): ProviderRequestParams {
-    return params
+  protected optimizeParams(
+    params: ProviderRequestParams,
+  ): ProviderRequestParams {
+    return params;
   }
 
   /**
@@ -61,7 +69,7 @@ export class OpenRouterProvider extends OpenAIProvider {
     // `reasoning_effort` is set. OpenRouter accepts both
     // `reasoning_effort` and `reasoning: { effort }`; models that don't
     // reason quietly ignore the flag.
-    return true
+    return true;
   }
 
   /**
@@ -69,24 +77,26 @@ export class OpenRouterProvider extends OpenAIProvider {
    * including pricing, context length, and provider info.
    */
   async listModels(): Promise<ModelInfo[]> {
-    const response = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Authorization': `Bearer ${this.apiKey}` },
-    })
+    const response = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+    });
 
-    if (!response.ok) return []
+    if (!response.ok) return [];
 
     const data = (await response.json()) as {
-      data: OpenRouterCatalogModel[]
-    }
+      data: OpenRouterCatalogModel[];
+    };
 
     return (data.data ?? [])
-      .filter(m => {
-        if (typeof m.id !== 'string') return false
+      .filter((m) => {
+        if (typeof m.id !== "string") return false;
         // Strip :free suffix for allowlist lookup
-        const baseId = m.id.replace(/:free$/, '')
-        return OPENROUTER_ALLOWLIST.has(baseId) || OPENROUTER_ALLOWLIST.has(m.id)
+        const baseId = m.id.replace(/:free$/, "");
+        return (
+          OPENROUTER_ALLOWLIST.has(baseId) || OPENROUTER_ALLOWLIST.has(m.id)
+        );
       })
       .map(toOpenRouterModelInfo)
-      .filter((model): model is ModelInfo => model !== null)
+      .filter((model): model is ModelInfo => model !== null);
   }
 }

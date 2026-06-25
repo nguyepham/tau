@@ -21,18 +21,18 @@
  * effort survives across sessions per model id.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
-export type OpencodeEffort = 'default' | 'low' | 'medium' | 'high'
+export type OpencodeEffort = "default" | "low" | "medium" | "high";
 
 export const OPENCODE_EFFORT_LEVELS: readonly OpencodeEffort[] = [
-  'default',
-  'low',
-  'medium',
-  'high',
-]
+  "default",
+  "low",
+  "medium",
+  "high",
+];
 
 // Models that should default to "medium" on first use:
 //   1. Free-tier rows that opencode-dev itself ships with thinking enabled —
@@ -45,14 +45,14 @@ export const OPENCODE_EFFORT_LEVELS: readonly OpencodeEffort[] = [
 //      "reasoning_content must be passed back" 400 anyway. Starting at medium
 //      keeps the picker in sync with what the upstream is actually doing.
 const FREE_TIER_DEFAULT_MEDIUM = (model: string): boolean => {
-  const m = model.toLowerCase()
-  if (m.endsWith('-free')) return true
-  if (m.includes('big-pickle')) return true
-  if (m === 'gpt-5-nano' || m === 'gpt-5.4-nano') return true
-  if (m === 'kimi-k2-thinking' || m === 'glm-4.6') return true
-  if (m.startsWith('deepseek-v4')) return true
-  return false
-}
+  const m = model.toLowerCase();
+  if (m.endsWith("-free")) return true;
+  if (m.includes("big-pickle")) return true;
+  if (m === "gpt-5-nano" || m === "gpt-5.4-nano") return true;
+  if (m === "kimi-k2-thinking" || m === "glm-4.6") return true;
+  if (m.startsWith("deepseek-v4")) return true;
+  return false;
+};
 
 // Models that the gateway forwards in a shape where Anthropic-style
 // `thinking: { type: "enabled" }` (or the alternate fields below) is the
@@ -63,33 +63,69 @@ const FREE_TIER_DEFAULT_MEDIUM = (model: string): boolean => {
 // the two should stay in lockstep. If you add a family here add it there
 // too, and vice versa.
 export function isOpencodeThinkingModel(model: string): boolean {
-  const m = model.toLowerCase()
+  const m = model.toLowerCase();
   // Anthropic
-  if (m.startsWith('claude-opus-4') || m.startsWith('claude-haiku-4') || m.startsWith('claude-sonnet-4')) return true
-  if (m.includes('anthropic/claude-opus-4') || m.includes('anthropic/claude-sonnet-4') || m.includes('anthropic/claude-haiku-4')) return true
+  if (
+    m.startsWith("claude-opus-4") ||
+    m.startsWith("claude-haiku-4") ||
+    m.startsWith("claude-sonnet-4")
+  )
+    return true;
+  if (
+    m.includes("anthropic/claude-opus-4") ||
+    m.includes("anthropic/claude-sonnet-4") ||
+    m.includes("anthropic/claude-haiku-4")
+  )
+    return true;
   // DeepSeek
-  if (m.includes('deepseek-r1') || m.includes('deepseek/deepseek-r')) return true
-  if (m.includes('deepseek-v4') || m.includes('deepseek-reasoner')) return true
+  if (m.includes("deepseek-r1") || m.includes("deepseek/deepseek-r"))
+    return true;
+  if (m.includes("deepseek-v4") || m.includes("deepseek-reasoner")) return true;
   // Qwen / QwQ
-  if (m.includes('qwen3') || m.includes('qwen-3') || m.includes('qwq')) return true
+  if (m.includes("qwen3") || m.includes("qwen-3") || m.includes("qwq"))
+    return true;
   // GLM 4.7 / 5.x — these are the families opencode marks reasoning=true
-  if (m.startsWith('glm-5') || m.includes('glm-5') || m === 'glm-4.7' || m === 'glm-4.6') return true
+  if (
+    m.startsWith("glm-5") ||
+    m.includes("glm-5") ||
+    m === "glm-4.7" ||
+    m === "glm-4.6"
+  )
+    return true;
   // Kimi thinking family
-  if (m === 'kimi-k2-thinking' || m.includes('kimi-k2.5') || m.includes('kimi-k2p5') || m.includes('kimi-k2-5')) return true
+  if (
+    m === "kimi-k2-thinking" ||
+    m.includes("kimi-k2.5") ||
+    m.includes("kimi-k2p5") ||
+    m.includes("kimi-k2-5")
+  )
+    return true;
   // OpenAI GPT-5 / o-series / codex
-  if (m.startsWith('gpt-5') || m.startsWith('openai/gpt-5') || m.includes('codex')) return true
-  if (m.startsWith('o1') || m.startsWith('o3') || m.startsWith('o4')) return true
+  if (
+    m.startsWith("gpt-5") ||
+    m.startsWith("openai/gpt-5") ||
+    m.includes("codex")
+  )
+    return true;
+  if (m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4"))
+    return true;
   // Grok reasoning
-  if (m.startsWith('grok-3') || m.startsWith('grok-4') || m.startsWith('xai/grok-3') || m.startsWith('xai/grok-4')) return true
+  if (
+    m.startsWith("grok-3") ||
+    m.startsWith("grok-4") ||
+    m.startsWith("xai/grok-3") ||
+    m.startsWith("xai/grok-4")
+  )
+    return true;
   // Gemini 2.5 / 3.x
-  if (m.includes('gemini-2.5') || m.includes('gemini-3')) return true
+  if (m.includes("gemini-2.5") || m.includes("gemini-3")) return true;
   // MiniMax M2 reasoning variants
-  if (m.includes('minimax-m2')) return true
-  return false
+  if (m.includes("minimax-m2")) return true;
+  return false;
 }
 
 /**
- * Whether Tau should expose a user-selectable thinking effort for a model.
+ * Whether Zen should expose a user-selectable thinking effort for a model.
  *
  * OpenCode Go marks GLM-5.2 and Qwen3.7 Max as reasoning-capable, but their
  * models.dev metadata publishes an empty `reasoning_options` list and
@@ -101,33 +137,36 @@ export function supportsOpencodeThinkingSelection(
   provider: string,
   model: string,
 ): boolean {
-  if (!isOpencodeThinkingModel(model)) return false
-  if (provider !== 'opencodego') return true
+  if (!isOpencodeThinkingModel(model)) return false;
+  if (provider !== "opencodego") return true;
 
-  const normalized = model.trim().toLowerCase()
-  return normalized !== 'glm-5.2' && normalized !== 'qwen3.7-max'
+  const normalized = model.trim().toLowerCase();
+  return normalized !== "glm-5.2" && normalized !== "qwen3.7-max";
 }
 
-const STORE_PATH = join(homedir(), '.claude', 'opencode-thinking.json')
+const STORE_PATH = join(homedir(), ".claude", "opencode-thinking.json");
 
-let _loaded = false
-let _cache: Record<string, OpencodeEffort> = {}
+let _loaded = false;
+let _cache: Record<string, OpencodeEffort> = {};
 
 function load(): void {
-  if (_loaded) return
-  _loaded = true
+  if (_loaded) return;
+  _loaded = true;
   try {
-    if (!existsSync(STORE_PATH)) return
-    const raw = readFileSync(STORE_PATH, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const out: Record<string, OpencodeEffort> = {}
+    if (!existsSync(STORE_PATH)) return;
+    const raw = readFileSync(STORE_PATH, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, OpencodeEffort> = {};
       for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v === 'string' && (OPENCODE_EFFORT_LEVELS as readonly string[]).includes(v)) {
-          out[k.toLowerCase()] = v as OpencodeEffort
+        if (
+          typeof v === "string" &&
+          (OPENCODE_EFFORT_LEVELS as readonly string[]).includes(v)
+        ) {
+          out[k.toLowerCase()] = v as OpencodeEffort;
         }
       }
-      _cache = out
+      _cache = out;
     }
   } catch {
     // Stale or corrupt file — treat as empty. Next save() rewrites it.
@@ -136,9 +175,9 @@ function load(): void {
 
 function save(): void {
   try {
-    const dir = dirname(STORE_PATH)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(STORE_PATH, JSON.stringify(_cache, null, 2), 'utf8')
+    const dir = dirname(STORE_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(STORE_PATH, JSON.stringify(_cache, null, 2), "utf8");
   } catch {
     // Persistence is best-effort. The in-memory cache still works for the
     // current session even if the disk write fails (read-only home, etc.).
@@ -146,45 +185,45 @@ function save(): void {
 }
 
 export function getOpencodeEffort(model: string): OpencodeEffort {
-  load()
-  const key = model.trim().toLowerCase()
-  const stored = _cache[key]
-  if (stored) return stored
+  load();
+  const key = model.trim().toLowerCase();
+  const stored = _cache[key];
+  if (stored) return stored;
   if (FREE_TIER_DEFAULT_MEDIUM(model) && isOpencodeThinkingModel(model)) {
-    return 'medium'
+    return "medium";
   }
-  return 'default'
+  return "default";
 }
 
 export function setOpencodeEffort(model: string, effort: OpencodeEffort): void {
-  load()
-  const key = model.trim().toLowerCase()
-  if (effort === 'default') {
-    delete _cache[key]
+  load();
+  const key = model.trim().toLowerCase();
+  if (effort === "default") {
+    delete _cache[key];
   } else {
-    _cache[key] = effort
+    _cache[key] = effort;
   }
-  save()
+  save();
 }
 
 export function cycleOpencodeEffort(
   model: string,
-  direction: 'left' | 'right',
+  direction: "left" | "right",
 ): OpencodeEffort {
-  const current = getOpencodeEffort(model)
-  const idx = OPENCODE_EFFORT_LEVELS.indexOf(current)
-  const len = OPENCODE_EFFORT_LEVELS.length
+  const current = getOpencodeEffort(model);
+  const idx = OPENCODE_EFFORT_LEVELS.indexOf(current);
+  const len = OPENCODE_EFFORT_LEVELS.length;
   const next =
-    direction === 'right'
+    direction === "right"
       ? OPENCODE_EFFORT_LEVELS[(idx + 1) % len]!
-      : OPENCODE_EFFORT_LEVELS[(idx - 1 + len) % len]!
-  setOpencodeEffort(model, next)
-  return next
+      : OPENCODE_EFFORT_LEVELS[(idx - 1 + len) % len]!;
+  setOpencodeEffort(model, next);
+  return next;
 }
 
 /**
  * Label rendered in the picker chip. Capitalized for the row.
  */
 export function getOpencodeEffortLabel(effort: OpencodeEffort): string {
-  return effort.charAt(0).toUpperCase() + effort.slice(1)
+  return effort.charAt(0).toUpperCase() + effort.slice(1);
 }

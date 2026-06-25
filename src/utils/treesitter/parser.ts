@@ -7,7 +7,7 @@
  * build, no toolchain (no Go / node-gyp), and — critically — NO hardcoded
  * filesystem paths: every asset is located through Node's own module resolver
  * (`createRequire(import.meta.url).resolve`), which is cross-platform by
- * construction. This is the same loading pattern proven to survive tau's
+ * construction. This is the same loading pattern proven to survive zen's
  * esbuild single-file bundle.
  *
  * Everything here degrades gracefully: any failure (missing dependency, load
@@ -15,64 +15,64 @@
  * treat parsing as best-effort and never depend on it succeeding.
  */
 
-import { createRequire } from 'node:module'
-import { readFileSync } from 'node:fs'
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 // Locate assets via Node module resolution rather than absolute paths. Named
 // `tsRequire` (not `require`) so it never collides with the bundle's
 // banner-injected `require`.
-const tsRequire = createRequire(import.meta.url)
+const tsRequire = createRequire(import.meta.url);
 
 // Loose external types — we avoid a static dependency on the module's exact
 // shape (it loads lazily and may be absent at runtime).
 type ParserClass = {
   new (): {
-    setLanguage(language: unknown): void
-    parse(code: string): SyntaxTree | null
-  }
-  init(options?: { locateFile?: (file: string) => string }): Promise<void>
-}
-type LanguageClass = { load(bytes: Uint8Array): Promise<unknown> }
-type TreeSitterModule = { Parser: ParserClass; Language: LanguageClass }
+    setLanguage(language: unknown): void;
+    parse(code: string): SyntaxTree | null;
+  };
+  init(options?: { locateFile?: (file: string) => string }): Promise<void>;
+};
+type LanguageClass = { load(bytes: Uint8Array): Promise<unknown> };
+type TreeSitterModule = { Parser: ParserClass; Language: LanguageClass };
 
 export type SyntaxNode = {
-  type: string
-  isError: boolean
-  isMissing: boolean
-  hasError: boolean
-  childCount: number
-  child(index: number): SyntaxNode | null
-}
+  type: string;
+  isError: boolean;
+  isMissing: boolean;
+  hasError: boolean;
+  childCount: number;
+  child(index: number): SyntaxNode | null;
+};
 
 export type SyntaxTree = {
-  rootNode: SyntaxNode
-  delete(): void
-}
+  rootNode: SyntaxNode;
+  delete(): void;
+};
 
 // Grammar key -> @vscode/tree-sitter-wasm blob basename. Only grammars the
 // package actually ships are listed here.
 const GRAMMAR_FILES: Record<string, string> = {
-  typescript: 'tree-sitter-typescript',
-  tsx: 'tree-sitter-tsx',
-  javascript: 'tree-sitter-javascript',
-  python: 'tree-sitter-python',
-  go: 'tree-sitter-go',
-  rust: 'tree-sitter-rust',
-  java: 'tree-sitter-java',
-  ruby: 'tree-sitter-ruby',
-  c_sharp: 'tree-sitter-c-sharp',
-  cpp: 'tree-sitter-cpp',
-  css: 'tree-sitter-css',
-  php: 'tree-sitter-php',
-}
+  typescript: "tree-sitter-typescript",
+  tsx: "tree-sitter-tsx",
+  javascript: "tree-sitter-javascript",
+  python: "tree-sitter-python",
+  go: "tree-sitter-go",
+  rust: "tree-sitter-rust",
+  java: "tree-sitter-java",
+  ruby: "tree-sitter-ruby",
+  c_sharp: "tree-sitter-c-sharp",
+  cpp: "tree-sitter-cpp",
+  css: "tree-sitter-css",
+  php: "tree-sitter-php",
+};
 
-let modulePromise: Promise<TreeSitterModule | null> | null = null
-const languageCache = new Map<string, Promise<unknown | null>>()
-let parser: InstanceType<ParserClass> | null = null
+let modulePromise: Promise<TreeSitterModule | null> | null = null;
+const languageCache = new Map<string, Promise<unknown | null>>();
+let parser: InstanceType<ParserClass> | null = null;
 
 function debug(msg: string): void {
-  if (process.env.TAU_DEBUG_TREESITTER === '1') {
-    process.stderr.write(`[tree-sitter] ${msg}\n`)
+  if (process.env.TAU_DEBUG_TREESITTER === "1") {
+    process.stderr.write(`[tree-sitter] ${msg}\n`);
   }
 }
 
@@ -81,33 +81,36 @@ function loadModule(): Promise<TreeSitterModule | null> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = (await import('web-tree-sitter')) as Record<string, unknown>
-        const def = mod.default as Record<string, unknown> | undefined
-        const Parser = (mod.Parser ?? def?.Parser) as ParserClass | undefined
+        const mod = (await import("web-tree-sitter")) as Record<
+          string,
+          unknown
+        >;
+        const def = mod.default as Record<string, unknown> | undefined;
+        const Parser = (mod.Parser ?? def?.Parser) as ParserClass | undefined;
         const Language = (mod.Language ?? def?.Language) as
           | LanguageClass
-          | undefined
-        if (!Parser || !Language || typeof Parser.init !== 'function') {
-          debug('web-tree-sitter missing Parser/Language/init exports')
-          return null
+          | undefined;
+        if (!Parser || !Language || typeof Parser.init !== "function") {
+          debug("web-tree-sitter missing Parser/Language/init exports");
+          return null;
         }
         // `locateFile` points the emscripten loader at the runtime wasm
         // regardless of cwd or bundle layout — resolved via Node, OS-generic.
         const runtimeWasm = tsRequire.resolve(
-          'web-tree-sitter/web-tree-sitter.wasm',
-        )
+          "web-tree-sitter/web-tree-sitter.wasm",
+        );
         await Parser.init({
           locateFile: (file: string) =>
-            file.endsWith('.wasm') ? runtimeWasm : file,
-        })
-        return { Parser, Language }
+            file.endsWith(".wasm") ? runtimeWasm : file,
+        });
+        return { Parser, Language };
       } catch (err) {
-        debug(`init failed: ${(err as Error)?.message ?? String(err)}`)
-        return null
+        debug(`init failed: ${(err as Error)?.message ?? String(err)}`);
+        return null;
       }
-    })()
+    })();
   }
-  return modulePromise
+  return modulePromise;
 }
 
 /** Lazily load + cache a grammar by key. */
@@ -115,31 +118,31 @@ function loadLanguage(
   ts: TreeSitterModule,
   language: string,
 ): Promise<unknown | null> {
-  const cached = languageCache.get(language)
-  if (cached) return cached
+  const cached = languageCache.get(language);
+  if (cached) return cached;
   const promise = (async () => {
-    const base = GRAMMAR_FILES[language]
-    if (!base) return null
+    const base = GRAMMAR_FILES[language];
+    if (!base) return null;
     try {
       const wasmPath = tsRequire.resolve(
         `@vscode/tree-sitter-wasm/wasm/${base}.wasm`,
-      )
+      );
       // Load from BYTES (not a path) so nothing depends on cwd at parse time.
-      const bytes = new Uint8Array(readFileSync(wasmPath))
-      return await ts.Language.load(bytes)
+      const bytes = new Uint8Array(readFileSync(wasmPath));
+      return await ts.Language.load(bytes);
     } catch (err) {
       debug(
         `grammar load failed (${language}): ${(err as Error)?.message ?? String(err)}`,
-      )
-      return null
+      );
+      return null;
     }
-  })()
-  languageCache.set(language, promise)
-  return promise
+  })();
+  languageCache.set(language, promise);
+  return promise;
 }
 
 export function isSupportedLanguage(language: string): boolean {
-  return language in GRAMMAR_FILES
+  return language in GRAMMAR_FILES;
 }
 
 /**
@@ -151,20 +154,20 @@ export async function parse(
   code: string,
 ): Promise<SyntaxTree | null> {
   try {
-    const ts = await loadModule()
-    if (!ts) return null
-    const lang = await loadLanguage(ts, language)
-    if (!lang) return null
+    const ts = await loadModule();
+    if (!ts) return null;
+    const lang = await loadLanguage(ts, language);
+    if (!lang) return null;
     // Reuse one parser. `setLanguage` + `parse` run synchronously with no
     // `await` between, so concurrent async callers cannot interleave and parse
     // with the wrong language.
-    if (!parser) parser = new ts.Parser()
-    parser.setLanguage(lang)
-    return parser.parse(code) ?? null
+    if (!parser) parser = new ts.Parser();
+    parser.setLanguage(lang);
+    return parser.parse(code) ?? null;
   } catch (err) {
     debug(
       `parse failed (${language}): ${(err as Error)?.message ?? String(err)}`,
-    )
-    return null
+    );
+    return null;
   }
 }

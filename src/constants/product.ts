@@ -1,9 +1,9 @@
-export const PRODUCT_URL = 'https://claude.com/claude-code'
+export const PRODUCT_URL = "https://claude.com/claude-code";
 
-// Tau Remote session URLs
-export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
-export const CLAUDE_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
-export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
+// Zen Remote session URLs
+export const CLAUDE_AI_BASE_URL = "https://claude.ai";
+export const CLAUDE_AI_STAGING_BASE_URL = "https://claude-ai.staging.ant.dev";
+export const CLAUDE_AI_LOCAL_BASE_URL = "http://localhost:4000";
 
 /**
  * Determine if we're in a staging environment for remote sessions.
@@ -14,9 +14,9 @@ export function isRemoteSessionStaging(
   ingressUrl?: string,
 ): boolean {
   return (
-    sessionId?.includes('_staging_') === true ||
-    ingressUrl?.includes('staging') === true
-  )
+    sessionId?.includes("_staging_") === true ||
+    ingressUrl?.includes("staging") === true
+  );
 }
 
 /**
@@ -28,9 +28,9 @@ export function isRemoteSessionLocal(
   ingressUrl?: string,
 ): boolean {
   return (
-    sessionId?.includes('_local_') === true ||
-    ingressUrl?.includes('localhost') === true
-  )
+    sessionId?.includes("_local_") === true ||
+    ingressUrl?.includes("localhost") === true
+  );
 }
 
 /**
@@ -41,12 +41,12 @@ export function getClaudeAiBaseUrl(
   ingressUrl?: string,
 ): string {
   if (isRemoteSessionLocal(sessionId, ingressUrl)) {
-    return CLAUDE_AI_LOCAL_BASE_URL
+    return CLAUDE_AI_LOCAL_BASE_URL;
   }
   if (isRemoteSessionStaging(sessionId, ingressUrl)) {
-    return CLAUDE_AI_STAGING_BASE_URL
+    return CLAUDE_AI_STAGING_BASE_URL;
   }
-  return CLAUDE_AI_BASE_URL
+  return CLAUDE_AI_BASE_URL;
 }
 
 /**
@@ -68,9 +68,9 @@ export function getRemoteSessionUrl(
 ): string {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { toCompatSessionId } =
-    require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
+    require("../bridge/sessionIdCompat.js") as typeof import("../bridge/sessionIdCompat.js");
   /* eslint-enable @typescript-eslint/no-require-imports */
-  const compatId = toCompatSessionId(sessionId)
-  const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
-  return `${baseUrl}/code/${compatId}`
+  const compatId = toCompatSessionId(sessionId);
+  const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl);
+  return `${baseUrl}/code/${compatId}`;
 }

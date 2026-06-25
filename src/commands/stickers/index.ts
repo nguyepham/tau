@@ -1,11 +1,11 @@
-import type { Command } from '../../commands.js'
+import type { Command } from "../../commands.js";
 
 const stickers = {
-  type: 'local',
-  name: 'stickers',
-  description: 'Order Tau stickers',
+  type: "local",
+  name: "stickers",
+  description: "Order Zen stickers",
   supportsNonInteractive: false,
-  load: () => import('./stickers.js'),
-} satisfies Command
+  load: () => import("./stickers.js"),
+} satisfies Command;
 
-export default stickers
+export default stickers;
