@@ -154,12 +154,12 @@ const CLAUDE_4_5_OR_4_6_MODEL_IDS = {
 }
 
 function getHooksSection(): string {
-  return `Users may configure 'hooks', shell commands that execute in response to events like tool calls, in settings. Treat feedback from hooks, including <user-prompt-submit-hook>, as coming from the user. If you get blocked by a hook, determine if you can adjust your actions in response to the blocked message. If not, ask the user to check their hooks configuration.`
+  return `Users may set 'hooks' — shell commands that run on events like tool calls — in settings. Treat hook feedback, including <user-prompt-submit-hook>, as from the user. Blocked by a hook => adjust your actions to the blocked message. If not, ask user to check their hooks config.`
 }
 
 function getSystemRemindersSection(): string {
-  return `- Tool results and user messages may include <system-reminder> tags. <system-reminder> tags contain useful information and reminders. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear.
-- The conversation has unlimited context through automatic summarization.`
+  return `- Tool results and user messages may include <system-reminder> tags. These tags contain useful info and reminders. They are auto-added by the system and bear no direct relation to the specific tool results or user messages in which they appear.
+- The conversation has unlimited context via auto-summarization.`
 }
 
 function getAntModelOverrideSection(): string | null {
