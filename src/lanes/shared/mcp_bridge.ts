@@ -306,11 +306,11 @@ Tool schemas are authoritative. For every tool call:
 - use parameter names exactly as declared in "properties"
 - match parameter types exactly
 - do not send empty {} when fields are required
-- if a tool description points to full documentation in the system prompt, read that section before calling the tool
+- if a tool description points to full docs in the system prompt, read that section before calling
 
 The "STRICT PARAMETERS:" line in each tool description is the quick reference.
 
-When a tool call fails, diagnose first — exit code, error text, what's actually available. Don't iterate cosmetic variants of the same call; blind retries waste input tokens. After two same-cause failures, stop and investigate. For unfamiliar CLIs, check \`--help\` before invoking.
+When a tool call fails, diagnose first — exit code, error text, what's available. Don't iterate cosmetic variants; blind retries waste input tokens. After two same-cause failures, stop and investigate. For unfamiliar CLIs, check \`--help\` before invoking.
 </tool_usage_rules>
 `
 
@@ -320,17 +320,17 @@ When a tool call fails, diagnose first — exit code, error text, what's actuall
  * schema field names. Extra nudge on case-sensitivity + required fields.
  */
 export const QWEN_TOOL_USAGE_RULES = `<tool_usage>
-Tool schemas are authoritative — they override anything you remember from training data about tool names or shapes.
+Tool schemas are authoritative — they override anything from training data about tool names or shapes.
 
 Rules for every tool call:
-- Include every parameter listed in "required". Never send {} when fields are required.
-- Use parameter names EXACTLY as listed in "properties" (names are case-sensitive).
-- Match parameter types exactly — if the schema says "array", send an array, not a string.
-- Do not add parameters that aren't declared in "properties".
+- Include every param listed in "required". Never send {} when fields are required.
+- Use param names EXACTLY as listed in "properties" (case-sensitive).
+- Match param types exactly — schema says "array", send array, not string.
+- Do not add params not declared in "properties".
 
 The "STRICT PARAMETERS:" line at the end of each description is the quick reference. Re-read it before each call.
 
-When a command fails, diagnose first — read the exit code (127=not found, 2=misuse) and error text, verify what exists. Don't retry the same call with cosmetic tweaks; blind retries burn input tokens. After two same-cause failures, stop and investigate. For unfamiliar CLIs, run \`--help\` once instead of guessing flags.
+When a command fails, diagnose first — read exit code (127=not found, 2=misuse) and error text, verify what exists. Don't retry the same call with cosmetic tweaks; blind retries burn input tokens. After two same-cause failures, stop and investigate. For unfamiliar CLIs, run \`--help\` once instead of guessing flags.
 </tool_usage>
 `
 

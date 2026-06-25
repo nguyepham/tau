@@ -13,3 +13,5 @@ tmp/
 # Local-only tests / scratch
 src/utils/fallback/detect.test.ts
 proxy.mjs
+# CocoIndex Code (ccc)
+/.cocoindex_code/
