@@ -1982,7 +1982,7 @@ export function getProviderBaseUrl(provider: APIProvider): string {
     case 'mistral':     return process.env.MISTRAL_BASE_URL ?? process.env.MISTRAL_API_BASE_URL ?? 'https://api.mistral.ai/v1'
     case 'nim':         return process.env.NIM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1'
     case 'gemini':      return 'https://generativelanguage.googleapis.com/v1beta'
-    case 'antigravity': return 'https://cloudcode-pa.googleapis.com/v1internal'
+    case 'antigravity': return process.env.ANTIGRAVITY_BASE_URL ?? 'https://cloudcode-pa.googleapis.com/v1internal'
     case 'deepseek':    return process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com/v1'
     case 'glm':         return process.env.GLM_BASE_URL ?? process.env.GLM_API_URL ?? process.env.BIGMODEL_BASE_URL ?? process.env.ZHIPU_BASE_URL ?? process.env.ZAI_BASE_URL ?? process.env.Z_AI_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4'
     case 'moonshot':    return process.env.MOONSHOT_BASE_URL ?? process.env.MOONSHOT_API_BASE_URL ?? 'https://api.moonshot.ai/v1'
