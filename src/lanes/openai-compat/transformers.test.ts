@@ -212,6 +212,34 @@ function main(): void {
     assert(modelIds.includes('qwen3.7-max'), 'Qwen3.7 Max should remain available')
   })
 
+  test('OpenCode Go strips the detailed-usage flag on Kimi rows only', () => {
+    const kimi = mkBody('kimi-k2.6') as OpenAIChatRequest & Record<string, any>
+    kimi.usage = { include: true }
+    TRANSFORMERS.opencodego.transformRequest(kimi, mkCtx('kimi-k2.6'))
+    assert(kimi.usage === undefined, `kimi usage=${JSON.stringify(kimi.usage)}`)
+
+    const kimiCode = mkBody('kimi-k2.7-code') as OpenAIChatRequest & Record<string, any>
+    kimiCode.usage = { include: true }
+    TRANSFORMERS.opencodego.transformRequest(kimiCode, mkCtx('kimi-k2.7-code'))
+    assert(kimiCode.usage === undefined, 'whole kimi family must drop the flag')
+
+    const glm = mkBody('glm-5.1') as OpenAIChatRequest & Record<string, any>
+    glm.usage = { include: true }
+    TRANSFORMERS.opencodego.transformRequest(glm, mkCtx('glm-5.1'))
+    assert(glm.usage !== undefined, 'non-kimi rows must keep the flag (glm-5.2 needs it for cached_tokens)')
+  })
+
+  test('OpenCode Go small-fast routes qwen/deepseek to deepseek-v4-flash', () => {
+    assert(TRANSFORMERS.opencodego.smallFastModel!('qwen3.7-max') === 'deepseek-v4-flash',
+      'qwen main model must not fall back to the no-cache qwen3.5-plus row')
+    assert(TRANSFORMERS.opencodego.smallFastModel!('deepseek-v4-pro') === 'deepseek-v4-flash',
+      'deepseek family must use the flash row instead of reusing the main model')
+    assert(TRANSFORMERS.opencodego.smallFastModel!('glm-5.1') === 'glm-5',
+      'non-overridden families must keep Zen mapping')
+    assert(TRANSFORMERS.opencode.smallFastModel!('qwen3.7-max') === 'qwen3.5-plus',
+      'Zen small-fast mapping must remain unchanged')
+  })
+
   for (const id of ids) {
     test(`${id} schemaDropList contains $schema`, () => {
       const drop = TRANSFORMERS[id].schemaDropList()

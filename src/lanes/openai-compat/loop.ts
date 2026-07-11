@@ -415,13 +415,24 @@ export class OpenAICompatLane implements Lane {
       ? sessionId
       : undefined
 
-    // OpenCode Go exposes Qwen3.7 Max only on its Anthropic-compatible
-    // `/messages` endpoint. The `/chat/completions` route identifies itself as
-    // `oa-compat` and rejects this model before the request reaches an upstream.
-    // This model has no selectable reasoning variants, so the native request
-    // intentionally omits `thinking` and lets the model use its server default.
-    if (provider === 'opencodego' && isOpenCodeGoAnthropicModel(model)) {
-      return yield* streamOpenCodeGoAnthropic(
+    // OpenCode Zen/Go serve the qwen rows through their Anthropic-format
+    // `/messages` route (models.dev marks them `provider.npm ===
+    // "@ai-sdk/anthropic"`; the official client speaks Anthropic shape to
+    // them). Two things only work there:
+    //   1. qwen3.7-max isn't served on `/chat/completions` at all — the
+    //      oa-compat route rejects it before reaching an upstream.
+    //   2. Explicit prompt caching: the alibaba upstream behind the qwen rows
+    //      caches ONLY via Anthropic cache_control breakpoints, and the
+    //      gateway's oa-compat→anthropic converter strips content-level
+    //      fields, so `/chat/completions` can never produce a qwen cache hit
+    //      (live-verified 2026-07-11: /messages + breakpoints → 6306-token
+    //      cache write cold / 6306-token cache read warm; oa-compat → zero).
+    if (
+      (provider === 'opencode' || provider === 'opencodego')
+      && isOpenCodeAnthropicRouteModel(model)
+    ) {
+      return yield* streamOpenCodeAnthropicRoute(
+        provider,
         cfg,
         {
           model,
@@ -505,12 +516,12 @@ export class OpenAICompatLane implements Lane {
         messages: chatMessages,
         stream: true,
         stream_options: { include_usage: true },
-        // OpenRouter / AgentRouter / OpenCode Zen: surface detailed usage
+        // OpenRouter / AgentRouter / OpenCode Zen + Go: surface detailed usage
         // including cache_discount. Mirrors the Kilo lane's body. Without
         // this flag the cache_read / cache_write fields aren't populated
         // on those gateways, which is what made every call look like a
         // cold miss even when the upstream actually had a cache hit.
-        ...((provider === 'openrouter' || provider === 'agentrouter' || provider === 'opencode') && { usage: { include: true } }),
+        ...((provider === 'openrouter' || provider === 'agentrouter' || provider === 'opencode' || provider === 'opencodego') && { usage: { include: true } }),
         // Only bare/unknown local servers get tools stripped (they may not
         // implement function-calling). Named providers behind a local dev
         // proxy — and ollama/lmstudio — keep full tool calling.
@@ -1394,11 +1405,71 @@ function* emitErrorText(text: string): Generator<AnthropicStreamEvent> {
   yield { type: 'content_block_stop', index: 0 }
 }
 
-function isOpenCodeGoAnthropicModel(model: string): boolean {
-  return model.trim().toLowerCase() === 'qwen3.7-max'
+// Rows served via the gateway's Anthropic-format `/messages` route. Source of
+// truth: models.dev per-model `provider.npm === "@ai-sdk/anthropic"` on the
+// opencode / opencode-go catalogs. The `-free` variants share the base row.
+// (The minimax rows carry the same override; they stay on oa-compat here until
+// their /messages behavior is verified — their reasoning shaping differs.)
+const OPENCODE_ANTHROPIC_ROUTE_MODELS = new Set([
+  'qwen3.5-plus',
+  'qwen3.6-plus',
+  'qwen3.7-plus',
+  'qwen3.7-max',
+])
+
+function isOpenCodeAnthropicRouteModel(model: string): boolean {
+  const m = model.trim().toLowerCase()
+  return OPENCODE_ANTHROPIC_ROUTE_MODELS.has(m.endsWith('-free') ? m.slice(0, -5) : m)
 }
 
-async function* streamOpenCodeGoAnthropic(
+// Anthropic 4-breakpoint budget: 1 on the system tail + 2 rolling on the last
+// two messages (mirrors opencode-dev's applyCaching: system slice(0,2) +
+// final slice(-2)). Existing markers are stripped first so replayed history
+// can't accumulate stale breakpoints past the limit; inputs are cloned so the
+// caller's message objects are never mutated.
+function stampOpenCodeAnthropicCacheBreakpoints(
+  system: LaneProviderCallParams['system'],
+  messages: LaneProviderCallParams['messages'],
+): { system: unknown; messages: unknown } {
+  const ephemeral = { type: 'ephemeral' }
+  const stripBlock = (block: Record<string, unknown>) => { delete block.cache_control }
+  const stampLastBlock = (msg: Record<string, any>) => {
+    if (typeof msg.content === 'string') {
+      msg.content = [{ type: 'text', text: msg.content, cache_control: ephemeral }]
+      return
+    }
+    if (!Array.isArray(msg.content)) return
+    // cache_control is invalid on thinking blocks — stamp the last other block.
+    for (let i = msg.content.length - 1; i >= 0; i--) {
+      const block = msg.content[i]
+      if (!block || block.type === 'thinking' || block.type === 'redacted_thinking') continue
+      block.cache_control = ephemeral
+      return
+    }
+  }
+
+  const clonedMessages = JSON.parse(JSON.stringify(messages)) as Array<Record<string, any>>
+  for (const msg of clonedMessages) {
+    if (Array.isArray(msg.content)) msg.content.forEach(stripBlock)
+  }
+  for (const msg of clonedMessages.slice(-2)) stampLastBlock(msg)
+
+  let clonedSystem: unknown = system
+  if (typeof system === 'string') {
+    clonedSystem = system.trim()
+      ? [{ type: 'text', text: system, cache_control: ephemeral }]
+      : system
+  } else if (Array.isArray(system) && system.length > 0) {
+    const blocks = JSON.parse(JSON.stringify(system)) as Array<Record<string, unknown>>
+    blocks.forEach(stripBlock)
+    blocks[blocks.length - 1]!.cache_control = ephemeral
+    clonedSystem = blocks
+  }
+  return { system: clonedSystem, messages: clonedMessages }
+}
+
+async function* streamOpenCodeAnthropicRoute(
+  provider: 'opencode' | 'opencodego',
   cfg: { apiKey: string; baseUrl: string },
   params: Pick<
     LaneProviderCallParams,
@@ -1407,26 +1478,46 @@ async function* streamOpenCodeGoAnthropic(
   >,
   sessionId?: string,
 ): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
+  // The whole point of this route: the alibaba upstream only caches via
+  // explicit cache_control breakpoints, verbatim-forwarded by the gateway.
+  const { system, messages } = stampOpenCodeAnthropicCacheBreakpoints(
+    params.system,
+    params.messages,
+  )
+
   const body: Record<string, unknown> = {
     model: params.model,
-    messages: params.messages,
+    messages,
     max_tokens: params.max_tokens,
     stream: true,
   }
 
-  if (typeof params.system === 'string') {
-    if (params.system.trim()) body.system = params.system
-  } else if (params.system.length > 0) {
-    body.system = params.system
+  if (typeof system === 'string') {
+    if (system.trim()) body.system = system
+  } else if (Array.isArray(system) && system.length > 0) {
+    body.system = system
   }
   if (params.tools.length > 0) body.tools = params.tools
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.stop_sequences?.length) body.stop_sequences = params.stop_sequences
 
+  // Per-model effort → Anthropic thinking budget (matches the budgets the
+  // oa-compat transformer uses). qwen3.7-max exposes no effort selection
+  // (supportsOpencodeThinkingSelection is false there) and keeps its server
+  // default.
+  if (supportsOpencodeThinkingSelection(provider, params.model)) {
+    const effort = getOpencodeEffort(params.model)
+    if (effort !== 'default') {
+      body.thinking = {
+        type: 'enabled',
+        budget_tokens: effort === 'low' ? 4000 : effort === 'medium' ? 8000 : 16000,
+      }
+    }
+  }
+
   // `/messages` authenticates with x-api-key. Keep the same OpenCode
-  // affinity/rate-limit headers as the compat route, but never send a Tau
-  // thinking/effort field: this model has no supported reasoning variants.
-  const headers = buildRequestHeaders('opencodego', cfg.apiKey, params.model, sessionId)
+  // affinity/rate-limit headers as the compat route.
+  const headers = buildRequestHeaders(provider, cfg.apiKey, params.model, sessionId)
   delete headers.Authorization
   headers['x-api-key'] = cfg.apiKey
   headers['anthropic-version'] = '2023-06-01'
@@ -1454,18 +1545,46 @@ async function* streamOpenCodeGoAnthropic(
     },
   })
 
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: params.signal,
-    })
-  } catch (error) {
+  // The alibaba upstream behind this route intermittently 500s with
+  // "InternalError: Request timed out." before any bytes arrive. The official
+  // client never surfaces these because the AI SDK retries 5xx by default;
+  // mirror that. Retrying is safe here — nothing has been yielded until a 200
+  // arrives. 429s are NOT retried: the gateway's quota errors carry
+  // retry-after semantics the user should see immediately.
+  const RETRYABLE_STATUSES = new Set([500, 502, 503, 504, 529])
+  const MAX_STATUS_RETRIES = 3
+  let response: Response | null = null
+  let connectionError: unknown = null
+  for (let attempt = 0; attempt <= MAX_STATUS_RETRIES; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** (attempt - 1)))
+      if (params.signal?.aborted) break
+    }
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: params.signal,
+      })
+      connectionError = null
+    } catch (error) {
+      connectionError = error
+      response = null
+      if (params.signal?.aborted) break
+      continue
+    }
+    if (RETRYABLE_STATUSES.has(response.status) && attempt < MAX_STATUS_RETRIES) {
+      await response.text().catch(() => {})
+      continue
+    }
+    break
+  }
+
+  if (!response) {
     yield emitSyntheticStart()
     yield* emitErrorText(
-      `opencodego API connection error: ${error instanceof Error ? error.message : String(error)}`,
+      `${provider} API connection error: ${connectionError instanceof Error ? connectionError.message : String(connectionError)}`,
     )
     yield {
       type: 'message_delta',
@@ -1479,7 +1598,7 @@ async function* streamOpenCodeGoAnthropic(
   if (!response.ok) {
     const errText = await response.text().catch(() => '')
     yield emitSyntheticStart()
-    yield* emitErrorText(formatProviderHttpError('opencodego', response.status, errText, false))
+    yield* emitErrorText(formatProviderHttpError(provider, response.status, errText, false))
     yield {
       type: 'message_delta',
       delta: { stop_reason: 'end_turn' },
@@ -1491,7 +1610,7 @@ async function* streamOpenCodeGoAnthropic(
 
   if (!response.body) {
     yield emitSyntheticStart()
-    yield* emitErrorText('opencodego API error: empty response body')
+    yield* emitErrorText(`${provider} API error: empty response body`)
     yield {
       type: 'message_delta',
       delta: { stop_reason: 'end_turn' },
@@ -1539,7 +1658,7 @@ async function* streamOpenCodeGoAnthropic(
             parsed.error?.message
             ?? parsed.message
             ?? JSON.stringify(parsed.error ?? parsed)
-          yield* emitErrorText(`opencodego API stream error: ${detail}`)
+          yield* emitErrorText(`${provider} API stream error: ${detail}`)
           yield {
             type: 'message_delta',
             delta: { stop_reason: 'end_turn' },
@@ -1628,7 +1747,7 @@ function formatProviderHttpError(
   if (provider === 'glm') {
     return formatGlmHttpError(status, errText, isPromptTooLong)
   }
-  if (provider === 'opencode' && status === 429 && errText.includes('FreeUsageLimitError')) {
+  if ((provider === 'opencode' || provider === 'opencodego') && status === 429 && errText.includes('FreeUsageLimitError')) {
     // FreeUsageLimitError comes from the gateway's IP-based anonymous
     // limiter for allowAnonymous=true models (big-pickle, *-free rows,
     // gpt-5-nano). A real API key only changes quota when the user also
@@ -1825,6 +1944,7 @@ function providerReportsOpenAICompatCacheUsage(provider: ProviderType): boolean 
     || provider === 'agentrouter'
     || provider === 'modelrouter'
     || provider === 'opencode'
+    || provider === 'opencodego'
 }
 
 function extractOpenAICompatCacheUsage(
