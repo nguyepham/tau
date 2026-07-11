@@ -13,6 +13,7 @@ import {
   convertLeadingTabsToSpaces,
   readFileSyncCached,
 } from '../../utils/file.js'
+import { shouldTreatEditAsAlreadyApplied } from './matchResolver.js'
 import type { EditInput, FileEdit } from './types.js'
 
 // Claude can't output curly quotes, so we define them as constants here for Claude to use
@@ -332,7 +333,9 @@ export function getPatchForEdits({
       updatedFile === previousContent &&
       edit.old_string !== edit.new_string
     ) {
-      throw new Error('String not found in file. Failed to apply edit.')
+      throw new Error(
+        'String not found in file. Failed to apply edit. Note: edits are applied sequentially — each old_string must match the file content as already modified by the preceding edits in this call, not the original file.',
+      )
     }
 
     // Track the new string that was applied
@@ -644,6 +647,27 @@ export function normalizeFileEditInput({
           return {
             old_string: desanitizedOldString,
             new_string: desanitizedNewString,
+            replace_all,
+          }
+        }
+
+        // old_string is gone but the file already contains new_string
+        // (uniquely, and with high confidence — see the helper's bar): the
+        // model is re-issuing an edit that was already applied. Normalize to
+        // an idempotent no-op (old := new) so the call flows through the
+        // battle-tested old===new path and returns a clean "no changes
+        // needed" SUCCESS instead of a failed tool call. Downstream stays
+        // honest: the no-op result says explicitly that nothing was written.
+        if (
+          shouldTreatEditAsAlreadyApplied(
+            fileContent,
+            old_string,
+            normalizedNewString,
+          )
+        ) {
+          return {
+            old_string: normalizedNewString,
+            new_string: normalizedNewString,
             replace_all,
           }
         }

@@ -2196,7 +2196,11 @@ export async function getChangedFiles(
           return null
         }
 
-        const fileInput = { file_path: normalizedPath }
+        // skeleton: false — this read feeds getSnippetForTwoFileDiff, which
+        // needs the full current content; an auto-skeleton would fail the
+        // type === 'text' check below and silently drop the changed-file
+        // notice for large files.
+        const fileInput = { file_path: normalizedPath, skeleton: false }
 
         // Validate file path is valid
         const isValid = await FileReadTool.validateInput(

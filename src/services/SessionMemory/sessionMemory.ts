@@ -213,9 +213,12 @@ async function setupSessionMemoryFile(
 
   // Drop any cached entry so FileReadTool's dedup doesn't return a
   // file_unchanged stub — we need the actual content. The Read repopulates it.
+  // skeleton: false for the same reason: the type === 'text' check below
+  // requires full content (inert for .md today, which never auto-skeletons,
+  // but this reader's contract is verbatim-full either way).
   toolUseContext.readFileState.delete(memoryPath)
   const result = await FileReadTool.call(
-    { file_path: memoryPath },
+    { file_path: memoryPath, skeleton: false },
     toolUseContext,
   )
   let currentMemory = ''

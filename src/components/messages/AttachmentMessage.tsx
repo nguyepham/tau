@@ -141,6 +141,12 @@ export function AttachmentMessage({
             Read <Text bold>{attachment.displayPath}</Text> (unchanged)
           </Line>;
       }
+      if (attachment.content.type === 'skeleton') {
+        return <Line>
+            Read <Text bold>{attachment.displayPath}</Text> (skeleton,{' '}
+            {attachment.content.file.keptLines} of {attachment.content.file.totalLines} lines)
+          </Line>;
+      }
       return <Line>
           Read <Text bold>{attachment.displayPath}</Text> (
           {attachment.content.type === 'text' ? `${attachment.content.file.numLines}${attachment.truncated ? '+' : ''} lines` : formatFileSize(attachment.content.file.originalSize)}

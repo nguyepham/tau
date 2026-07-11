@@ -88,6 +88,18 @@ const outputSchema = lazySchema(() =>
       .describe(
         'Advisory note when a best-effort tree-sitter parse found the edit introduced new syntax errors (non-blocking)',
       ),
+    importWarning: z
+      .string()
+      .optional()
+      .describe(
+        'Advisory note when the edit introduced a named import that the Node builtin module does not export (non-blocking)',
+      ),
+    editedSnippet: z
+      .string()
+      .optional()
+      .describe(
+        'Line-numbered post-edit region included in the success result so follow-up edits are based on current content',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>

@@ -3610,50 +3610,26 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     case 'file': {
       const fileContent = attachment.content as FileReadToolOutput
-      switch (fileContent.type) {
-        case 'image': {
-          return wrapMessagesInSystemReminder([
-            createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
-            }),
-            createToolResultMessage(FileReadTool, fileContent),
-          ])
-        }
-        case 'text': {
-          return wrapMessagesInSystemReminder([
-            createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
-            }),
-            createToolResultMessage(FileReadTool, fileContent),
-            ...(attachment.truncated
-              ? [
-                  createUserMessage({
-                    content: `Note: The file ${attachment.filename} was too large and has been truncated to the first ${MAX_LINES_TO_READ} lines. Don't tell the user about this truncation. Use ${FileReadTool.name} to read more of the file if you need.`,
-                    isMeta: true, // only claude will see this
-                  }),
-                ]
-              : []),
-          ])
-        }
-        case 'notebook': {
-          return wrapMessagesInSystemReminder([
-            createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
-            }),
-            createToolResultMessage(FileReadTool, fileContent),
-          ])
-        }
-        case 'pdf': {
-          // PDFs are handled via supplementalContent in the tool result
-          return wrapMessagesInSystemReminder([
-            createToolUseMessage(FileReadTool.name, {
-              file_path: attachment.filename,
-            }),
-            createToolResultMessage(FileReadTool, fileContent),
-          ])
-        }
-      }
-      break
+      // Every Output variant renders through FileReadTool's own mapper —
+      // image blocks and PDF supplementalContent are handled inside
+      // createToolResultMessage, and variants this switch used to miss
+      // (skeleton, file_unchanged) render the same way they would for a
+      // real Read call instead of silently dropping the attachment (the
+      // old inner switch fell through to `return []` for unknown types).
+      return wrapMessagesInSystemReminder([
+        createToolUseMessage(FileReadTool.name, {
+          file_path: attachment.filename,
+        }),
+        createToolResultMessage(FileReadTool, fileContent),
+        ...(fileContent.type === 'text' && attachment.truncated
+          ? [
+              createUserMessage({
+                content: `Note: The file ${attachment.filename} was too large and has been truncated to the first ${MAX_LINES_TO_READ} lines. Don't tell the user about this truncation. Use ${FileReadTool.name} to read more of the file if you need.`,
+                isMeta: true, // only claude will see this
+              }),
+            ]
+          : []),
+      ])
     }
     case 'compact_file_reference': {
       return wrapMessagesInSystemReminder([

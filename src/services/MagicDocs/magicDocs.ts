@@ -131,8 +131,10 @@ async function updateMagicDoc(
   // Read the document; if deleted or unreadable, remove from tracking
   let currentDoc = ''
   try {
+    // skeleton: false — header re-detection needs full content (inert for
+    // .md today, which never auto-skeletons, but the contract is explicit).
     const result = await FileReadTool.call(
-      { file_path: docInfo.path },
+      { file_path: docInfo.path, skeleton: false },
       clonedToolUseContext,
     )
     const output = result.data as FileReadToolOutput

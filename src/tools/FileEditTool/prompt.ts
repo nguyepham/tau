@@ -24,5 +24,7 @@ Usage:${getPreReadInstruction()}
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
 - The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`.${minimalUniquenessHint}
-- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`
+- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
+- Every successful edit CHANGES the file: an old_string prepared from an earlier read goes stale the moment your own edit touches that region. The success result shows the updated region — treat those lines as the ONLY source of truth for any follow-up old_string in that file, and re-read the file whenever you are not certain what it now contains.
+- If an edit fails with "String to replace not found", do NOT retry with guessed variants of old_string. The error shows the file's current content or its closest-matching region — copy old_string exactly from there (or Read the file again). If it says the edit was already applied, move on; do not re-issue it.`
 }

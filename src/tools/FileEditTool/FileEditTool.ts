@@ -21,6 +21,7 @@ import { countLinesChanged } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
 import {
+  addLineNumbers,
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getFileModificationTime,
@@ -50,6 +51,7 @@ import {
 } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
+import { validateBuiltinImports } from '../../utils/importCheck.js'
 import { validateInputForSettingsFileEdit } from '../../utils/settings/validateEditTool.js'
 import { validateEditSyntax } from '../../utils/treesitter/validateEdit.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
@@ -57,6 +59,13 @@ import {
   FILE_EDIT_TOOL_NAME,
   FILE_UNEXPECTEDLY_MODIFIED_ERROR,
 } from './constants.js'
+import {
+  capEditResultSnippet,
+  describeClosestMatch,
+  type FlexibleMatchType,
+  isEditLikelyAlreadyApplied,
+  resolveFlexibleMatch,
+} from './matchResolver.js'
 import { getEditToolDescription } from './prompt.js'
 import { noteFileRead, shouldBlockUnreadEdit } from './readFirstGuard.js'
 import {
@@ -78,6 +87,7 @@ import {
   areFileEditsInputsEquivalent,
   findActualString,
   getPatchForEdit,
+  getSnippetForPatch,
   preserveQuoteStyle,
 } from './utils.js'
 
@@ -345,16 +355,56 @@ export const FileEditTool = buildTool({
     const file = fileContent
 
     // Use findActualString to handle quote normalization
-    const actualOldString = findActualString(file, old_string)
+    let actualOldString = findActualString(file, old_string)
+
+    // Whitespace-flexible fallback: the model's old_string differs from the
+    // file only by trailing whitespace or a uniform indent shift — typical
+    // drift after its own earlier edit or a formatter pass. Resolves to the
+    // file's REAL text, and only when that region is unique, so the edit
+    // proceeds instead of failing. call() re-resolves with the same functions
+    // and therefore reaches the same conclusion.
     if (!actualOldString) {
+      const flex = resolveFlexibleMatch(file, old_string, new_string)
+      if (flex) {
+        actualOldString = flex.actualOldString
+      }
+    }
+
+    if (!actualOldString) {
+      // The intended end-state may already be in the file: the model repeated
+      // an edit it already made (chained edits against a stale mental copy).
+      // Say so explicitly — a bare "not found" sends models into
+      // guess-the-old_string retry loops.
+      if (isEditLikelyAlreadyApplied(file, new_string)) {
+        return {
+          result: false,
+          behavior: 'ask',
+          message: `String to replace not found in file, but new_string is already present — this edit has most likely ALREADY been applied (e.g. by your own earlier edit). Do not retry the same edit. If you intended a different change, Read the file and base old_string on its current content.\nString: ${old_string}`,
+          meta: {
+            isFilePathAbsolute: String(isAbsolute(file_path)),
+          },
+          errorCode: 11,
+        }
+      }
+
       // Anchor the retry: models that edited blind (or against a stale view)
-      // keep guessing old_string variants and loop. For small files, show the
-      // real content so the next attempt can copy it exactly; for larger
-      // files, direct the model to re-read instead of guessing again.
-      const recoveryHint =
-        file.length <= 2000
-          ? `\nCurrent file content:\n${file}`
+      // keep guessing old_string variants and loop. Show real current content
+      // — the whole file when small, else the closest-matching region — so
+      // the next attempt copies it exactly instead of guessing again.
+      let recoveryHint: string
+      if (file.length <= 2000) {
+        recoveryHint = `\nCurrent file content:\n${file}`
+      } else {
+        const closest = describeClosestMatch(file, old_string)
+        recoveryHint = closest
+          ? `\nThe file's current content differs from your old_string — it has likely changed since you last read it (your own earlier edit, a formatter, or the user). Closest match currently in the file (line number prefixes are NOT part of the content):\n${addLineNumbers(
+              {
+                content: closest.lines.join('\n'),
+                startLine: closest.startLine,
+              },
+            )}\nRetry with old_string copied exactly from these lines, or Read the file first if this is not the region you meant.`
           : '\nRead the file with the Read tool to see its current content, then retry with an exact, character-for-character old_string.'
+      }
       return {
         result: false,
         behavior: 'ask',
@@ -509,16 +559,38 @@ export const FileEditTool = buildTool({
       }
     }
 
-    // 3. Use findActualString to handle quote normalization
-    const actualOldString =
-      findActualString(originalFileContents, old_string) || old_string
-
-    // Preserve curly quotes in new_string when the file uses them
-    const actualNewString = preserveQuoteStyle(
-      old_string,
-      actualOldString,
-      new_string,
-    )
+    // 3. Resolve old_string against the file's real content: exact /
+    // quote-normalized first, then the whitespace-flexible fallback. Must
+    // mirror validateInput, which approved this edit via the same resolution.
+    const exactOrQuoteMatch = findActualString(originalFileContents, old_string)
+    let actualOldString: string
+    let actualNewString: string
+    let flexMatchType: FlexibleMatchType | undefined
+    if (exactOrQuoteMatch !== null) {
+      actualOldString = exactOrQuoteMatch
+      // Preserve curly quotes in new_string when the file uses them
+      actualNewString = preserveQuoteStyle(
+        old_string,
+        actualOldString,
+        new_string,
+      )
+    } else {
+      const flex = resolveFlexibleMatch(
+        originalFileContents,
+        old_string,
+        new_string,
+      )
+      if (flex) {
+        actualOldString = flex.actualOldString
+        actualNewString = flex.actualNewString
+        flexMatchType = flex.matchType
+      } else {
+        // No safe resolution — fall through with the raw strings; the no-op /
+        // "String not found" handling below keeps prior behavior.
+        actualOldString = old_string
+        actualNewString = new_string
+      }
+    }
 
     // 4. Generate patch
     const { patch, updatedFile } = getPatchForEdit({
@@ -613,6 +685,16 @@ export const FileEditTool = buildTool({
       replaceAll: replace_all,
     })
 
+    // Track how often the whitespace-flexible fallback rescued an edit that
+    // exact matching would have failed. (Metadata values are boolean-only by
+    // policy — no strings.)
+    if (flexMatchType) {
+      logEvent('tengu_edit_flexible_match', {
+        trailingWhitespace: flexMatchType === 'trailing-whitespace',
+        indent: flexMatchType === 'indent',
+      })
+    }
+
     let gitDiff: ToolUseDiff | undefined
     if (
       isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
@@ -644,6 +726,31 @@ export const FileEditTool = buildTool({
       logForDebugging(`[tree-sitter] ${absoluteFilePath}: ${syntaxWarning}`)
     }
 
+    // Same contract as the syntax check above, for named imports of Node
+    // builtin modules (catches e.g. `import { fileURLToPath } from
+    // 'node:path'` — wrong module — the instant it is written).
+    const importWarning = validateBuiltinImports(
+      absoluteFilePath,
+      originalFileContents,
+      updatedFile,
+    )
+    if (importWarning) {
+      logForDebugging(`[import-check] ${absoluteFilePath}: ${importWarning}`)
+    }
+
+    // Show the model the post-edit region (bounded, line-numbered) in the
+    // success result. This is the root-cause fix for chained-edit failures:
+    // the model's next old_string for this file is built from the current
+    // content it just saw, not a stale mental copy from before its own edit.
+    // Opt out with CLAUDE_CODE_DISABLE_EDIT_SNIPPET=1 to save tokens.
+    let editedSnippet: string | undefined
+    if (!isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EDIT_SNIPPET)) {
+      const { formattedSnippet } = getSnippetForPatch(patch, updatedFile)
+      if (formattedSnippet) {
+        editedSnippet = capEditResultSnippet(formattedSnippet)
+      }
+    }
+
     // 8. Yield result
     const data = {
       filePath: file_path,
@@ -655,42 +762,60 @@ export const FileEditTool = buildTool({
       replaceAll: replace_all,
       ...(gitDiff && { gitDiff }),
       ...(syntaxWarning && { syntaxWarning }),
+      ...(importWarning && { importWarning }),
+      ...(editedSnippet && { editedSnippet }),
     }
     return {
       data,
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll, syntaxWarning, noOp } = data
+    const {
+      filePath,
+      userModified,
+      replaceAll,
+      syntaxWarning,
+      importWarning,
+      editedSnippet,
+      noOp,
+    } = data
 
     // No-op edit: nothing was written. Say so explicitly (and terminally) so
     // the model doesn't read "updated successfully" and loop trying to force a
-    // change that is already in place.
+    // change that is already in place. Covers both old_string === new_string
+    // and the normalized already-applied case (old_string was missing but the
+    // file already contained new_string).
     if (noOp) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `No changes made to ${filePath}: it already contains that exact text (old_string and new_string are identical, or the replacement matches the current content). Nothing was written — do not retry this edit.`,
+        content: `No changes made to ${filePath}: the file already contains the requested text (the edit was a no-op or had already been applied). Nothing was written — do not retry this edit. If you intended a different change, Read the file and base old_string on its current content.`,
       }
     }
 
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''
-    const warningSuffix = syntaxWarning ? `\n\n${syntaxWarning}` : ''
+    const warnings = [syntaxWarning, importWarning]
+      .filter(Boolean)
+      .join('\n')
+    const warningSuffix = warnings ? `\n\n${warnings}` : ''
+    const snippetSuffix = editedSnippet
+      ? `\n\nEdited region after the change (line-number prefixes are not file content — use these current lines, not your earlier read, for any follow-up old_string here):\n${editedSnippet}`
+      : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${warningSuffix}`,
+        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${snippetSuffix}${warningSuffix}`,
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.${warningSuffix}`,
+      content: `The file ${filePath} has been updated successfully${modifiedNote}.${snippetSuffix}${warningSuffix}`,
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)

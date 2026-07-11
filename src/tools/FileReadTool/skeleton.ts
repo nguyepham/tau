@@ -175,6 +175,56 @@ export function isSkeletonSupportedExt(ext: string): boolean {
   return shape !== undefined && isSupportedLanguage(shape.grammar)
 }
 
+// --- Auto-skeleton policy gates -------------------------------------------
+//
+// A whole-file Read (no offset/limit, no explicit skeleton flag) of a
+// skeleton-supported code file larger than the byte floor returns the
+// skeleton instead of full content. The decision is made once at tool
+// execution time and the result is frozen into the transcript like any
+// other tool output, so the policy is prompt-cache safe on every provider
+// (same determinism contract as outputDistill.ts). The model keeps
+// full-fidelity escapes: skeleton: false forces the full file; offset/limit
+// reads a verbatim range.
+
+const AUTO_SKELETON_ENV_KEYS = [
+  'TAU_AUTO_SKELETON',
+  'CLAUDE_CODE_AUTO_SKELETON',
+] as const
+
+/** Default ON; disable with TAU_AUTO_SKELETON=0/false/off/no. */
+export function isAutoSkeletonEnabled(): boolean {
+  for (const key of AUTO_SKELETON_ENV_KEYS) {
+    const value = process.env[key]
+    if (
+      value &&
+      ['0', 'false', 'off', 'no'].includes(value.trim().toLowerCase())
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+/** ~16KB ≈ 4K tokens: below this a full read is cheap enough to keep inline;
+ * above it the structure view wins (typical 400+ line source file). */
+const DEFAULT_AUTO_SKELETON_MIN_BYTES = 16_000
+
+const AUTO_SKELETON_MIN_BYTES_ENV_KEYS = [
+  'TAU_AUTO_SKELETON_MIN_BYTES',
+  'CLAUDE_CODE_AUTO_SKELETON_MIN_BYTES',
+] as const
+
+/** File-size floor for auto-skeleton; env override wins when a positive int. */
+export function getAutoSkeletonMinBytes(): number {
+  for (const key of AUTO_SKELETON_MIN_BYTES_ENV_KEYS) {
+    const raw = process.env[key]
+    if (!raw) continue
+    const parsed = parseInt(raw, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return DEFAULT_AUTO_SKELETON_MIN_BYTES
+}
+
 const GENERIC_TOKEN_LIMIT_ADVICE =
   'Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.'
 

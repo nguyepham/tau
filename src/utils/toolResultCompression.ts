@@ -10,15 +10,24 @@ const IMPORTANT_LINE =
 
 const MIN_COMPRESSIBLE_CHARS = 4096
 
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
-}
-
+/**
+ * Default ON; disable with TAU_TOOL_RESULT_COMPRESSION=0/false/off/no.
+ * Same opt-out contract as isOutputDistillEnabled: this is the fallback
+ * preview for persisted output the distiller doesn't recognize — a
+ * head + diagnostic-lines + tail selection instead of the blind first
+ * N bytes. Deterministic, so prompt-cache safe (see outputDistill.ts).
+ */
 export function isToolResultCompressionEnabled(): boolean {
-  return TOOL_RESULT_COMPRESSION_ENV_KEYS.some(key =>
-    isTruthyEnv(process.env[key]),
-  )
+  for (const key of TOOL_RESULT_COMPRESSION_ENV_KEYS) {
+    const value = process.env[key]
+    if (
+      value &&
+      ['0', 'false', 'off', 'no'].includes(value.trim().toLowerCase())
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 function appendLine(

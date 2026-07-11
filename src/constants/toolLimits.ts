@@ -9,8 +9,18 @@
  *
  * Individual tools may declare a lower maxResultSizeChars, but this constant
  * acts as a system-wide cap regardless of what tools declare.
+ *
+ * 20_000 chars ≈ 5K tokens: mid-size bash/grep/webfetch output takes the
+ * persist+distill path (failures + summary + retrieval handle) instead of
+ * riding inline in the transcript for the rest of the session. The full
+ * output stays on disk and is retrievable via ToolOutputRetrieve, and the
+ * persist decision is made once at execution time and frozen, so lowering
+ * this is prompt-cache safe on every provider.
+ * Runtime override: TAU_TOOL_PERSIST_THRESHOLD_CHARS /
+ * CLAUDE_CODE_TOOL_PERSIST_THRESHOLD_CHARS — see getPersistenceThreshold()
+ * in toolResultStorage.ts.
  */
-export const DEFAULT_MAX_RESULT_SIZE_CHARS = 50_000
+export const DEFAULT_MAX_RESULT_SIZE_CHARS = 20_000
 
 /**
  * Maximum size for tool results in tokens.
@@ -41,12 +51,18 @@ export const MAX_TOOL_RESULT_BYTES = MAX_TOOL_RESULT_TOKENS * BYTES_PER_TOKEN
  * 150K result in the next are both untouched.
  *
  * This prevents N parallel tools from each hitting the per-tool max and
- * collectively producing e.g. 10 × 40K = 400K in one turn's user message.
+ * collectively producing e.g. 10 × 15K = 150K in one turn's user message.
  *
- * Overridable at runtime via GrowthBook flag tengu_hawthorn_window — see
- * getPerMessageBudgetLimit() in toolResultStorage.ts.
+ * 60_000 chars ≈ 15K tokens: the ceiling one turn's batch of tool results
+ * may add to the transcript inline; the largest fresh blocks overflow to
+ * the persist+preview path. Enforcement freezes per tool_use_id
+ * (enforceToolResultBudget), so already-sent messages are never rewritten
+ * and provider prefix caches are preserved.
+ * Overridable at runtime via GrowthBook flag tengu_hawthorn_window or env
+ * TAU_TOOL_RESULTS_BUDGET_CHARS / CLAUDE_CODE_TOOL_RESULTS_BUDGET_CHARS —
+ * see getPerMessageBudgetLimit() in toolResultStorage.ts.
  */
-export const MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 200_000
+export const MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 60_000
 
 /**
  * Maximum character length for tool summary strings in compact views.

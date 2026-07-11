@@ -52,9 +52,37 @@ export const TOOL_RESULT_CLEARED_MESSAGE = '[Old tool result content cleared]'
 const PERSIST_THRESHOLD_OVERRIDE_FLAG = 'tengu_satin_quoll'
 
 /**
+ * Read a positive finite integer from the first set env var in `keys`.
+ * Returns undefined when unset or invalid so callers fall through to the
+ * next precedence tier (mirrors getEnvMaxTokens in FileReadTool/limits.ts).
+ */
+function getPositiveIntEnv(keys: readonly string[]): number | undefined {
+  for (const key of keys) {
+    const raw = process.env[key]
+    if (!raw) continue
+    const parsed = parseInt(raw, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return undefined
+}
+
+const PERSIST_THRESHOLD_ENV_KEYS = [
+  'TAU_TOOL_PERSIST_THRESHOLD_CHARS',
+  'CLAUDE_CODE_TOOL_PERSIST_THRESHOLD_CHARS',
+] as const
+
+const PER_MESSAGE_BUDGET_ENV_KEYS = [
+  'TAU_TOOL_RESULTS_BUDGET_CHARS',
+  'CLAUDE_CODE_TOOL_RESULTS_BUDGET_CHARS',
+] as const
+
+/**
  * Resolve the effective persistence threshold for a tool.
  * GrowthBook override wins when present; otherwise falls back to the declared
- * per-tool cap clamped by the global default.
+ * per-tool cap clamped by the global default. The global default itself is
+ * env-overridable (TAU_TOOL_PERSIST_THRESHOLD_CHARS) — a user-set tuning
+ * knob and instant rollback lever for the lowered inline budget; the
+ * per-tool GB override stays ahead of it because specific beats general.
  *
  * Defensive: GrowthBook's cache returns `cached !== undefined ? cached : default`,
  * so a flag served as `null` leaks through. We guard with optional chaining and a
@@ -83,7 +111,10 @@ export function getPersistenceThreshold(
   ) {
     return override
   }
-  return Math.min(declaredMaxResultSizeChars, DEFAULT_MAX_RESULT_SIZE_CHARS)
+  const globalDefault =
+    getPositiveIntEnv(PERSIST_THRESHOLD_ENV_KEYS) ??
+    DEFAULT_MAX_RESULT_SIZE_CHARS
+  return Math.min(declaredMaxResultSizeChars, globalDefault)
 }
 
 // Result of persisting a tool result to disk
@@ -791,13 +822,22 @@ export function cloneContentReplacementState(
 }
 
 /**
- * Resolve the per-message aggregate budget limit. GrowthBook override
- * (tengu_hawthorn_window) wins when present and a finite positive number;
- * otherwise falls back to the hardcoded constant. Defensive typeof/finite
- * check: GrowthBook's cache returns `cached !== undefined ? cached : default`,
- * so a flag served as null/string/NaN leaks through.
+ * Resolve the per-message aggregate budget limit. Precedence: env override
+ * (TAU_TOOL_RESULTS_BUDGET_CHARS — user-set, beats experiment infrastructure,
+ * same rule as FileReadTool/limits.ts) > GrowthBook (tengu_hawthorn_window) >
+ * hardcoded constant. Defensive typeof/finite check: GrowthBook's cache
+ * returns `cached !== undefined ? cached : default`, so a flag served as
+ * null/string/NaN leaks through.
+ *
+ * Mid-session changes are cache-safe by construction: enforceToolResultBudget
+ * freezes each tool_use_id's fate on first sight, so a new limit only
+ * affects fresh messages.
  */
 export function getPerMessageBudgetLimit(): number {
+  const envOverride = getPositiveIntEnv(PER_MESSAGE_BUDGET_ENV_KEYS)
+  if (envOverride !== undefined) {
+    return envOverride
+  }
   const override = getFeatureValue_CACHED_MAY_BE_STALE<number | null>(
     'tengu_hawthorn_window',
     null,

@@ -33,6 +33,7 @@ import {
   fetchSingleFileGitDiff,
   type ToolUseDiff,
 } from '../../utils/gitDiff.js'
+import { validateBuiltinImports } from '../../utils/importCheck.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { expandPath } from '../../utils/path.js'
@@ -42,6 +43,7 @@ import {
 } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
+import { validateEditSyntax } from '../../utils/treesitter/validateEdit.js'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
 import { FILE_WRITE_TOOL_NAME, getWriteToolDescription } from './prompt.js'
@@ -86,6 +88,18 @@ const outputSchema = lazySchema(() =>
         'The original file content before the write (null for new files)',
       ),
     gitDiff: gitDiffSchema().optional(),
+    syntaxWarning: z
+      .string()
+      .optional()
+      .describe(
+        'Advisory note when a best-effort tree-sitter parse found the write introduced new syntax errors (non-blocking)',
+      ),
+    importWarning: z
+      .string()
+      .optional()
+      .describe(
+        'Advisory note when the write introduced a named import that the Node builtin module does not export (non-blocking)',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -360,6 +374,27 @@ export const FileWriteTool = buildTool({
       })
     }
 
+    // Best-effort post-write checks, warn-only (same contract as
+    // FileEditTool): only report problems this write introduced compared to
+    // the previous content ('' for new files). Runs AFTER the write, so it
+    // can never block or revert it.
+    const syntaxWarning = await validateEditSyntax(
+      fullFilePath,
+      oldContent ?? '',
+      content,
+    )
+    if (syntaxWarning) {
+      logForDebugging(`[tree-sitter] ${fullFilePath}: ${syntaxWarning}`)
+    }
+    const importWarning = validateBuiltinImports(
+      fullFilePath,
+      oldContent ?? '',
+      content,
+    )
+    if (importWarning) {
+      logForDebugging(`[import-check] ${fullFilePath}: ${importWarning}`)
+    }
+
     if (oldContent) {
       const patch = getPatchForDisplay({
         filePath: file_path,
@@ -380,6 +415,8 @@ export const FileWriteTool = buildTool({
         structuredPatch: patch,
         originalFile: oldContent,
         ...(gitDiff && { gitDiff }),
+        ...(syntaxWarning && { syntaxWarning }),
+        ...(importWarning && { importWarning }),
       }
       // Track lines added and removed for file updates, right before yielding result
       countLinesChanged(patch)
@@ -403,6 +440,8 @@ export const FileWriteTool = buildTool({
       structuredPatch: [],
       originalFile: null,
       ...(gitDiff && { gitDiff }),
+      ...(syntaxWarning && { syntaxWarning }),
+      ...(importWarning && { importWarning }),
     }
 
     // For creation of new files, count all lines as additions, right before yielding the result
@@ -419,19 +458,24 @@ export const FileWriteTool = buildTool({
       data,
     }
   },
-  mapToolResultToToolResultBlockParam({ filePath, type }, toolUseID) {
+  mapToolResultToToolResultBlockParam(
+    { filePath, type, syntaxWarning, importWarning },
+    toolUseID,
+  ) {
+    const warnings = [syntaxWarning, importWarning].filter(Boolean).join('\n')
+    const warningSuffix = warnings ? `\n\n${warnings}` : ''
     switch (type) {
       case 'create':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: `File created successfully at: ${filePath}${warningSuffix}`,
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: `The file ${filePath} has been updated successfully.${warningSuffix}`,
         }
     }
   },

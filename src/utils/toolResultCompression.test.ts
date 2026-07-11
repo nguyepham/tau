@@ -51,8 +51,9 @@ function largeLog(): string {
 
 console.log('tool result compression:')
 
-test('disabled mode returns the existing preview byte-identically', () => {
+test('explicitly disabled mode returns the existing preview byte-identically', () => {
   resetEnv()
+  process.env.TAU_TOOL_RESULT_COMPRESSION = '0'
   const preview = 'legacy first preview'
   const selected = selectToolResultPreview(preview, largeLog(), 2000)
 
@@ -60,9 +61,9 @@ test('disabled mode returns the existing preview byte-identically', () => {
   assert(!isToolResultCompressionEnabled(), 'compression should be off')
 })
 
-test('enabled mode builds a diagnostic preview for large plain text', () => {
+test('default (no env) is enabled and builds a diagnostic preview', () => {
   resetEnv()
-  process.env.TAU_TOOL_RESULT_COMPRESSION = '1'
+  assert(isToolResultCompressionEnabled(), 'compression should default on')
 
   const preview = selectToolResultPreview(
     'legacy first preview',

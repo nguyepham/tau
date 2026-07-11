@@ -7,6 +7,8 @@
 import {
   buildSkeleton,
   fileReadTokenLimitAdvice,
+  getAutoSkeletonMinBytes,
+  isAutoSkeletonEnabled,
   isSkeletonSupportedExt,
 } from './skeleton.js'
 
@@ -271,6 +273,40 @@ await test('advice is deterministic', () => {
     fileReadTokenLimitAdvice('ts', false) === fileReadTokenLimitAdvice('ts', false),
     'nondeterministic advice',
   )
+})
+
+function resetAutoSkeletonEnv(): void {
+  delete process.env.TAU_AUTO_SKELETON
+  delete process.env.CLAUDE_CODE_AUTO_SKELETON
+  delete process.env.TAU_AUTO_SKELETON_MIN_BYTES
+  delete process.env.CLAUDE_CODE_AUTO_SKELETON_MIN_BYTES
+}
+
+await test('auto-skeleton defaults on and 0/false/off/no disables it', () => {
+  resetAutoSkeletonEnv()
+  assert(isAutoSkeletonEnabled(), 'should default on')
+  for (const off of ['0', 'false', 'off', 'no']) {
+    process.env.TAU_AUTO_SKELETON = off
+    assert(!isAutoSkeletonEnabled(), `'${off}' should disable`)
+  }
+  process.env.TAU_AUTO_SKELETON = '1'
+  assert(isAutoSkeletonEnabled(), "'1' must not disable")
+  resetAutoSkeletonEnv()
+  process.env.CLAUDE_CODE_AUTO_SKELETON = 'off'
+  assert(!isAutoSkeletonEnabled(), 'CLAUDE_CODE_ key should also disable')
+  resetAutoSkeletonEnv()
+})
+
+await test('auto-skeleton min-bytes floor: default, valid override, invalid ignored', () => {
+  resetAutoSkeletonEnv()
+  assert(getAutoSkeletonMinBytes() === 16_000, 'default floor should be 16000')
+  process.env.TAU_AUTO_SKELETON_MIN_BYTES = '40000'
+  assert(getAutoSkeletonMinBytes() === 40_000, 'valid override should win')
+  process.env.TAU_AUTO_SKELETON_MIN_BYTES = '-5'
+  assert(getAutoSkeletonMinBytes() === 16_000, 'negative override ignored')
+  process.env.TAU_AUTO_SKELETON_MIN_BYTES = 'huge'
+  assert(getAutoSkeletonMinBytes() === 16_000, 'non-numeric override ignored')
+  resetAutoSkeletonEnv()
 })
 
 console.log(`\n${passed} passed, ${failed} failed`)

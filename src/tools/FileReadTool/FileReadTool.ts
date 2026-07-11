@@ -77,7 +77,13 @@ import { semanticNumber } from '../../utils/semanticNumber.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
 import { getDefaultFileReadingLimits } from './limits.js'
-import { buildSkeleton, fileReadTokenLimitAdvice } from './skeleton.js'
+import {
+  buildSkeleton,
+  fileReadTokenLimitAdvice,
+  getAutoSkeletonMinBytes,
+  isAutoSkeletonEnabled,
+  isSkeletonSupportedExt,
+} from './skeleton.js'
 import {
   DESCRIPTION,
   FILE_READ_TOOL_NAME,
@@ -240,7 +246,7 @@ const inputSchema = lazySchema(() =>
       'The number of lines to read. Only provide if the file is too large to read at once.',
     ),
     skeleton: semanticBoolean(z.boolean().optional()).describe(
-      'Return the file structure instead of full content: imports, signatures, and class shapes, with long function bodies elided. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the real file line numbers. Ideal first look at a large code file. Supported for common code languages (ts/js/py/go/rs/java/rb/cs/c/cpp/php); other files fall back to a normal read. Editing still requires a full-content Read first.',
+      'Return the file structure instead of full content: imports, signatures, and class shapes, with long function bodies elided. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the real file line numbers. Ideal first look at a large code file. Supported for common code languages (ts/js/py/go/rs/java/rb/cs/c/cpp/php); other files fall back to a normal read. NOTE: large supported code files return a skeleton AUTOMATICALLY when this parameter is omitted and no offset/limit is given; pass skeleton: false to force full content, or offset/limit to read a verbatim range. Editing still requires a full-content Read first.',
     ),
     pages: z
       .string()
@@ -253,6 +259,14 @@ const inputSchema = lazySchema(() =>
 type InputSchema = ReturnType<typeof inputSchema>
 
 export type Input = z.infer<InputSchema>
+
+/**
+ * How the skeleton branch was reached: 'explicit' when the model passed
+ * skeleton: true, 'auto' when a whole-file Read of a large supported code
+ * file was converted by policy (see skeleton.ts auto-skeleton gates),
+ * 'off' for a normal read.
+ */
+type SkeletonMode = 'off' | 'explicit' | 'auto'
 
 const outputSchema = lazySchema(() => {
   // Define the media types supported for images
@@ -355,6 +369,12 @@ const outputSchema = lazySchema(() => {
           .describe('Characters dropped across all truncated lines'),
         totalLines: z.number().describe('Total lines in the file'),
         language: z.string().describe('Grammar used to parse the file'),
+        auto: z
+          .boolean()
+          .optional()
+          .describe(
+            'True when the skeleton was returned automatically for a large file rather than explicitly requested',
+          ),
       }),
     }),
   ])
@@ -525,7 +545,7 @@ export const FileReadTool = buildTool({
     return { result: true }
   },
   async call(
-    { file_path, offset = 1, limit = undefined, skeleton = false, pages },
+    { file_path, offset = 1, limit = undefined, skeleton, pages },
     context,
     _canUseTool?,
     parentMessage?,
@@ -570,9 +590,13 @@ export const FileReadTool = buildTool({
     )
     // Skeleton reads never dedup: they are cheap to recompute and their
     // output shape differs from the full-content read the dedup stub
-    // would point the model back to.
+    // would point the model back to. (Auto-skeleton reads don't need a
+    // guard here: a prior skeleton stores isPartialView: true with
+    // offset: undefined, which the conditions below already reject.)
     const existingState =
-      dedupKillswitch || skeleton ? undefined : readFileState.get(fullFilePath)
+      dedupKillswitch || skeleton === true
+        ? undefined
+        : readFileState.get(fullFilePath)
     // Only dedup entries that came from a prior Read (offset is always set
     // by Read). Edit/Write store offset=undefined — their readFileState
     // entry reflects post-edit mtime, so deduping against it would wrongly
@@ -623,6 +647,32 @@ export const FileReadTool = buildTool({
       activateConditionalSkillsForPaths([fullFilePath], cwd)
     }
 
+    // Auto-skeleton: a whole-file Read of a large, skeleton-supported code
+    // file returns structure instead of full content. Decided once here at
+    // execution time — the result is frozen into the transcript like any
+    // other tool output, so later requests re-send identical bytes and no
+    // provider prefix cache is disturbed. Explicit skeleton: false, an
+    // offset/limit range, or pages always bypass the policy.
+    let skeletonMode: SkeletonMode = skeleton === true ? 'explicit' : 'off'
+    if (
+      skeleton === undefined &&
+      offset <= 1 &&
+      limit === undefined &&
+      pages === undefined &&
+      isAutoSkeletonEnabled() &&
+      isSkeletonSupportedExt(ext)
+    ) {
+      try {
+        const stats = await getFsImplementation().stat(fullFilePath)
+        if (stats.size > getAutoSkeletonMinBytes()) {
+          skeletonMode = 'auto'
+        }
+      } catch {
+        // stat failed (missing file, permissions) — leave mode off and let
+        // callInner surface the real error through the existing paths.
+      }
+    }
+
     try {
       return await callInner(
         file_path,
@@ -637,7 +687,7 @@ export const FileReadTool = buildTool({
         readFileState,
         context,
         parentMessage?.message.id,
-        skeleton,
+        skeletonMode,
       )
     } catch (error) {
       // Handle file-not-found: suggest similar files
@@ -661,7 +711,7 @@ export const FileReadTool = buildTool({
               readFileState,
               context,
               parentMessage?.message.id,
-              skeleton,
+              skeletonMode,
             )
           } catch (altError) {
             if (!isENOENT(altError)) {
@@ -727,8 +777,12 @@ export const FileReadTool = buildTool({
       case 'skeleton': {
         // Built from parts: a skeleton may elide bodies, truncate overlong
         // lines, or both, and claiming "0 bodies elided" reads like a failure.
-        const { elidedRegions, elidedLines, totalLines, truncatedLines, truncatedChars } = data.file
-        const parts = ['Skeleton view:']
+        const { elidedRegions, elidedLines, totalLines, truncatedLines, truncatedChars, auto } = data.file
+        const parts = [
+          auto
+            ? 'Auto-skeleton view: this file is large, so this Read returned its structure instead of full content.'
+            : 'Skeleton view:',
+        ]
         if (elidedRegions > 0) {
           parts.push(
             `${elidedRegions} function ${elidedRegions === 1 ? 'body' : 'bodies'} elided (${elidedLines} of ${totalLines} lines); each ⋮ marker shows the exact Read offset/limit to expand that body.`,
@@ -737,6 +791,11 @@ export const FileReadTool = buildTool({
         if (truncatedLines > 0) {
           parts.push(
             `${truncatedLines} overlong ${truncatedLines === 1 ? 'line was' : 'lines were'} truncated (${truncatedChars} chars dropped); such lines are typically minified code, inline sourcemaps, or embedded blobs, and re-reading one alone may still exceed the token limit.`,
+          )
+        }
+        if (auto) {
+          parts.push(
+            'Read specific ranges (offset/limit) for the bodies you need — preferred — or re-Read with skeleton: false to force the full file.',
           )
         }
         parts.push(
@@ -889,7 +948,7 @@ async function callInner(
   readFileState: ToolUseContext['readFileState'],
   context: ToolUseContext,
   messageId: string | undefined,
-  skeleton = false,
+  skeletonMode: SkeletonMode = 'off',
 ): Promise<{
   data: Output
   newMessages?: ReturnType<typeof createUserMessage>[]
@@ -1095,7 +1154,7 @@ async function callInner(
   // --- Skeleton view (structure with long function bodies elided) ---
   // Only reached for text files: notebook/image/PDF branches returned above.
   // Any unsupported/unparseable case falls through to the normal text read.
-  if (skeleton) {
+  if (skeletonMode !== 'off') {
     // Allow larger files than a plain full read: the OUTPUT is what reaches
     // the model and it is dramatically smaller (and still token-validated).
     const skeletonSizeBytes = Math.max(
@@ -1142,6 +1201,7 @@ async function callInner(
         elidedRegions: skeletonResult.elidedRegions,
         truncatedLines: skeletonResult.truncatedLines,
         truncatedChars: skeletonResult.truncatedChars,
+        auto: skeletonMode === 'auto',
         ...(analyticsExt !== undefined && { ext: analyticsExt }),
       })
 
@@ -1158,6 +1218,9 @@ async function callInner(
             truncatedChars: skeletonResult.truncatedChars,
             totalLines: skeletonResult.totalLines,
             language: skeletonResult.language,
+            // Set only for auto mode so explicit-skeleton results stay
+            // byte-identical to their pre-auto-policy rendering.
+            ...(skeletonMode === 'auto' ? { auto: true } : {}),
           },
         },
       }
@@ -1177,10 +1240,11 @@ async function callInner(
       context.abortController.signal,
     )
 
-  // Pass the requested skeleton flag: when skeleton was asked for but produced
-  // nothing (no elidable body / unsupported), we fell through to this full
-  // read. If it overflows, the error must not loop the model back to skeleton.
-  await validateContentTokens(content, ext, maxTokens, skeleton)
+  // Pass the requested skeleton flag: when skeleton was asked for (explicit
+  // or auto) but produced nothing (no elidable body / unsupported), we fell
+  // through to this full read. If it overflows, the error must not loop the
+  // model back to skeleton.
+  await validateContentTokens(content, ext, maxTokens, skeletonMode !== 'off')
 
   readFileState.set(fullFilePath, {
     content,
