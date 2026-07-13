@@ -54,6 +54,38 @@ function main(): void {
     assert(!schema.safeParse(out).success, 'required null should still fail')
   })
 
+  const editSchema = z.object({
+    file_path: z.string(),
+    old_string: z.string(),
+    new_string: z.string(),
+  })
+
+  test('recovers _raw with an under-escaped Windows path (invalid JSON escapes)', () => {
+    // Single backslashes in the path -> \U \o \a are invalid JSON escapes, so a
+    // compat lane could not JSON.parse the args and set the _raw sentinel.
+    const raw =
+      '{"file_path": "C:\\Users\\ok\\arithmetic.rb", "old_string": "puts \\"mul\\"", "new_string": "puts \\"mul\\"\\nputs \\"mod\\""}'
+    const out = coerceToolInput({ _raw: raw }, editSchema)
+    assert(!('_raw' in out), '_raw sentinel should be unwrapped')
+    assert(
+      out.file_path === 'C:\\Users\\ok\\arithmetic.rb',
+      'path recovered with literal backslashes',
+    )
+    assert(out.old_string === 'puts "mul"', 'old_string recovered')
+    assert(
+      out.new_string === 'puts "mul"\nputs "mod"',
+      'new_string recovered (escaped quotes + newline)',
+    )
+    assert(editSchema.safeParse(out).success, 'recovered input should pass Edit validation')
+  })
+
+  test('leaves _raw when the JSON is truncated so validation rejects (no partial write)', () => {
+    const raw = '{"file_path": "C:\\Users\\ok\\a.rb", "old_string": "puts \\"mul'
+    const out = coerceToolInput({ _raw: raw }, editSchema)
+    assert('_raw' in out, 'truncated call must not be force-completed')
+    assert(!editSchema.safeParse(out).success, 'truncated _raw should still fail validation')
+  })
+
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed > 0) process.exit(1)
 }

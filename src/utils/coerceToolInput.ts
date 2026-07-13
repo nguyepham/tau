@@ -179,19 +179,72 @@ function escapeControlCharsInStrings(s: string): string {
 }
 
 /**
+ * Escape backslashes that don't begin a valid JSON escape sequence, *inside*
+ * string literals. Lanes that hand-parse tool-call args (openai-compat, codex,
+ * the OpenAI adapters) commonly receive under-escaped Windows paths — e.g.
+ * `"file_path": "C:\Users\ok\x.rb"` — where `\U`, `\o`, `\a` are invalid JSON
+ * escapes that make JSON.parse throw. Doubling a lone backslash recovers the
+ * intended literal. Lossless: the only valid JSON escapes are `" \ / b f n r t`
+ * and `\uXXXX`, all preserved untouched, so this is a no-op on valid input.
+ */
+function escapeInvalidBackslashesInStrings(s: string): string {
+  let out = ''
+  let inStr = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (!inStr) {
+      out += ch
+      if (ch === '"') inStr = true
+      continue
+    }
+    if (ch === '"') {
+      out += ch
+      inStr = false
+      continue
+    }
+    if (ch === '\\') {
+      const next = s[i + 1]
+      const validSimple = next !== undefined && '"\\/bfnrt'.includes(next)
+      const validUnicode =
+        next === 'u' && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6))
+      if (validSimple || validUnicode) {
+        out += ch + next
+        i++
+      } else {
+        // Lone/invalid backslash — the model meant a literal one. Double it so
+        // the sequence becomes valid JSON without altering the decoded value.
+        out += '\\\\'
+      }
+      continue
+    }
+    out += ch
+  }
+  return out
+}
+
+/**
  * Lanes set `{ _raw: <string> }` as a sentinel when tool-call arguments fail to
  * JSON.parse. Try to recover the intended object with LOSSLESS repairs only:
- * strip a markdown code fence, escape stray in-string control chars, and undo
- * double-encoding. Returns null if none yield a plain object — notably it never
- * force-closes truncated JSON, so a genuinely cut-off call still fails and the
- * model resends rather than writing a partial file.
+ * strip a markdown code fence, escape stray in-string control chars, escape
+ * under-escaped backslashes (Windows paths), and undo double-encoding. Returns
+ * null if none yield a plain object — notably it never force-closes truncated
+ * JSON, so a genuinely cut-off call still fails and the model resends rather
+ * than writing a partial file.
  */
 function recoverRawToolArgs(raw: string): Record<string, unknown> | null {
   let base = raw.trim()
   const fence = base.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
   if (fence?.[1] !== undefined) base = fence[1].trim()
 
-  for (const candidate of [base, escapeControlCharsInStrings(base)]) {
+  // Ordered least→most aggressive; the combined last candidate repairs a
+  // payload with both a raw newline and an under-escaped path. First parse wins.
+  const controlEscaped = escapeControlCharsInStrings(base)
+  for (const candidate of [
+    base,
+    controlEscaped,
+    escapeInvalidBackslashesInStrings(base),
+    escapeInvalidBackslashesInStrings(controlEscaped),
+  ]) {
     try {
       let parsed: unknown = JSON.parse(candidate)
       if (typeof parsed === 'string') parsed = JSON.parse(parsed) // double-encoded
