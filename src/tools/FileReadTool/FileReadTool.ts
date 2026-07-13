@@ -252,7 +252,7 @@ const inputSchema = lazySchema(() =>
       .string()
       .optional()
       .describe(
-        `Page range for PDF files (e.g., "1-5", "3", "10-20"). Only applicable to PDF files. Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
+        `Page range for PDF files (e.g., "1-5", "3", "10-20"). PDF-only — ignored for text/code files; use offset/limit to read a range there. Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
       ),
   }),
 )
@@ -571,6 +571,22 @@ export const FileReadTool = buildTool({
     // (especially handles whitespace trimming and Windows path separators)
     const fullFilePath = expandPath(file_path)
 
+    // `pages` is PDF-only. On any other file type it does not apply. Rather than
+    // erroring in the user's face — or silently no-opping, which collides with
+    // the read-dedup stub and surfaces as a baffling "File unchanged" — drop the
+    // inapplicable param, read the file normally, and tag the result so the
+    // mapper appends a model-only nudge steering the agent to offset/limit. The
+    // user just sees a normal read; the agent self-corrects. General across
+    // every non-PDF file type.
+    const pagesIgnoredOnNonPdf = pages !== undefined && !isPDFExtension(ext)
+    if (pagesIgnoredOnNonPdf) {
+      pages = undefined
+    }
+    function markPagesIgnored<T extends { data: object }>(result: T): T {
+      if (pagesIgnoredOnNonPdf) pagesIgnoredResults.add(result.data)
+      return result
+    }
+
     // Dedup: if we've already read this exact range and the file hasn't
     // changed on disk, return a stub instead of re-sending the full content.
     // The earlier Read tool_result is still in context — two full copies
@@ -616,12 +632,12 @@ export const FileReadTool = buildTool({
             logEvent('tengu_file_read_dedup', {
               ...(analyticsExt !== undefined && { ext: analyticsExt }),
             })
-            return {
+            return markPagesIgnored({
               data: {
                 type: 'file_unchanged' as const,
                 file: { filePath: file_path },
               },
-            }
+            })
           }
         } catch {
           // stat failed — fall through to full read
@@ -674,7 +690,7 @@ export const FileReadTool = buildTool({
     }
 
     try {
-      return await callInner(
+      const result = await callInner(
         file_path,
         fullFilePath,
         fullFilePath,
@@ -689,6 +705,7 @@ export const FileReadTool = buildTool({
         parentMessage?.message.id,
         skeletonMode,
       )
+      return markPagesIgnored(result)
     } catch (error) {
       // Handle file-not-found: suggest similar files
       const code = getErrnoCode(error)
@@ -698,7 +715,7 @@ export const FileReadTool = buildTool({
         const altPath = getAlternateScreenshotPath(fullFilePath)
         if (altPath) {
           try {
-            return await callInner(
+            const result = await callInner(
               file_path,
               fullFilePath,
               altPath,
@@ -713,6 +730,7 @@ export const FileReadTool = buildTool({
               parentMessage?.message.id,
               skeletonMode,
             )
+            return markPagesIgnored(result)
           } catch (altError) {
             if (!isENOENT(altError)) {
               throw altError
@@ -772,7 +790,9 @@ export const FileReadTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: FILE_UNCHANGED_STUB,
+          content:
+            FILE_UNCHANGED_STUB +
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ''),
         }
       case 'skeleton': {
         // Built from parts: a skeleton may elide bodies, truncate overlong
@@ -809,6 +829,7 @@ export const FileReadTool = buildTool({
             data.file.formatted +
             '\n\n' +
             note +
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : '') +
             (shouldIncludeFileReadMitigation()
               ? CYBER_RISK_MITIGATION_REMINDER
               : ''),
@@ -835,7 +856,9 @@ export const FileReadTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content,
+          content:
+            content +
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ''),
         }
       }
     }
@@ -870,6 +893,15 @@ function shouldIncludeFileReadMitigation(): boolean {
  * when the data object becomes unreachable after rendering.
  */
 const memoryFileMtimes = new WeakMap<object, number>()
+
+// Side-channel marking a Read result whose `pages` argument was dropped because
+// the file is not a PDF (pages is PDF-only). The mapper appends a model-only
+// nudge so the agent self-corrects to offset/limit — invisibly to the user, who
+// only ever sees the "Read N lines" summary. Never an error and never a silent
+// no-op: the read still returns real content, keeping the agent fully capable.
+const pagesIgnoredResults = new WeakSet<object>()
+const PAGES_IGNORED_NUDGE =
+  '\n\n<system-reminder>Note: the "pages" parameter applies only to PDF files and was ignored for this read. To read a specific part of a text or code file, use offset/limit (1-indexed line numbers); for a large code file, skeleton: true returns a structural overview.</system-reminder>'
 
 function memoryFileFreshnessPrefix(data: object): string {
   const mtimeMs = memoryFileMtimes.get(data)
