@@ -2,6 +2,7 @@ import {
   ColorDiff,
   ColorFile,
   getSyntaxTheme as nativeGetSyntaxTheme,
+  highlightCodeToAnsi,
   type SyntaxTheme,
 } from 'color-diff-napi'
 import { isEnvDefinedFalsy } from '../../utils/envUtils.js'
@@ -34,4 +35,20 @@ export function getSyntaxTheme(themeName: string): SyntaxTheme | null {
   return getColorModuleUnavailableReason() === null
     ? nativeGetSyntaxTheme(themeName)
     : null
+}
+
+/**
+ * In-process syntax highlighting of a code string → ANSI, for markdown code
+ * blocks. Runs highlight.js in-process (no subprocess), so it colors streamed
+ * code without the render-loop freeze the native subprocess highlighter caused.
+ * Respects the CLAUDE_CODE_SYNTAX_HIGHLIGHT disable like the entry points above;
+ * returns the code unchanged when disabled or the language is unknown.
+ */
+export function highlightCode(
+  code: string,
+  language: string | null,
+  themeName: string,
+): string {
+  if (getColorModuleUnavailableReason() !== null) return code
+  return highlightCodeToAnsi(code, language, themeName)
 }

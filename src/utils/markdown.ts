@@ -2,14 +2,13 @@ import chalk from 'chalk'
 import { marked, type Token, type Tokens } from 'marked'
 import stripAnsi from 'strip-ansi'
 import { color } from '../components/design-system/color.js'
+import { highlightCode } from '../components/StructuredDiff/colorDiff.js'
 import { BLOCKQUOTE_BAR } from '../constants/figures.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import { supportsHyperlinks } from '../ink/supports-hyperlinks.js'
 import type { CliHighlight } from './cliHighlight.js'
-import { logForDebugging } from './debug.js'
 import { createHyperlink } from './hyperlink.js'
 import { stripPromptXMLTags } from './messages.js'
-import { highlightCodeWithNative } from './nativeRendering.js'
 import type { ThemeName } from './theme.js'
 
 // Use \n unconditionally — os.EOL is \r\n on Windows, and the extra \r
@@ -71,27 +70,14 @@ export function formatToken(
         .join(EOL)
     }
     case 'code': {
-      const nativeHighlighted = highlightCodeWithNative(
-        token.text,
-        token.lang || 'plaintext',
-      )
-      if (nativeHighlighted) {
-        return nativeHighlighted + EOL
-      }
-      if (!highlight) {
-        return token.text + EOL
-      }
-      let language = 'plaintext'
-      if (token.lang) {
-        if (highlight.supportsLanguage(token.lang)) {
-          language = token.lang
-        } else {
-          logForDebugging(
-            `Language not supported while highlighting code, falling back to plaintext: ${token.lang}`,
-          )
-        }
-      }
-      return highlight.highlight(token.text, { language }) + EOL
+      // In-process syntax highlighting (highlight.js via the color-diff port).
+      // The prior path tried a native subprocess highlighter first, which
+      // blocked the event loop on every streaming delta and froze the UI (see
+      // nativeRendering.ts). This colorizer is synchronous but in-process, so
+      // streamed code is colored without that freeze. The `highlight`
+      // (cli-highlight) arg is intentionally unused — it never loads in this
+      // build — leaving it null here would have shown code with no color.
+      return highlightCode(token.text, token.lang || null, theme) + EOL
     }
     case 'codespan': {
       // inline code

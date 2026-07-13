@@ -562,19 +562,34 @@ function highlightLine(
     // hljs throws on unknown language despite ignoreIllegals
     return [[defaultStyle(theme), code]]
   }
-  if (!hasRootNode(result.emitter)) {
+  // hljs 11.x carries the token tree on the private `_emitter`; older builds
+  // exposed it as `emitter`. The public HighlightResult type only declares
+  // `emitter`, so read both through a cast. Reading only `emitter` silently
+  // disabled ALL syntax color on hljs 11.11.1 (where it is undefined) — the
+  // native subprocess highlighter was masking it, so nothing looked broken
+  // until that path was made async.
+  const resultAny = result as unknown as {
+    emitter?: unknown
+    _emitter?: unknown
+  }
+  const emitter = resultAny.emitter ?? resultAny._emitter
+  if (!hasRootNode(emitter)) {
     if (!loggedEmitterShapeError) {
       loggedEmitterShapeError = true
       logError(
         new Error(
-          `color-diff: hljs emitter shape mismatch (keys: ${Object.keys(result.emitter).join(',')}). Syntax highlighting disabled.`,
+          `color-diff: hljs emitter shape mismatch (keys: ${
+            emitter && typeof emitter === 'object'
+              ? Object.keys(emitter).join(',')
+              : 'none'
+          }). Syntax highlighting disabled.`,
         ),
       )
     }
     return [[defaultStyle(theme), code]]
   }
   const blocks: Block[] = []
-  flattenHljs(result.emitter.rootNode, theme, undefined, blocks)
+  flattenHljs(emitter.rootNode, theme, undefined, blocks)
   return blocks
 }
 
@@ -1032,6 +1047,51 @@ export class ColorFile {
     }
     return out
   }
+}
+
+// Bounded per-line cache. Markdown code blocks stream token-by-token and the
+// growing block is re-highlighted on every delta; without this that is O(n²)
+// work over a stream. highlightLine is stateless per line, so a line maps
+// deterministically to its ANSI given (theme, language) — safe to memoize.
+const CODE_LINE_CACHE_MAX = 4000
+const codeLineCache = new Map<string, string>()
+
+/**
+ * Colorize a plain code string to ANSI in-process via highlight.js — no line
+ * numbers, no width-wrapping, no line backgrounds. The synchronous colorizer
+ * for markdown code blocks. It runs IN-PROCESS: unlike the tau-tools subprocess
+ * highlighter (which blocked the event loop and froze the UI on every streaming
+ * delta), this cannot stall the render loop. Returns the code unchanged when
+ * highlight.js does not recognize the language.
+ */
+export function highlightCodeToAnsi(
+  code: string,
+  language: string | null,
+  themeName: string,
+): string {
+  const lang = language && hljs().getLanguage(language) ? language : null
+  if (!lang) return code
+  const mode = detectColorMode(themeName)
+  const theme = buildTheme(themeName, mode)
+  const hlState = { lang, stack: null }
+  return code
+    .split('\n')
+    .map(line => {
+      const key = `${themeName} ${lang} ${line}`
+      const cached = codeLineCache.get(key)
+      if (cached !== undefined) return cached
+      const blocks = highlightLine(hlState, line, theme).map(
+        ([style, text]): Block => [style, text.replace(/\n/g, '')],
+      )
+      const ansi = asTerminalEscaped(blocks, mode, true, false)
+      if (codeLineCache.size >= CODE_LINE_CACHE_MAX) {
+        const first = codeLineCache.keys().next().value
+        if (first !== undefined) codeLineCache.delete(first)
+      }
+      codeLineCache.set(key, ansi)
+      return ansi
+    })
+    .join('\n')
 }
 
 export function getSyntaxTheme(themeName: string): SyntaxTheme {
