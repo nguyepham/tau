@@ -921,6 +921,38 @@ function getNonstreamingFallbackTimeoutMs(): number {
 }
 
 /**
+ * When a gateway drops a `content_block_start` frame but keeps streaming that
+ * block's deltas (observed on flaky OpenAI-compat gateways as an orphan
+ * `content_block_delta` whose index was never opened), synthesize the missing
+ * block in place so accumulation continues instead of throwing and wedging the
+ * turn.
+ *
+ * Only blocks whose full shape is inferable from the delta alone are
+ * repairable:
+ *   - text_delta      → empty text block
+ *   - thinking_delta  → empty thinking block
+ *   - signature_delta → empty thinking block (caller applies the signature)
+ *
+ * A `tool_use` start carries an id/name/input-schema that a delta does NOT, so
+ * an orphan `input_json_delta` is unrepairable — returning null makes the
+ * caller surface a clean provider-stream error rather than fabricate a nameless
+ * tool call (which would corrupt the turn).
+ */
+function synthesizeRepairedContentBlock(
+  deltaType: string,
+): BetaContentBlock | null {
+  switch (deltaType) {
+    case 'text_delta':
+      return { type: 'text', text: '', citations: [] }
+    case 'thinking_delta':
+    case 'signature_delta':
+      return { type: 'thinking', thinking: '', signature: '' }
+    default:
+      return null
+  }
+}
+
+/**
  * Helper generator for non-streaming API requests.
  * Encapsulates the common pattern of creating a withRetry generator,
  * iterating to yield system messages, and returning the final BetaMessage.
@@ -2239,6 +2271,10 @@ async function* queryModel(
   let ttftMs = 0
   let partialMessage: BetaMessage | undefined = undefined
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
+  // Set when a tool_use/server_tool_use block opens during this stream attempt.
+  // Gates the non-streaming fallback: retrying after a tool has started would
+  // regenerate the same tool_use and double-execute it (inc-4258).
+  let toolUseStartedThisAttempt = false
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
   let stopReason: BetaStopReason | null = null
@@ -2389,6 +2425,7 @@ async function* queryModel(
     ttftMs = 0
     partialMessage = undefined
     contentBlocks.length = 0
+    toolUseStartedThisAttempt = false
     usage = EMPTY_USAGE
     stopReason = null
     isAdvisorInProgress = false
@@ -2399,11 +2436,23 @@ async function* queryModel(
     // kill hung streams. Without this, a silently dropped connection can hang
     // the session indefinitely since the SDK's request timeout only covers the
     // initial fetch(), not the streaming body.
-    const isAgentRouterRequest = getAPIProvider() === 'agentrouter'
+    const streamProvider = getAPIProvider()
+    const isAgentRouterRequest = streamProvider === 'agentrouter'
+    // Enable the idle watchdog by default for third-party gateway/compat
+    // providers (opencode, opencodego, openrouter, …), where a silent
+    // mid-stream connection drop otherwise hangs the turn forever. Anthropic-
+    // native routes (firstParty/bedrock/vertex/foundry) stay opt-in so the
+    // default path is unchanged. Kill-switches preserved: the global
+    // CLAUDE_DISABLE_STREAM_WATCHDOG and the agentrouter-specific
+    // AGENTROUTER_DISABLE_STREAM_WATCHDOG.
+    const isThirdPartyStreamProvider = isThirdPartyProvider(streamProvider)
+    const streamWatchdogDisabledByEnv =
+      isEnvTruthy(process.env.CLAUDE_DISABLE_STREAM_WATCHDOG) ||
+      (isAgentRouterRequest &&
+        isEnvTruthy(process.env.AGENTROUTER_DISABLE_STREAM_WATCHDOG))
     const streamWatchdogEnabled =
       isEnvTruthy(process.env.CLAUDE_ENABLE_STREAM_WATCHDOG) ||
-      (isAgentRouterRequest &&
-        !isEnvTruthy(process.env.AGENTROUTER_DISABLE_STREAM_WATCHDOG))
+      (isThirdPartyStreamProvider && !streamWatchdogDisabledByEnv)
     const configuredStreamIdleTimeoutMs = parseInt(
       (isAgentRouterRequest
         ? process.env.AGENTROUTER_STREAM_IDLE_TIMEOUT_MS
@@ -2412,13 +2461,24 @@ async function* queryModel(
         '',
       10,
     )
+    // Default idle budget matches the request timeout (~300s) rather than an
+    // aggressive SLA: this watchdog exists only to bound a genuinely dead
+    // stream (which otherwise hangs forever — the streaming body has no other
+    // timeout), NOT to kill slow-but-alive streams. Since the timer resets on
+    // every chunk (see the for-await below), a shorter default false-positives
+    // on legitimate long gaps: slow time-to-first-token on a busy gateway, or a
+    // compat lane that buffers the thinking phase before emitting the answer.
+    // Lower it via CLAUDE_STREAM_IDLE_TIMEOUT_MS if you want faster dead-stream
+    // detection and accept the false-positive risk.
     const STREAM_IDLE_TIMEOUT_MS =
       Number.isFinite(configuredStreamIdleTimeoutMs) &&
       configuredStreamIdleTimeoutMs > 0
         ? configuredStreamIdleTimeoutMs
         : isAgentRouterRequest
-          ? 15_000
-          : 90_000
+          ? 300_000
+          : isThirdPartyStreamProvider
+            ? 300_000
+            : 90_000
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
@@ -2538,12 +2598,14 @@ async function* queryModel(
           case 'content_block_start':
             switch (part.content_block.type) {
               case 'tool_use':
+                toolUseStartedThisAttempt = true
                 contentBlocks[part.index] = {
                   ...part.content_block,
                   input: '',
                 }
                 break
               case 'server_tool_use':
+                toolUseStartedThisAttempt = true
                 contentBlocks[part.index] = {
                   ...part.content_block,
                   input: '' as unknown as { [key: string]: unknown },
@@ -2594,17 +2656,37 @@ async function* queryModel(
             }
             break
           case 'content_block_delta': {
-            const contentBlock = contentBlocks[part.index]
+            let contentBlock = contentBlocks[part.index]
             const delta = part.delta as typeof part.delta | ConnectorTextDelta
             if (!contentBlock) {
-              logEvent('tengu_streaming_error', {
-                error_type:
-                  'content_block_not_found_delta' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_type:
-                  part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_index: part.index,
-              })
-              throw new RangeError('Content block not found')
+              // The gateway dropped this block's content_block_start but kept
+              // streaming its deltas. Repair in place for blocks we can fully
+              // infer (text/thinking) so the turn completes as if nothing
+              // happened; otherwise surface a clean provider-stream error
+              // (never fabricate a tool_use — it lacks id/name).
+              const repaired = synthesizeRepairedContentBlock(delta.type)
+              if (repaired) {
+                contentBlocks[part.index] = repaired
+                contentBlock = repaired
+                logEvent('tengu_streaming_recovered', {
+                  error_type:
+                    'content_block_start_synthesized' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  part_type:
+                    delta.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  part_index: part.index,
+                })
+              } else {
+                logEvent('tengu_streaming_error', {
+                  error_type:
+                    'content_block_not_found_delta' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  part_type:
+                    part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  part_index: part.index,
+                })
+                throw new Error(
+                  `Provider stream error: received a ${delta.type} for a content block that was never opened (dropped content_block_start)`,
+                )
+              }
             }
             if (
               feature('CONNECTOR_TEXT') &&
@@ -2714,14 +2796,19 @@ async function* queryModel(
           case 'content_block_stop': {
             const contentBlock = contentBlocks[part.index]
             if (!contentBlock) {
-              logEvent('tengu_streaming_error', {
+              // Stop for a block that was never opened and had no deltas to
+              // repair from — there is nothing to finalize. Skip it rather than
+              // crash the turn (a dropped-start block that DID stream deltas was
+              // already repaired above, so this only fires for a fully-empty
+              // orphan block).
+              logEvent('tengu_streaming_recovered', {
                 error_type:
-                  'content_block_not_found_stop' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                  'content_block_stop_orphan_skipped' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 part_type:
                   part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 part_index: part.index,
               })
-              throw new RangeError('Content block not found')
+              break
             }
             if (!partialMessage) {
               logEvent('tengu_streaming_error', {
@@ -3014,7 +3101,21 @@ async function* queryModel(
         getFeatureValue_CACHED_MAY_BE_STALE(
           'tengu_disable_streaming_to_non_streaming_fallback',
           false,
-        )
+        ) ||
+        // inc-4258: once a tool_use block has streamed this attempt, a
+        // non-streaming re-request would regenerate the same tool_use and
+        // double-execute it. Skip the fallback and surface the stream error to
+        // the agent (via getAssistantMessageFromError below) so it can retry
+        // safely instead of silently running the tool twice.
+        toolUseStartedThisAttempt ||
+        // Our idle watchdog aborted a SILENT stream. The non-streaming fallback
+        // re-requests the same gateway that just went dark — and on a streaming
+        // lane it is re-streamed with no idle watchdog, so it re-hangs for the
+        // full request timeout for no benefit. Skip it and surface a clean
+        // terminal error at the watchdog threshold instead. The error text
+        // ("Stream idle timeout …") is classified operational/non-retryable by
+        // the /fallback detector, so the turn ends cleanly rather than looping.
+        streamIdleAborted
 
       if (disableFallback) {
         logForDebugging(
@@ -3041,6 +3142,18 @@ async function* queryModel(
             ? 'watchdog'
             : 'other') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
+        // We are deliberately NOT falling back (tool double-run risk, or a
+        // silent gateway where the fallback just re-hangs). Signal the query
+        // loop to tombstone + discard any partial messages streamed this
+        // attempt — most importantly a fully-streamed-but-uncommitted tool_use.
+        // Without this, the query loop collects that partial tool_use, executes
+        // it, and follows up (re-streaming), which against a persistently
+        // broken gateway loops and re-runs the tool. Discarding the partial
+        // makes the stream error below end the turn cleanly. Reuses the same
+        // orphaned-message discard path as the non-streaming fallback.
+        if (newMessages.length > 0) {
+          options.onStreamingFallback?.()
+        }
         throw streamingError
       }
 
