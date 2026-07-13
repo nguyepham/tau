@@ -37,7 +37,12 @@ import { selectEditToolSet, OPENAI_COMPAT_TOOL_REGISTRY } from './tools.js'
 import { resolveEditFormat, resolveCapabilities } from './capabilities.js'
 import { setDeepSeekV4Thinking } from '../../utils/model/deepseekThinking.js'
 import { setGlmThinking } from '../../utils/model/glmThinking.js'
-import { supportsOpencodeThinkingSelection } from '../../utils/model/opencodeThinking.js'
+import {
+  _resetOpencodeThinkingForTests,
+  opencodeEffortLevelsFor,
+  setOpencodeEffort,
+  supportsOpencodeThinkingSelection,
+} from '../../utils/model/opencodeThinking.js'
 import {
   _resetClineThinkingForTests,
   setClineEffort,
@@ -121,6 +126,21 @@ function withTempCloudflareThinkingStore(fn: () => void): void {
   }
 }
 
+function withTempOpencodeThinkingStore(fn: () => void): void {
+  const dir = mkdtempSync(join(tmpdir(), 'tau-opencode-thinking-'))
+  const oldStore = process.env.TAU_OPENCODE_THINKING_STORE
+  process.env.TAU_OPENCODE_THINKING_STORE = join(dir, 'store.json')
+  _resetOpencodeThinkingForTests()
+  try {
+    fn()
+  } finally {
+    if (oldStore === undefined) delete process.env.TAU_OPENCODE_THINKING_STORE
+    else process.env.TAU_OPENCODE_THINKING_STORE = oldStore
+    _resetOpencodeThinkingForTests()
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 function main(): void {
   console.log('openai-compat transformers:')
 
@@ -154,10 +174,14 @@ function main(): void {
     assert(input.run_in_background === true, 'adaptInput must forward run_in_background')
   })
 
-  test('OpenCode Go does not expose thinking effort for GLM-5.2 or Qwen3.7 Max', () => {
+  test('OpenCode Go exposes GLM-5.2 thinking (Default/High/Max) but not Qwen3.7 Max', () => {
     assert(
-      !supportsOpencodeThinkingSelection('opencodego', 'glm-5.2'),
-      'GLM-5.2 must not expose unsupported effort controls',
+      supportsOpencodeThinkingSelection('opencodego', 'glm-5.2'),
+      'GLM-5.2 now exposes a reasoning_effort selector',
+    )
+    assert(
+      opencodeEffortLevelsFor('glm-5.2').join(',') === 'default,high,max',
+      `unexpected GLM-5.2 levels: ${opencodeEffortLevelsFor('glm-5.2').join(',')}`,
     )
     assert(
       !supportsOpencodeThinkingSelection('opencodego', 'qwen3.7-max'),
@@ -169,22 +193,35 @@ function main(): void {
     )
   })
 
-  test('OpenCode Go strips unsupported GLM-5.2 thinking controls', () => {
-    const body = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
-    body.thinking = { type: 'enabled', clear_thinking: false }
-    body.reasoning = { effort: 'high' }
-    body.reasoning_effort = 'high'
-    body.enable_thinking = true
-    body.chat_template_args = { enable_thinking: true }
+  test('OpenCode Go translates GLM-5.2 effort into reasoning_effort (high|max), dropping the zai thinking object', () => {
+    withTempOpencodeThinkingStore(() => {
+      // High → reasoning_effort:'high', zai-style thinking controls dropped.
+      setOpencodeEffort('glm-5.2', 'high')
+      const high = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
+      high.thinking = { type: 'enabled', clear_thinking: false }
+      high.enable_thinking = true
+      high.chat_template_args = { enable_thinking: true }
+      TRANSFORMERS.opencodego.transformRequest(high, mkCtx('glm-5.2', false))
+      assert(high.reasoning_effort === 'high', `high reasoning_effort=${high.reasoning_effort}`)
+      assert(high.thinking === undefined, `high thinking=${JSON.stringify(high.thinking)}`)
+      assert(high.enable_thinking === undefined, `high enable_thinking=${high.enable_thinking}`)
+      assert(high.chat_template_args === undefined,
+        `high chat_template_args=${JSON.stringify(high.chat_template_args)}`)
 
-    TRANSFORMERS.opencodego.transformRequest(body, mkCtx('glm-5.2', true))
+      // Max → reasoning_effort:'max' (top-level is valid on Go, unlike Cloudflare).
+      setOpencodeEffort('glm-5.2', 'max')
+      const max = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
+      TRANSFORMERS.opencodego.transformRequest(max, mkCtx('glm-5.2', false))
+      assert(max.reasoning_effort === 'max', `max reasoning_effort=${max.reasoning_effort}`)
 
-    assert(body.thinking === undefined, `thinking=${JSON.stringify(body.thinking)}`)
-    assert(body.reasoning === undefined, `reasoning=${JSON.stringify(body.reasoning)}`)
-    assert(body.reasoning_effort === undefined, `reasoning_effort=${body.reasoning_effort}`)
-    assert(body.enable_thinking === undefined, `enable_thinking=${body.enable_thinking}`)
-    assert(body.chat_template_args === undefined,
-      `chat_template_args=${JSON.stringify(body.chat_template_args)}`)
+      // Default → no reasoning_effort and no thinking object (upstream default).
+      setOpencodeEffort('glm-5.2', 'default')
+      const def = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
+      def.thinking = { type: 'enabled', clear_thinking: false }
+      TRANSFORMERS.opencodego.transformRequest(def, mkCtx('glm-5.2', false))
+      assert(def.reasoning_effort === undefined, `default reasoning_effort=${def.reasoning_effort}`)
+      assert(def.thinking === undefined, `default thinking=${JSON.stringify(def.thinking)}`)
+    })
   })
 
   test('normal OpenCode Zen GLM request behavior is unchanged', () => {
@@ -212,7 +249,7 @@ function main(): void {
     assert(modelIds.includes('qwen3.7-max'), 'Qwen3.7 Max should remain available')
   })
 
-  test('OpenCode Go strips the detailed-usage flag on Kimi rows only', () => {
+  test('OpenCode Go strips the detailed-usage flag on Kimi and GLM rows', () => {
     const kimi = mkBody('kimi-k2.6') as OpenAIChatRequest & Record<string, any>
     kimi.usage = { include: true }
     TRANSFORMERS.opencodego.transformRequest(kimi, mkCtx('kimi-k2.6'))
@@ -223,10 +260,18 @@ function main(): void {
     TRANSFORMERS.opencodego.transformRequest(kimiCode, mkCtx('kimi-k2.7-code'))
     assert(kimiCode.usage === undefined, 'whole kimi family must drop the flag')
 
-    const glm = mkBody('glm-5.1') as OpenAIChatRequest & Record<string, any>
+    // GLM's strict upstream 400s on the non-standard `usage` field
+    // ("Extra inputs are not permitted, field: 'usage'"), so it is dropped too.
+    const glm = mkBody('glm-5.2') as OpenAIChatRequest & Record<string, any>
     glm.usage = { include: true }
-    TRANSFORMERS.opencodego.transformRequest(glm, mkCtx('glm-5.1'))
-    assert(glm.usage !== undefined, 'non-kimi rows must keep the flag (glm-5.2 needs it for cached_tokens)')
+    TRANSFORMERS.opencodego.transformRequest(glm, mkCtx('glm-5.2'))
+    assert(glm.usage === undefined, `glm usage must be dropped=${JSON.stringify(glm.usage)}`)
+
+    // A row with no such restriction keeps the flag (e.g. deepseek).
+    const deepseek = mkBody('deepseek-v4-flash') as OpenAIChatRequest & Record<string, any>
+    deepseek.usage = { include: true }
+    TRANSFORMERS.opencodego.transformRequest(deepseek, mkCtx('deepseek-v4-flash'))
+    assert(deepseek.usage !== undefined, 'rows without the restriction keep the flag')
   })
 
   test('OpenCode Go small-fast routes qwen/deepseek to deepseek-v4-flash', () => {

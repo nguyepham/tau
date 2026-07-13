@@ -21,15 +21,20 @@
 import type { Transformer, TransformContext } from './base.js'
 import type { OpenAIChatRequest } from './shared_types.js'
 import { opencodeTransformer } from './opencode.js'
-import { supportsOpencodeThinkingSelection } from '../../../utils/model/opencodeThinking.js'
+import {
+  getOpencodeEffort,
+  isOpencodeGlm52,
+  supportsOpencodeThinkingSelection,
+} from '../../../utils/model/opencodeThinking.js'
 
 // Reasoning/thinking controls the Zen transformer may inject. OpenCode Go's
 // GLM-5.2 and Qwen3.7-max upstreams validate `thinking` against Anthropic's
 // ThinkingConfig and 400 on the zai-style shape Zen sends (`clear_thinking`,
-// `type:'enabled'`). For models with no supported thinking *selection* on Go,
-// strip every reasoning/thinking control and let the upstream use its own
-// server-side default. supportsOpencodeThinkingSelection() is the single source
-// of truth for which models that is.
+// `type:'enabled'`). Qwen3.7-max has no usable knob, so we strip every
+// reasoning/thinking control and let its server-side default decide. GLM-5.2 is
+// special-cased in transformRequest: same strip, but its effort is re-expressed
+// as `reasoning_effort` (high|max) — the shape that row DOES accept, matching
+// opencode-dev's variant() for it.
 const GO_UNSUPPORTED_THINKING_FIELDS = [
   'thinking',
   'reasoning',
@@ -45,15 +50,23 @@ const GO_HIDDEN_MODEL_IDS = new Set([
   'mimo-v2.5',
 ])
 
-// Go's Kimi upstream 400s ("Upstream request failed") on ANY request that
-// carries the Zen detailed-usage flag `usage: { include: true }` — verified
-// live 2026-07-11 against kimi-k2.5 and kimi-k2.6 (deterministic, 5/5).
-// kimi-k2.7-code tolerates the flag, but Moonshot volunteers
-// `prompt_tokens_details.cached_tokens` without it on every kimi row, so
-// stripping the flag for the whole family loses no cache accounting and is
-// robust to new kimi rows inheriting the stricter validation.
+// Some Go upstreams 400 on the non-standard detailed-usage flag
+// `usage: { include: true }` the base transformer stamps. The standard
+// `stream_options: { include_usage: true }` is sent separately and already
+// carries usage, so dropping this extension only costs the extra cache fields
+// some gateways fold into it — never a hard failure.
+//   - Kimi: "Upstream request failed" — verified live 2026-07-11 against
+//     kimi-k2.5 / kimi-k2.6 (deterministic 5/5). kimi-k2.7-code tolerates it,
+//     but every kimi row volunteers `prompt_tokens_details.cached_tokens`
+//     without it, so stripping the whole family loses no cache accounting.
+//   - GLM: strict upstream rejects it — "Extra inputs are not permitted,
+//     field: 'usage'" (observed 2026-07-13). That flag is exactly what glm-5.2
+//     needed to surface `cached_tokens`, so GLM cache-hit stats aren't
+//     recoverable on Go — but a 400 that stops the turn is far worse than
+//     missing stats, so the flag goes for the GLM family too.
 function goRejectsUsageIncludeFlag(model: string): boolean {
-  return model.trim().toLowerCase().startsWith('kimi-')
+  const m = model.trim().toLowerCase()
+  return m.startsWith('kimi-') || m.startsWith('glm-')
 }
 
 export const opencodeGoTransformer: Transformer = {
@@ -67,15 +80,28 @@ export const opencodeGoTransformer: Transformer = {
     ctx: TransformContext,
   ): OpenAIChatRequest {
     // Reuse ALL of Zen's request shaping (session affinity, effort injection,
-    // cache_control), then drop the thinking controls Go's GLM-5.2 / Qwen3.7-max
-    // reject so the request validates instead of 400ing.
+    // cache_control), then reconcile the thinking controls with what Go's
+    // upstreams accept.
     const result = opencodeTransformer.transformRequest(body, ctx)
-    if (!supportsOpencodeThinkingSelection('opencodego', result.model)) {
-      const mutable = result as unknown as Record<string, unknown>
+    const mutable = result as unknown as Record<string, unknown>
+    if (isOpencodeGlm52(result.model)) {
+      // GLM-5.2's Go upstream 400s on the zai-style `thinking` object the base
+      // transformer stamps; its reasoning is driven by `reasoning_effort`
+      // (high|max) — the exact two variants opencode-dev generates for this row.
+      // Strip the thinking controls, then translate the picker's effort into
+      // reasoning_effort ('default' leaves the upstream server default).
+      for (const field of GO_UNSUPPORTED_THINKING_FIELDS) delete mutable[field]
+      const effort = getOpencodeEffort(result.model)
+      if (effort === 'high' || effort === 'max') {
+        mutable.reasoning_effort = effort
+      }
+    } else if (!supportsOpencodeThinkingSelection('opencodego', result.model)) {
+      // Other rows with no usable thinking selection (e.g. qwen3.7-max): drop
+      // every reasoning/thinking control so the request validates instead of 400.
       for (const field of GO_UNSUPPORTED_THINKING_FIELDS) delete mutable[field]
     }
     if (goRejectsUsageIncludeFlag(result.model)) {
-      delete (result as unknown as Record<string, unknown>).usage
+      delete mutable.usage
     }
     return result
   },

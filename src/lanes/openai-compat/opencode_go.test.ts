@@ -5,6 +5,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { AnthropicStreamEvent } from '../../services/api/providers/base_provider.js'
 import { OpenAICompatLane } from './loop.js'
 
@@ -136,6 +139,14 @@ async function captureRequest(
 }
 
 async function main(): Promise<void> {
+  // Isolate the OpenCode effort store so a developer's real ~/.claude store
+  // (which may now carry a GLM-5.2 effort) can't perturb the default-effort
+  // GLM assertions below.
+  process.env.TAU_OPENCODE_THINKING_STORE = join(
+    mkdtempSync(join(tmpdir(), 'tau-opencode-go-')),
+    'store.json',
+  )
+
   const qwen = await captureRequest('qwen3.7-max')
   assert.equal(qwen.request.url, 'https://opencode.ai/zen/go/v1/messages')
   assert.equal(qwen.request.headers['x-api-key'], 'test-opencode-key')
@@ -247,6 +258,10 @@ async function main(): Promise<void> {
   assert.equal(glm.request.body.reasoning_effort, undefined)
   assert.equal(glm.request.body.enable_thinking, undefined)
   assert.equal(glm.request.body.chat_template_args, undefined)
+  // glm-5.2's strict upstream 400s on the non-standard `usage` field
+  // ("Extra inputs are not permitted, field: 'usage'"), so the Go transformer
+  // drops it (the standard stream_options.include_usage still carries usage).
+  assert.equal(glm.request.body.usage, undefined)
 
   console.log('OpenCode Go focused transport tests passed')
 }

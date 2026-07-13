@@ -25,14 +25,54 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-export type OpencodeEffort = 'default' | 'low' | 'medium' | 'high'
+export type OpencodeEffort = 'default' | 'low' | 'medium' | 'high' | 'max'
 
+// The generic ladder almost every OpenCode row cycles through.
 export const OPENCODE_EFFORT_LEVELS: readonly OpencodeEffort[] = [
   'default',
   'low',
   'medium',
   'high',
 ]
+
+// GLM-5.2 on OpenCode Go is the one row whose reasoning is driven by
+// `reasoning_effort` and only accepts high|max — opencode-dev generates exactly
+// those two variants for it (packages/core/src/plugin/variant.ts). No
+// low/medium; "default" leaves the upstream server default (thinking off) in
+// place. Mirrors the Cloudflare GLM-5.2 ladder (CLOUDFLARE_GLM52_EFFORT_LEVELS).
+export const OPENCODE_GLM52_EFFORT_LEVELS: readonly OpencodeEffort[] = [
+  'default',
+  'high',
+  'max',
+]
+
+// Superset of every per-model ladder, used only to validate persisted values on
+// load (a stored 'max' must survive a reload).
+const OPENCODE_ALL_EFFORT_LEVELS: readonly OpencodeEffort[] = [
+  'default',
+  'low',
+  'medium',
+  'high',
+  'max',
+]
+
+/** True for the OpenCode Go GLM-5.2 row (its reasoning_effort high|max knob). */
+export function isOpencodeGlm52(model: string): boolean {
+  return model.trim().toLowerCase() === 'glm-5.2'
+}
+
+/**
+ * The effort stops a given model cycles through in the picker. GLM-5.2 uses the
+ * Default/High/Max ladder (reasoning_effort); every other OpenCode row uses the
+ * generic Default/Low/Medium/High.
+ */
+export function opencodeEffortLevelsFor(
+  model: string,
+): readonly OpencodeEffort[] {
+  return isOpencodeGlm52(model)
+    ? OPENCODE_GLM52_EFFORT_LEVELS
+    : OPENCODE_EFFORT_LEVELS
+}
 
 // Models that should default to "medium" on first use:
 //   1. Free-tier rows that opencode-dev itself ships with thinking enabled —
@@ -91,11 +131,12 @@ export function isOpencodeThinkingModel(model: string): boolean {
 /**
  * Whether Tau should expose a user-selectable thinking effort for a model.
  *
- * OpenCode Go marks GLM-5.2 and Qwen3.7 Max as reasoning-capable, but their
- * models.dev metadata publishes an empty `reasoning_options` list and
- * OpenCode's ProviderTransform.variants() intentionally returns no variants
- * for GLM/Qwen families. They may reason internally, but there is no supported
- * Low/Medium/High request control to expose.
+ * OpenCode Go marks GLM-5.2 and Qwen3.7 Max as reasoning-capable. Qwen3.7 Max
+ * publishes no usable request control, so its selector stays hidden. GLM-5.2,
+ * however, DOES take a `reasoning_effort` (high|max) — opencode-dev generates
+ * exactly those two variants for it — so it is selectable (Default/High/Max, see
+ * opencodeEffortLevelsFor); the Go transformer translates the pick into
+ * reasoning_effort and drops the zai-style thinking object that row 400s on.
  */
 export function supportsOpencodeThinkingSelection(
   provider: string,
@@ -105,25 +146,32 @@ export function supportsOpencodeThinkingSelection(
   if (provider !== 'opencodego') return true
 
   const normalized = model.trim().toLowerCase()
-  return normalized !== 'glm-5.2' && normalized !== 'qwen3.7-max'
+  return normalized !== 'qwen3.7-max'
 }
 
-const STORE_PATH = join(homedir(), '.claude', 'opencode-thinking.json')
+function storePath(): string {
+  return (
+    process.env.TAU_OPENCODE_THINKING_STORE
+    || join(homedir(), '.claude', 'opencode-thinking.json')
+  )
+}
 
-let _loaded = false
+let _loadedPath: string | null = null
 let _cache: Record<string, OpencodeEffort> = {}
 
 function load(): void {
-  if (_loaded) return
-  _loaded = true
+  const path = storePath()
+  if (_loadedPath === path) return
+  _loadedPath = path
+  _cache = {}
   try {
-    if (!existsSync(STORE_PATH)) return
-    const raw = readFileSync(STORE_PATH, 'utf8')
+    if (!existsSync(path)) return
+    const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw) as unknown
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const out: Record<string, OpencodeEffort> = {}
       for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v === 'string' && (OPENCODE_EFFORT_LEVELS as readonly string[]).includes(v)) {
+        if (typeof v === 'string' && (OPENCODE_ALL_EFFORT_LEVELS as readonly string[]).includes(v)) {
           out[k.toLowerCase()] = v as OpencodeEffort
         }
       }
@@ -135,10 +183,11 @@ function load(): void {
 }
 
 function save(): void {
+  const path = storePath()
   try {
-    const dir = dirname(STORE_PATH)
+    const dir = dirname(path)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(STORE_PATH, JSON.stringify(_cache, null, 2), 'utf8')
+    writeFileSync(path, JSON.stringify(_cache, null, 2), 'utf8')
   } catch {
     // Persistence is best-effort. The in-memory cache still works for the
     // current session even if the disk write fails (read-only home, etc.).
@@ -148,8 +197,11 @@ function save(): void {
 export function getOpencodeEffort(model: string): OpencodeEffort {
   load()
   const key = model.trim().toLowerCase()
+  const levels = opencodeEffortLevelsFor(model)
   const stored = _cache[key]
-  if (stored) return stored
+  // Ignore a stored value that isn't valid for this model's ladder (e.g. a
+  // generic 'medium' left over for a GLM-5.2 that now only takes high|max).
+  if (stored && levels.includes(stored)) return stored
   if (FREE_TIER_DEFAULT_MEDIUM(model) && isOpencodeThinkingModel(model)) {
     return 'medium'
   }
@@ -159,10 +211,13 @@ export function getOpencodeEffort(model: string): OpencodeEffort {
 export function setOpencodeEffort(model: string, effort: OpencodeEffort): void {
   load()
   const key = model.trim().toLowerCase()
-  if (effort === 'default') {
+  // Only persist a level this model actually supports; anything else (including
+  // 'default') clears the override so the model falls back to its default.
+  const next = opencodeEffortLevelsFor(model).includes(effort) ? effort : 'default'
+  if (next === 'default') {
     delete _cache[key]
   } else {
-    _cache[key] = effort
+    _cache[key] = next
   }
   save()
 }
@@ -171,15 +226,24 @@ export function cycleOpencodeEffort(
   model: string,
   direction: 'left' | 'right',
 ): OpencodeEffort {
+  const levels = opencodeEffortLevelsFor(model)
   const current = getOpencodeEffort(model)
-  const idx = OPENCODE_EFFORT_LEVELS.indexOf(current)
-  const len = OPENCODE_EFFORT_LEVELS.length
+  const idx = Math.max(0, levels.indexOf(current))
+  const len = levels.length
   const next =
     direction === 'right'
-      ? OPENCODE_EFFORT_LEVELS[(idx + 1) % len]!
-      : OPENCODE_EFFORT_LEVELS[(idx - 1 + len) % len]!
+      ? levels[(idx + 1) % len]!
+      : levels[(idx - 1 + len) % len]!
   setOpencodeEffort(model, next)
   return next
+}
+
+/** Test-only: reset the in-memory store to a known state for the active path. */
+export function _resetOpencodeThinkingForTests(
+  cache: Record<string, OpencodeEffort> = {},
+): void {
+  _loadedPath = storePath()
+  _cache = { ...cache }
 }
 
 /**
