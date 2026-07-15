@@ -70,11 +70,32 @@ import {
 
 const OPENAI_FALLBACK_MODELS: ModelInfo[] = [
   {
+    id: 'gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    contextWindow: 1050000,
+    supportsToolCalling: true,
+    tags: ['recommended', 'reasoning'],
+  },
+  {
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    contextWindow: 1050000,
+    supportsToolCalling: true,
+    tags: ['reasoning'],
+  },
+  {
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    contextWindow: 1050000,
+    supportsToolCalling: true,
+    tags: ['reasoning'],
+  },
+  {
     id: 'gpt-5.5',
     name: 'GPT-5.5',
     contextWindow: 272000,
     supportsToolCalling: true,
-    tags: ['recommended', 'reasoning'],
+    tags: ['reasoning'],
   },
   {
     id: 'gpt-5.4',
@@ -204,7 +225,7 @@ export class OpenAIProvider extends BaseProvider {
     // Only send reasoning_effort when the user explicitly chose a level
     // via ← → in the model picker. Sending it unsolicited to models that
     // don't support it causes 500 errors on OpenAI's API.
-    if (isReasoningLevelExplicit()) return getOpenAIReasoningLevel()
+    if (isReasoningLevelExplicit()) return getOpenAIReasoningLevel(model)
 
     return undefined
   }

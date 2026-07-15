@@ -41,8 +41,8 @@ export type CodexContentPart =
   | { type: 'input_image'; image_url: string }
 
 export interface CodexReasoningConfig {
-  /** "minimal" | "low" | "medium" | "high" | "xhigh" controls thinking intensity. */
-  effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  /** "minimal" | "low" | "medium" | "high" | "xhigh" | "max" controls thinking intensity. */
+  effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** "auto" | "concise" | "detailed" — controls summary verbosity. */
   summary?: 'auto' | 'concise' | 'detailed'
 }

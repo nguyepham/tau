@@ -249,7 +249,7 @@ export function ProviderModelPicker({
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [sections, setSections] = useState<ProviderModelSection[]>([])
-  const [reasoningLevel, setReasoningLevel] = useState(getOpenAIReasoningLevel)
+  const [, setReasoningTick] = useState(0)
   const [deepseekV4Thinking, setDeepseekV4Thinking] = useState(getDeepSeekV4Thinking)
   const [glmThinking, setGlmThinking] = useState(getGlmThinking)
   // Bumped to force a re-render after toggling provider-owned per-model effort.
@@ -448,8 +448,11 @@ export function ProviderModelPicker({
         && selectedProvider === 'openai'
         && modelSupportsReasoning(row.model.id)
       ) {
-        const newLevel = cycleOpenAIReasoningLevel(key.leftArrow ? 'left' : 'right')
-        setReasoningLevel(newLevel)
+        cycleOpenAIReasoningLevel(
+          key.leftArrow ? 'left' : 'right',
+          row.model.id,
+        )
+        setReasoningTick(tick => tick + 1)
         return
       }
 
@@ -685,7 +688,7 @@ export function ProviderModelPicker({
                   </Text>
                   {isReasoning && (
                     <Text color={isSelected ? 'cyan' : 'blue'} bold={isSelected}>
-                      {' '}◀ {getReasoningLabel(reasoningLevel)} ▶
+                      {' '}◀ {getReasoningLabel(getOpenAIReasoningLevel(model.id))} ▶
                     </Text>
                   )}
                   {isDeepseekV4 && (

@@ -257,7 +257,7 @@ export function getDisplayedEffortLevel(
   }
   // OpenAI reasoning models have their own effort system
   if (isThirdPartyProvider(provider) && modelSupportsReasoning(model)) {
-    return getOpenAIReasoningLevel() as EffortLevel
+    return getOpenAIReasoningLevel(model) as EffortLevel
   }
   // Other third-party providers don't use Anthropic effort
   if (isThirdPartyProvider(provider)) {
@@ -288,7 +288,7 @@ export function getEffortSuffix(
   }
   // OpenAI reasoning models use their own effort system
   if (isThirdPartyProvider(provider) && modelSupportsReasoning(model)) {
-    const level = getOpenAIReasoningLevel()
+    const level = getOpenAIReasoningLevel(model)
     return ` with ${level} effort`
   }
   // Other third-party providers don't use Anthropic effort — no suffix

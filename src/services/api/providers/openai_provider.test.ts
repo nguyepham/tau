@@ -9,6 +9,13 @@ import { OpenRouterProvider } from './openrouter_provider.js'
 import { MiniMaxProvider } from './minimax_provider.js'
 import { MoonshotProvider } from './moonshot_provider.js'
 import { PROVIDER_CONFIGS } from '../../../utils/model/configs.js'
+import { setOpenAIReasoningLevel } from '../../../utils/model/openaiReasoning.js'
+
+class InspectableOpenAIProvider extends OpenAIProvider {
+  reasoningFor(model: string) {
+    return this.resolveReasoningEffort(model, undefined)
+  }
+}
 
 let passed = 0
 let failed = 0
@@ -46,12 +53,26 @@ async function main(): Promise<void> {
 
       const provider = new OpenAIProvider({ apiKey: 'test-key' })
       const models = await provider.listModels()
+      const gpt56 = [
+        ['gpt-5.6-sol', 'GPT-5.6 Sol'],
+        ['gpt-5.6-terra', 'GPT-5.6 Terra'],
+        ['gpt-5.6-luna', 'GPT-5.6 Luna'],
+      ] as const
+      for (const [id, name] of gpt56) {
+        const model = models.find(candidate => candidate.id === id)
+        assert(model, `expected ${id} in OpenAI /models catalog`)
+        assert(model?.name === name, `expected official ${id} display name`)
+        assert(model?.contextWindow === 1050000, `expected 1.05M context for ${id}`)
+        assert(model?.tags?.includes('reasoning'), `expected reasoning tag for ${id}`)
+      }
       const gpt55 = models.find(model => model.id === 'gpt-5.5')
+      const sol = models.find(model => model.id === 'gpt-5.6-sol')
 
       assert(gpt55, 'expected gpt-5.5 in OpenAI /models catalog')
       assert(gpt55?.name === 'GPT-5.5', 'expected curated display name')
       assert(gpt55?.contextWindow === 272000, 'expected codex-main context window')
-      assert(gpt55?.tags?.includes('recommended'), 'expected recommended tag')
+      assert(sol?.tags?.includes('recommended'), 'expected Sol recommended tag')
+      assert(!gpt55?.tags?.includes('recommended'), 'GPT-5.5 should no longer be recommended')
       assert(models.some(model => model.id === 'gpt-5.4'), 'expected gpt-5.4 in OpenAI catalog')
       assert(models.some(model => model.id === 'gpt-5.4-mini'), 'expected gpt-5.4-mini in OpenAI catalog')
       assert(!models.some(model => model.id === 'gpt-5.3-codex'), 'gpt-5.3 must not be shown')
@@ -459,6 +480,14 @@ async function main(): Promise<void> {
       assert(models[0]?.id === 'kimi-k2.7-code', `model=${models[0]?.id}`)
       assert(models[0]?.contextWindow === 262144, 'expected live context_length')
       assert(models[0]?.tags?.includes('reasoning'), 'expected live reasoning flag')
+    })
+
+    await test('legacy OpenAI transport sends max only to GPT-5.6', () => {
+      const provider = new InspectableOpenAIProvider({ apiKey: 'test-key' })
+      setOpenAIReasoningLevel('max')
+      assert(provider.reasoningFor('gpt-5.6-sol') === 'max', 'GPT-5.6 should send max')
+      assert(provider.reasoningFor('gpt-5.5') === 'xhigh', 'GPT-5.5 should clamp max to xhigh')
+      assert(provider.reasoningFor('gpt-5.4') === 'xhigh', 'GPT-5.4 should clamp max to xhigh')
     })
   } finally {
     globalThis.fetch = originalFetch

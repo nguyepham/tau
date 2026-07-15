@@ -20,7 +20,12 @@ import {
 } from './loop.js'
 import { assembleCodexSystemPrompt } from './prompt.js'
 import { CODEX_TOOL_REGISTRY, getCodexRegistrationByNativeName } from './tools.js'
-import { setOpenAIReasoningLevel } from '../../utils/model/openaiReasoning.js'
+import {
+  cycleOpenAIReasoningLevel,
+  getAllReasoningLevels,
+  getReasoningLabel,
+  setOpenAIReasoningLevel,
+} from '../../utils/model/openaiReasoning.js'
 
 let passed = 0
 let failed = 0
@@ -126,12 +131,23 @@ function assertOpenAIStrictSchema(schema: unknown, path = 'parameters'): void {
 async function main(): Promise<void> {
   console.log('codex lane:')
 
-  await test('lists GPT-5.5 with reasoning support', async () => {
+  await test('lists the current GPT-5.6 family with official metadata', async () => {
     const models = await codexLane.listModels()
-    const model = models.find(m => m.id === 'gpt-5.5')
-    assert(model, 'expected gpt-5.5 in codex model list')
-    assert(model?.contextWindow === 272000, 'expected codex-main context window')
-    assert(model?.tags?.includes('reasoning'), 'expected reasoning tag')
+    const expected = [
+      ['gpt-5.6-sol', 'GPT-5.6 Sol'],
+      ['gpt-5.6-terra', 'GPT-5.6 Terra'],
+      ['gpt-5.6-luna', 'GPT-5.6 Luna'],
+    ] as const
+    for (const [id, name] of expected) {
+      const model = models.find(candidate => candidate.id === id)
+      assert(model, `expected ${id} in codex model list`)
+      assert(model?.name === name, `expected official ${id} display name`)
+      assert(model?.contextWindow === 1050000, `expected 1.05M context for ${id}`)
+      assert(model?.tags?.includes('reasoning'), `expected reasoning tag for ${id}`)
+    }
+    assert(models.find(m => m.id === 'gpt-5.6-sol')?.tags?.includes('recommended'), 'Sol should be recommended')
+    assert(models.some(m => m.id === 'gpt-5.5'), 'expected gpt-5.5')
+    assert(!models.find(m => m.id === 'gpt-5.5')?.tags?.includes('recommended'), '5.5 should no longer be recommended')
     assert(models.some(m => m.id === 'gpt-5.4'), 'expected gpt-5.4')
     assert(models.some(m => m.id === 'gpt-5.4-mini'), 'expected gpt-5.4-mini')
     assert(!models.some(m => m.id.startsWith('gpt-5.3')), 'gpt-5.3 must not be listed')
@@ -166,6 +182,17 @@ async function main(): Promise<void> {
     setOpenAIReasoningLevel('xhigh')
     const reasoning = resolveReasoning({ type: 'disabled' }, 'gpt-5.5')
     assert(reasoning?.effort === 'xhigh', `expected xhigh; got ${reasoning?.effort}`)
+  })
+  await test('GPT-5.6 exposes Ultra while sending the official max effort', () => {
+    for (const model of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+      assert(getAllReasoningLevels(model).at(-1) === 'max', `${model} should expose max`)
+    }
+    setOpenAIReasoningLevel('xhigh')
+    const selected = cycleOpenAIReasoningLevel('right', 'gpt-5.6-sol')
+    assert(selected === 'max', `expected max; got ${selected}`)
+    assert(getReasoningLabel(selected) === 'Ultra', 'max should render as Ultra')
+    assert(resolveReasoning({ type: 'disabled' }, 'gpt-5.6-sol')?.effort === 'max', '5.6 should send max')
+    assert(resolveReasoning({ type: 'disabled' }, 'gpt-5.5')?.effort === 'xhigh', 'older models should clamp max to xhigh')
   })
 
   await test('Codex history conversion skips prior thinking blocks', () => {

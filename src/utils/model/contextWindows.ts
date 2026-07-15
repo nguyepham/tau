@@ -56,6 +56,10 @@ const PROVIDER_SCOPED_CONTEXT_WINDOWS: Partial<Record<APIProvider, ContextWindow
 
 const KNOWN_MODEL_CONTEXT_WINDOWS: ContextWindowMap = {
   // OpenAI and Codex catalogs.
+  'gpt-5.6': OPENAI_LONG_CONTEXT_WINDOW,
+  'gpt-5.6-sol': OPENAI_LONG_CONTEXT_WINDOW,
+  'gpt-5.6-terra': OPENAI_LONG_CONTEXT_WINDOW,
+  'gpt-5.6-luna': OPENAI_LONG_CONTEXT_WINDOW,
   'gpt-5.5': 272_000,
   'gpt-5.5-pro': 272_000,
   'gpt-5.4': OPENAI_LONG_CONTEXT_WINDOW,
@@ -137,6 +141,7 @@ const KNOWN_MODEL_CONTEXT_WINDOWS: ContextWindowMap = {
 }
 
 const PREFIX_CONTEXT_WINDOWS: ContextWindowMap = {
+  'gpt-5.6': OPENAI_LONG_CONTEXT_WINDOW,
   'gpt-5.4-mini': 272_000,
   'gpt-5.4-nano': 272_000,
   'gpt-5.4-pro': OPENAI_LONG_CONTEXT_WINDOW,
