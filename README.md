@@ -2,17 +2,21 @@
   <img src="Logo.png" alt="Tau logo" width="120">
 </p>
 
-# Tau  The Best Free Coding Agent
+# Tau - The Best Free Coding Agent
 
 [![npm version](https://img.shields.io/npm/v/%40abdoknbgit%2Ftau.svg)](https://www.npmjs.com/package/@abdoknbgit/tau)
 [![npm downloads](https://img.shields.io/npm/dm/%40abdoknbgit%2Ftau.svg)](https://www.npmjs.com/package/@abdoknbgit/tau)
 [![License](https://img.shields.io/npm/l/%40abdoknbgit%2Ftau.svg)](https://www.npmjs.com/package/@abdoknbgit/tau)
 
+<p align="center">
+  🌐 <strong><a href="https://tau-site-ten.vercel.app/">Visit the Tau website</a></strong> for more information
+</p>
+
 ---
 
 ## What is Tau?
 
-Tau has become the best free coding agent — a single tool that fuses the **Claude Code** and **OpenCode** ecosystems into one mixed agentic environment. You get the strongest parts of both agents, plus new features and optimizations layered on top.
+Tau has become the best free coding agent: a single tool that fuses the **Claude Code** and **OpenCode** ecosystems into one mixed agentic environment. You get the strongest parts of both agents, plus new features and optimizations layered on top.
 
 Native adapters for **22 providers**. Not a proxy, not a wrapper around someone else's wrapper. When you use OpenAI, Tau speaks OpenAI's API directly. Same for GLM, DeepSeek, Mistral, OpenRouter, AgentRouter, Vercel AI Gateway, Requesty, Command Code, MiniMax, OpenCode Zen, and the rest. Full list with per-provider notes in [PROVIDERS.md](PROVIDERS.md).
 
@@ -26,19 +30,17 @@ That's it: plug and play with one command and one login flow. No shell configura
 
 The price of AI keeps climbing. The leading agents either lock you into a single subscription, gate the good features behind enterprise tiers, or quietly burn through your wallet on per-token billing the moment you do real work. Hit a rate limit on one provider and your day stops.
 
-Tau gives you a way out. **You can work with any provider without that provider's official tool installed on your machine.** Not Codex CLI, not Antigravity, not Cline, not KiloCode, not Kiro, not Copilot — none of them downloaded, none of them configured, none of them present. Tau brings the runtime. You bring whatever API key or auth flow you already have.
+Tau gives you a way out. **You can work with any provider without that provider's official tool installed on your machine.** Not Codex CLI, not Antigravity, not Cline, not KiloCode, not Kiro, not Copilot. None of them downloaded, none of them configured, none of them present. Tau brings the runtime. You bring whatever API key or auth flow you already have.
 
 ---
 
 ## Install
 
 ```bash
-npm install -g @abdoknbgit/tau
+npx -y @abdoknbgit/tau-installer@latest
 ```
 
-**Requirements:** Node.js >= 20.0.0, Git, Bash, `gh` for GitHub automation, and Go 1.25.8+ to build the optional native Tau helpers from source.
-
-If Go is missing, Tau still installs and runs. The native Markdown/code rendering and native read-only helper tools are skipped until Go is available or a package ships the matching prebuilt helper.
+**Requirements:** Node.js >= 20.18.1, Git, Bash, `gh` for GitHub automation, and Go 1.25.8+ to build the optional native Tau helpers from source.
 
 ---
 
@@ -68,11 +70,11 @@ tau update
 
 ## Commands
 
-**`/models`** — Browse available models and switch the active model.
+**`/models`** - Browse available models and switch the active model.
 
-**`/tools`** — Toggle the optional tools available in normal mode.
+**`/tools`** - Toggle the optional tools available in normal mode.
 
-**`/mode cheap`** — Use core tools only. **`/mode normal`** — Use your configured tools.
+**`/mode cheap`** - Use core tools only. **`/mode normal`** - Use your configured tools.
 
 See the full command list and usage notes in **[COMMANDS.md](COMMANDS.md)**.
 
@@ -87,16 +89,16 @@ See the full command list and usage notes in **[COMMANDS.md](COMMANDS.md)**.
 ## Features
 
 **Multi-provider, natively**
-22 providers with native adapters. Not a routing layer, not a translation proxy — each provider speaks its own API through its own adapter. Full streaming, rate-limit handling, and automatic tool-schema sanitization per provider.
+22 providers with native adapters. Not a routing layer, not a translation proxy. Each provider speaks its own API through its own adapter. Full streaming, rate-limit handling, and automatic tool-schema sanitization per provider.
 
 **The full agent loop**
-File editing, bash execution, glob, grep, web search, web fetch, MCP servers, hooks (PreToolUse, PostToolUse, UserPromptSubmit, Stop, Notification), skills (/commit, /review-pr, /simplify), and task management — all present, all working across every provider.
+File editing, bash execution, glob, grep, web search, web fetch, MCP servers, hooks (PreToolUse, PostToolUse, UserPromptSubmit, Stop, Notification), skills (/commit, /review-pr, /simplify), and task management: all present, all working across every provider.
 
 **LSP native integration**
 Built-in Language Server Protocol support. The agent gets real diagnostics, definitions, references, and hover information from project LSPs (TypeScript, Python, Bash, YAML, and more) without spawning external editor tooling. Type errors, unused symbols, and cross-file references are first-class signal in the agent loop.
 
 **Snapshot with time traveling**
-Per-turn working-tree snapshots stored in a shadow git repo separate from your project's `.git`. The agent can `save`, `list`, `diff`, and `restore` — instant undo for any change the agent made, large files (>2 MB) auto-excluded so the store stays small, weekly garbage collection. Travel back to any prior state without touching your branches.
+Per-turn working-tree snapshots stored in a shadow git repo separate from your project's `.git`. The agent can `save`, `list`, `diff`, and `restore`: instant undo for any change the agent made, large files (>2 MB) auto-excluded so the store stays small, weekly garbage collection. Travel back to any prior state without touching your branches.
 
 **`web_search` tool**
 Firecrawl provides 1k searches/month free for deep searching. Just enter your API key through `/login` -> **Firecrawl Search**.
@@ -120,7 +122,7 @@ Tree navigation, cloning, branching, and resume commands make long sessions easi
 Tau separates live usage, session statistics, and final reports, so you can monitor consumption while still producing readable end-of-session summaries.
 
 **Self-learning & self-improvement**
-Tau gets better the more you use it. After a substantial task — or on demand via `/learned` — it proposes one critical, general, reusable lesson (a framework gotcha, a whole class of bug to avoid, a hard-won constraint, or your own preference) for you to Approve / Edit / Skip. Approved lessons are saved to memory and carried from this session into future ones and other projects, so the work keeps compounding instead of starting cold. Review, edit, delete, or toggle everything it learns with `/learned`.
+Tau gets better the more you use it. After a substantial task, or on demand via `/learned`, it proposes one critical, general, reusable lesson (a framework gotcha, a whole class of bug to avoid, a hard-won constraint, or your own preference) for you to Approve / Edit / Skip. Approved lessons are saved to memory and carried from this session into future ones and other projects, so the work keeps compounding instead of starting cold. Review, edit, delete, or toggle everything it learns with `/learned`.
 
 ---
 

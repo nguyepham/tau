@@ -8,6 +8,7 @@ import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallSt
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
+import { getRunningPackageRoot } from '../utils/installIntegrity.js';
 import { installOrUpdateTauPackage, localInstallationExists } from '../utils/localInstaller.js';
 import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
 import { gt, gte } from '../utils/semver.js';
@@ -82,20 +83,15 @@ export function AutoUpdater({
       const startTime = Date.now();
       onChangeIsUpdating(true);
 
-      // Remove native installer symlink since we're using JS-based updates
-      // But only if user hasn't migrated to native installation
       const config = getGlobalConfig();
-      if (config.installMethod !== 'native') {
-        await removeInstalledSymlink();
-      }
-
       // Detect actual running installation type
       const installationType = await getCurrentInstallationType();
       logForDebugging(`AutoUpdater: Detected installation type: ${installationType}`);
 
-      // Skip update for development builds
-      if (installationType === 'development') {
-        logForDebugging('AutoUpdater: Cannot auto-update development build');
+      // Development and OS package-manager installations must never be
+      // converted into a second global npm installation in the background.
+      if (installationType === 'development' || installationType === 'package-manager') {
+        logForDebugging(`AutoUpdater: Skipping unsupported ${installationType} auto-update`);
         onChangeIsUpdating(false);
         return;
       }
@@ -107,30 +103,36 @@ export function AutoUpdater({
         // Use local update for local installations
         logForDebugging('AutoUpdater: Using local update method');
         updateMethod = 'local';
-        installStatus = await installOrUpdateTauPackage(channel);
+        // Install the exact version selected above. This preserves the
+        // server-side maxVersion safety cap and avoids a dist-tag race.
+        installStatus = await installOrUpdateTauPackage(channel, latestVersion);
       } else if (installationType === 'npm-global') {
         // Use global update for global installations
         logForDebugging('AutoUpdater: Using global update method');
         updateMethod = 'global';
-        installStatus = await installGlobalPackage();
+        installStatus = await installGlobalPackage(latestVersion, {
+          expectedPackageRoot: getRunningPackageRoot()
+        });
       } else if (installationType === 'native') {
         // This shouldn't happen - native should use NativeAutoUpdater
         logForDebugging('AutoUpdater: Unexpected native installation in non-native updater');
         onChangeIsUpdating(false);
         return;
       } else {
-        // Fallback to config-based detection for unknown types
-        logForDebugging(`AutoUpdater: Unknown installation type, falling back to config`);
-        const isMigrated = config.installMethod === 'local';
-        updateMethod = isMigrated ? 'local' : 'global';
-        if (isMigrated) {
-          installStatus = await installOrUpdateTauPackage(channel);
-        } else {
-          installStatus = await installGlobalPackage();
-        }
+        // Never guess for an unknown installation (for example pnpm/yarn).
+        // Guessing "global npm" can create a second Tau that is not the one
+        // first on PATH. The interactive `tau update` command can diagnose it.
+        logForDebugging('AutoUpdater: Skipping unknown installation type');
+        onChangeIsUpdating(false);
+        return;
       }
       onChangeIsUpdating(false);
       if (installStatus === 'success') {
+        // Unknown, failed, or mismatched-prefix routes must leave any working
+        // native launcher untouched.
+        if (config.installMethod !== 'native') {
+          await removeInstalledSymlink();
+        }
         logEvent('tengu_auto_updater_success', {
           fromVersion: currentVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toVersion: latestVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -191,10 +193,14 @@ export function AutoUpdater({
       {!isUpdating && !autoUpdaterResult?.version && manualUpdateAvailable && <Text color="warning" wrap="truncate">
           Update available! Run: <Text bold>tau update</Text>
         </Text>}
+      {autoUpdaterResult?.status === 'prefix_mismatch' && <Text color="error" wrap="truncate">
+          âœ— Auto-update paused &middot; npm prefix differs from running Tau &middot; Run{' '}
+          <Text bold>tau doctor</Text>
+        </Text>}
       {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && <Text color="error" wrap="truncate">
           ✗ Auto-update failed &middot; Try <Text bold>tau doctor</Text> or{' '}
           <Text bold>
-            {hasLocalInstall ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}` : `npm i -g ${MACRO.PACKAGE_URL}`}
+            {hasLocalInstall ? 'tau update' : 'npx -y @abdoknbgit/tau-installer@latest'}
           </Text>
         </Text>}
     </Box>;

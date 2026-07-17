@@ -1,12 +1,12 @@
 # Tau for VS Code
 
-A native chat panel for the **Tau** agent, with its own UI — message bubbles,
+A native chat panel for the **Tau** agent, with its own UI: message bubbles,
 collapsible thoughts, tool-call chips, a model/thinking picker, slash-command
 autocomplete, and a cache-hit bar.
 
 It is an **ACP client**: it spawns `tau acp` and speaks the Agent Client
 Protocol over stdio, then renders everything in a custom webview. All of Tau's
-engine (auth, tools, models) is reused as-is — this is purely the UI.
+engine (auth, tools, models) is reused as-is. This is purely the UI.
 
 ## Run it (development)
 
@@ -16,7 +16,7 @@ engine (auth, tools, models) is reused as-is — this is purely the UI.
    Tau icon in the Activity Bar. Click it to open the chat.
 
 The build runs automatically (esbuild) before launch. No `npm install` is
-needed here — `esbuild` and the ACP SDK resolve from the parent repo's
+needed here: `esbuild` and the ACP SDK resolve from the parent repo's
 `node_modules`.
 
 ## Install it (use day to day)

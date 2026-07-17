@@ -3,19 +3,26 @@
  * Tau postinstall — downloads the platform-correct ripgrep binary
  * and pre-pulls the approved Ollama cloud model aliases.
  *
- * Runs automatically after `npm install -g @abdoknbgit/tau`.
- * Skips silently on any error so a network hiccup never breaks the install.
+ * Runs automatically when the reviewed Tau installer invokes npm.
+ * Optional network/tool setup failures stay non-fatal, while dependency or
+ * completion-marker failures fail closed so an incomplete install is never
+ * reported as healthy.
  * The CLI falls back to a system `rg` if the vendored binary is absent,
  * and first-launch code will retry any missed Ollama pulls.
  */
 
-import { existsSync, mkdirSync, createWriteStream, unlinkSync, readdirSync, renameSync, rmSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, createWriteStream, readdirSync, renameSync, rmSync, copyFileSync } from 'fs';
 import { chmod } from 'fs/promises';
 import { resolve, dirname, join, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import https from 'https';
 import { tmpdir } from 'os';
+import {
+  isLinuxArm64Musl,
+  isUsableRipgrepCommand,
+  resolveWindowsSystemExecutable,
+} from './platform-support.mjs';
 
 // KEEP IN SYNC with src/utils/model/ollamaCatalog.ts (CLOUD_MODELS_LIST).
 const OLLAMA_CLOUD_MODELS = [
@@ -41,7 +48,9 @@ const RG_VERSION = '14.1.1';
 // Map Node's (platform-arch) pair to the ripgrep release info
 const PLATFORM_MAP = {
   'win32-x64':   { target: 'x86_64-pc-windows-msvc',   ext: 'zip',    binary: 'rg.exe', dir: 'x64-win32'   },
-  'win32-arm64': { target: 'aarch64-pc-windows-msvc',  ext: 'zip',    binary: 'rg.exe', dir: 'arm64-win32'  },
+  // ripgrep first added an official Windows ARM64 artifact in 15.x. Keep the
+  // established 14.1.1 binary everywhere else to avoid an unrelated upgrade.
+  'win32-arm64': { target: 'aarch64-pc-windows-msvc',  ext: 'zip',    binary: 'rg.exe', dir: 'arm64-win32', version: '15.1.0' },
   'darwin-x64':  { target: 'x86_64-apple-darwin',       ext: 'tar.gz', binary: 'rg',     dir: 'x64-darwin'   },
   'darwin-arm64':{ target: 'aarch64-apple-darwin',      ext: 'tar.gz', binary: 'rg',     dir: 'arm64-darwin' },
   'linux-x64':   { target: 'x86_64-unknown-linux-musl', ext: 'tar.gz', binary: 'rg',     dir: 'x64-linux'    },
@@ -56,23 +65,43 @@ async function main() {
   const info = PLATFORM_MAP[key];
 
   if (!info) {
-    console.log(`[tau] ripgrep: unsupported platform ${key}, skipping download (system rg will be used)`);
-    return;
+    return requireSystemRipgrep(
+      `there is no vendored ripgrep build for ${key}`,
+    );
+  }
+
+  if (isLinuxArm64Musl()) {
+    return requireSystemRipgrep(
+      'the upstream release has no Linux ARM64 musl binary',
+    );
   }
 
   const destDir = join(packageRoot, 'dist', 'vendor', 'ripgrep', info.dir);
   const destBinary = join(destDir, info.binary);
 
   if (existsSync(destBinary)) {
-    // Already present (e.g. local dev build that bundled it)
-    return;
+    // A file left by a build or interrupted install is not proof that it can
+    // execute on this OS/architecture. Probe it before certifying the install.
+    if (
+      isUsableRipgrepCommand(destBinary, {
+        requireFile: true,
+      })
+    ) {
+      return;
+    }
+    rmSync(destBinary, { force: true });
   }
 
-  const archiveName = `ripgrep-${RG_VERSION}-${info.target}.${info.ext}`;
-  const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${archiveName}`;
-  const tmpArchive = join(tmpdir(), archiveName);
+  const version = info.version ?? RG_VERSION;
+  const archiveName = `ripgrep-${version}-${info.target}.${info.ext}`;
+  const url = `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${archiveName}`;
+  // Use a private, unique directory. A predictable shared /tmp filename lets
+  // concurrent installs corrupt each other's download and can follow a stale
+  // symlink left by another local user.
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'tau-ripgrep-'));
+  const tmpArchive = join(temporaryDirectory, archiveName);
 
-  console.log(`[tau] Downloading ripgrep ${RG_VERSION} for ${key}...`);
+  console.log(`[tau] Downloading ripgrep ${version} for ${key}...`);
 
   try {
     await download(url, tmpArchive);
@@ -81,11 +110,28 @@ async function main() {
     if (process.platform !== 'win32') {
       await chmod(destBinary, 0o755);
     }
+    if (
+      !isUsableRipgrepCommand(destBinary, {
+        requireFile: true,
+      })
+    ) {
+      throw new Error('the downloaded ripgrep binary cannot run on this host');
+    }
     console.log(`[tau] ripgrep installed at ${destBinary}`);
   } catch (err) {
-    console.warn(`[tau] ripgrep download failed (${err.message}). The Grep tool will fall back to system rg.`);
+    rmSync(destBinary, { force: true });
+    if (isUsableRipgrepCommand('rg')) {
+      console.log(
+        `[tau] Vendored ripgrep unavailable (${err.message}); using the working system rg.`,
+      );
+      return;
+    }
+    throw new Error(
+      `Unable to install ripgrep and no working system rg was found: ${err.message}`,
+      { cause: err },
+    );
   } finally {
-    try { if (existsSync(tmpArchive)) unlinkSync(tmpArchive); } catch { /* ignore */ }
+    try { rmSync(temporaryDirectory, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
 
@@ -94,21 +140,42 @@ function download(url, dest) {
   return new Promise((resolve, reject) => {
     function get(currentUrl, redirects = 0) {
       if (redirects > 5) return reject(new Error('Too many redirects'));
-      https.get(currentUrl, { headers: { 'User-Agent': 'tau-postinstall' } }, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) {
+      const request = https.get(currentUrl, { headers: { 'User-Agent': 'tau-postinstall' } }, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
           res.resume(); // drain so the connection is freed
-          return get(res.headers.location, redirects + 1);
+          const location = res.headers.location;
+          if (!location) return reject(new Error(`Redirect without Location for ${currentUrl}`));
+          let nextUrl;
+          try {
+            nextUrl = new URL(location, currentUrl);
+          } catch {
+            return reject(new Error(`Invalid redirect Location for ${currentUrl}`));
+          }
+          if (nextUrl.protocol !== 'https:') {
+            return reject(new Error(`Refusing non-HTTPS redirect for ${currentUrl}`));
+          }
+          return get(nextUrl.href, redirects + 1);
         }
         if (res.statusCode !== 200) {
           res.resume();
           return reject(new Error(`HTTP ${res.statusCode} for ${currentUrl}`));
         }
-        const file = createWriteStream(dest);
+        const file = createWriteStream(dest, { flags: 'wx' });
         res.pipe(file);
-        file.on('finish', () => file.close(() => resolve()));
-        file.on('error', reject);
-        res.on('error', reject);
-      }).on('error', reject);
+        file.on('finish', () => file.close(error => error ? reject(error) : resolve()));
+        file.on('error', error => {
+          res.destroy();
+          reject(error);
+        });
+        res.on('error', error => {
+          file.destroy();
+          reject(error);
+        });
+      });
+      request.setTimeout(60_000, () => {
+        request.destroy(new Error(`Download timed out for ${currentUrl}`));
+      });
+      request.on('error', reject);
     }
 
     get(url);
@@ -120,7 +187,7 @@ function download(url, dest) {
  *
  * Uses `tar` for both `.tar.gz` and `.zip`. On Linux/macOS that's the
  * system tar (GNU or BSD — either handles tar.gz fine). On Windows we
- * pin to the libarchive `bsdtar.exe` shipped at C:\Windows\System32 since
+ * pin to the libarchive `tar.exe` in the SystemRoot/WINDIR System32 directory
  * Windows 10 1803 — the only tool guaranteed to be present that can read
  * ZIPs without PowerShell. We avoid PATH on Windows because dev shells
  * (Git Bash, WSL, MSYS2) commonly shadow it with GNU tar, which can't
@@ -132,16 +199,16 @@ async function extract(archivePath, ext, binaryName, destDir) {
   if (!tarBin) {
     throw new Error(
       process.platform === 'win32'
-        ? 'No ZIP-capable extractor found. Need C:\\Windows\\System32\\tar.exe (ships with Windows 10 1803+).'
+        ? 'No ZIP-capable extractor found in the Windows System32 directory.'
         : '`tar` not found on PATH.'
     );
   }
 
   // Extract into a tmp sibling, then promote the binary so the layout
   // matches what the runtime expects regardless of how the archive nests.
-  const stagingDir = `${destDir}_tmp`;
-  rmSync(stagingDir, { recursive: true, force: true });
-  mkdirSync(stagingDir, { recursive: true });
+  const stagingDir = mkdtempSync(
+    join(dirname(destDir), `.${basename(destDir)}-extract-`),
+  );
 
   // Copy the archive into the staging dir and run tar with that dir as
   // cwd. bsdtar can mis-parse arguments like `C:\path` as a `host:path`
@@ -149,23 +216,33 @@ async function extract(archivePath, ext, binaryName, destDir) {
   // colon-free and works identically on every platform.
   const archiveBase = basename(archivePath);
   const stagingArchive = join(stagingDir, archiveBase);
-  copyFileSync(archivePath, stagingArchive);
+  try {
+    copyFileSync(archivePath, stagingArchive);
 
-  const args = ext === 'tar.gz' ? ['-xzf', archiveBase] : ['-xf', archiveBase];
-  const result = spawnSync(tarBin, args, { cwd: stagingDir, stdio: 'pipe' });
-  unlinkSync(stagingArchive);
-  if (result.status !== 0) {
-    rmSync(stagingDir, { recursive: true, force: true });
-    throw new Error(`tar extraction failed: ${result.stderr?.toString().trim() || `exit ${result.status}`}`);
-  }
+    const args = ext === 'tar.gz' ? ['-xzf', archiveBase] : ['-xf', archiveBase];
+    const result = spawnSync(tarBin, args, { cwd: stagingDir, stdio: 'pipe' });
+    if (result.status !== 0) {
+      throw new Error(`tar extraction failed: ${result.stderr?.toString().trim() || `exit ${result.status}`}`);
+    }
 
-  const found = findBinary(stagingDir, binaryName);
-  if (!found) {
+    const found = findBinary(stagingDir, binaryName);
+    if (!found) {
+      throw new Error(`Binary ${binaryName} not found in archive ${archivePath}.`);
+    }
+    renameSync(found, join(destDir, binaryName));
+  } finally {
     rmSync(stagingDir, { recursive: true, force: true });
-    throw new Error(`Binary ${binaryName} not found in archive ${archivePath}.`);
   }
-  renameSync(found, join(destDir, binaryName));
-  rmSync(stagingDir, { recursive: true, force: true });
+}
+
+function requireSystemRipgrep(reason) {
+  if (isUsableRipgrepCommand('rg')) {
+    console.log(`[tau] ${reason}; using the working system rg.`);
+    return;
+  }
+  throw new Error(
+    `Tau requires ripgrep for search, but ${reason} and no working system rg was found.`,
+  );
 }
 
 /**
@@ -176,8 +253,8 @@ function resolveTarBin(ext) {
   if (process.platform === 'win32' && ext === 'zip') {
     // Pin to the absolute path so Git Bash / WSL / MSYS2 GNU tar can't
     // shadow Windows' libarchive bsdtar (the only one that reads ZIPs).
-    const bsdtar = 'C:\\Windows\\System32\\tar.exe';
-    if (!existsSync(bsdtar)) return null;
+    const bsdtar = resolveWindowsSystemExecutable('tar.exe');
+    if (!bsdtar) return null;
     const probe = spawnSync(bsdtar, ['--version'], { stdio: 'pipe' });
     return probe.status === 0 ? bsdtar : null;
   }
@@ -230,16 +307,21 @@ function primeOllamaCloudModels() {
  * Verify every runtime dependency landed in node_modules, with a progress
  * bar, and repair the tree if an interrupted/locked install left holes.
  * Skipped when this postinstall was itself triggered by a repair run
- * (TAU_REPAIR=1) to avoid recursion. Never fails the install — the CLI
- * launcher re-checks and self-heals at startup as a second safety net.
+ * (TAU_REPAIR=1) to avoid recursion. A dependency tree that remains broken
+ * is fatal so the lifecycle-completion marker cannot certify it.
  */
 async function verifyDependencyTree() {
   if (process.env.TAU_REPAIR === '1') return;
   const { ensureDeps, manualFixInstructions } = await import('./verify-deps.mjs');
   console.log('[tau] Verifying runtime dependencies...');
-  const ok = ensureDeps(packageRoot, { repair: true });
+  // The completion marker is deliberately written after every postinstall
+  // step below. Do not interpret its temporary absence as a repair request.
+  const ok = ensureDeps(packageRoot, {
+    repair: true,
+    skipLifecycleMarker: true,
+  });
   if (!ok) {
-    console.warn(`\n${manualFixInstructions('@abdoknbgit/tau')}\n`);
+    throw new Error(manualFixInstructions('@abdoknbgit/tau'));
   }
 }
 
@@ -269,11 +351,27 @@ function buildOptionalNativeTools() {
   runOptionalNativeBuild('build-native-tools.mjs', 'TAU_REQUIRE_NATIVE_TOOLS');
 }
 
-main()
-  .catch(() => { /* never propagate — ripgrep is optional */ })
-  .finally(async () => {
-    try { await verifyDependencyTree(); } catch { /* swallow */ }
-    try { buildOptionalNativeTools(); } catch { /* swallow */ }
-    try { primeOllamaCloudModels(); } catch { /* swallow */ }
-    process.exit(0);
-  });
+async function runPostinstall() {
+  // Invalidate a previous same-version install before doing any work. If this
+  // run fails, the missing marker makes the updater repair it on next launch.
+  const {
+    clearLifecycleCompletionMarker,
+    writeLifecycleCompletionMarker,
+  } = await import('./verify-deps.mjs');
+  clearLifecycleCompletionMarker(packageRoot);
+
+  await main();
+
+  await verifyDependencyTree();
+  try { buildOptionalNativeTools(); } catch { /* native accelerators are optional */ }
+  try { primeOllamaCloudModels(); } catch { /* first launch retries */ }
+
+  // This is the final mandatory operation. A missing marker lets the verifier
+  // distinguish npm 12's exit-0/script-blocked install from a completed one.
+  writeLifecycleCompletionMarker(packageRoot);
+}
+
+runPostinstall().catch(error => {
+  console.error(`[tau] postinstall failed: ${error?.message ?? error}`);
+  process.exitCode = 1;
+});

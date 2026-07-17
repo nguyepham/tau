@@ -9,13 +9,16 @@
  *  2. Holes in the installed package's node_modules — the CLI later crashes
  *     with "Cannot find module '<dep>'".
  *
- * These helpers clean stale shims before installing, recover from an EEXIST
- * abort, and verify/repair the freshly installed tree via the package's own
- * dependency-free scripts/verify-deps.mjs.
+ * These helpers clean only dangling shims before installing, recover from an
+ * EEXIST abort with a narrowly targeted retry, and verify/repair the freshly
+ * installed tree via the package's own dependency-free
+ * scripts/verify-deps.mjs. A healthy launcher remains in place until npm has
+ * successfully replaced it, so a network/install failure does not needlessly
+ * strand the existing Tau installation without its command.
  */
 
 import { existsSync } from 'fs'
-import { lstat, readFile, readlink, unlink } from 'fs/promises'
+import { lstat, readFile, readlink, realpath, unlink } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, join, resolve } from 'path'
 import { logForDebugging } from './debug.js'
@@ -25,6 +28,48 @@ import { writeToStdout } from './process.js'
 const BIN_NAMES = ['tau', 'claudex']
 const WIN_EXTS = ['', '.cmd', '.ps1']
 
+/** Package root corresponding to the JavaScript entry that is actually running. */
+export function getRunningPackageRoot(
+  invokedEntry?: string,
+): string | null {
+  if (!invokedEntry) {
+    const launcherRoot = (
+      globalThis as typeof globalThis & { __TAU_PACKAGE_ROOT__?: unknown }
+    ).__TAU_PACKAGE_ROOT__
+    if (typeof launcherRoot === 'string' && launcherRoot) {
+      return resolve(launcherRoot)
+    }
+    invokedEntry = process.argv[1]
+  }
+  return invokedEntry ? resolve(dirname(invokedEntry), '..') : null
+}
+
+async function comparablePath(
+  path: string,
+  platform = process.platform,
+): Promise<string> {
+  let normalized: string
+  try {
+    normalized = await realpath(path)
+  } catch {
+    normalized = resolve(path)
+  }
+  return platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+/** Compare npm roots canonically so symlinked prefixes and Windows casing work. */
+export async function packageRootsMatch(
+  left: string,
+  right: string,
+  platform = process.platform,
+): Promise<boolean> {
+  const [normalizedLeft, normalizedRight] = await Promise.all([
+    comparablePath(left, platform),
+    comparablePath(right, platform),
+  ])
+  return normalizedLeft === normalizedRight
+}
+
 /** Bin shim directory for a given npm/bun global prefix. */
 function getBinDir(prefix: string, isBun: boolean): string {
   if (isBun) return prefix // `bun pm bin -g` already returns the bin dir
@@ -33,8 +78,38 @@ function getBinDir(prefix: string, isBun: boolean): string {
 
 type ShimKind = 'ours' | 'dangling' | 'foreign' | 'unknown'
 
+/** Resolve targets from npm's quoted sh/cmd/ps1 launcher templates. */
+function getEmbeddedShimTargets(shimPath: string, content: string): string[] {
+  const quotedTargets = [
+    ...content.matchAll(/"([^"\r\n]*node_modules\/[^"\r\n]+)"/g),
+    ...content.matchAll(/'([^'\r\n]*node_modules\/[^'\r\n]+)'/g),
+  ]
+  const basedirPrefix =
+    /^(?:%~dp0%?|%dp0%|\$(?:basedir|\{basedir\}|PSScriptRoot|\{PSScriptRoot\}))(?:\/|$)/i
+
+  return quotedTargets.flatMap(match => {
+    let embeddedPath = match[1]
+    if (!embeddedPath) return []
+
+    if (basedirPrefix.test(embeddedPath)) {
+      embeddedPath = embeddedPath.replace(
+        basedirPrefix,
+        `${dirname(shimPath)}/`,
+      )
+    } else if (/[$%`]/.test(embeddedPath)) {
+      // An unknown shell variable means we cannot prove where this points.
+      return []
+    }
+
+    return [resolve(dirname(shimPath), embeddedPath)]
+  })
+}
+
 /** Decide whether a shim belongs to this package or points at nothing. */
-async function classifyShim(shimPath: string): Promise<ShimKind> {
+async function classifyShim(
+  shimPath: string,
+  packageName: string,
+): Promise<ShimKind> {
   try {
     const stat = await lstat(shimPath)
     if (stat.isSymbolicLink()) {
@@ -42,35 +117,50 @@ async function classifyShim(shimPath: string): Promise<ShimKind> {
       const resolved = resolve(dirname(shimPath), target)
       if (!existsSync(resolved)) return 'dangling'
       return resolved.split('\\').join('/').includes(
-        `node_modules/${MACRO.PACKAGE_URL}/`,
+        `node_modules/${packageName}/`,
       )
         ? 'ours'
         : 'foreign'
     }
-    // Windows .cmd/.ps1 shims embed the package path with backslashes;
-    // normalize so '@scope\name' still matches '@scope/name'.
+    // npm's sh/cmd/ps1 launchers embed a quoted node_modules target. Resolve
+    // the complete token, including absolute/relative prefixes, rather than
+    // assuming node_modules is beside the shim. If a custom launcher uses an
+    // unknown shell variable, preserve it because its target is unproven.
     const content = (await readFile(shimPath, 'utf8')).split('\\').join('/')
-    if (content.includes(MACRO.PACKAGE_URL)) return 'ours'
-    const match = content.match(/node_modules[\\/][^"'\s:]+/)
-    if (match) {
-      const target = resolve(dirname(shimPath), match[0])
-      if (!existsSync(target)) return 'dangling'
+    const targets = getEmbeddedShimTargets(shimPath, content)
+    let hasMissingTarget = false
+    for (const target of targets) {
+      if (!existsSync(target)) {
+        hasMissingTarget = true
+        continue
+      }
+      if (
+        target
+          .split('\\')
+          .join('/')
+          .includes(`node_modules/${packageName}/`)
+      ) {
+        return 'ours'
+      }
+      return 'foreign'
     }
-    return 'foreign'
+    return hasMissingTarget ? 'dangling' : 'foreign'
   } catch {
     return 'unknown'
   }
 }
 
 /**
- * Remove `tau`/`claudex` launcher shims in the global bin dir that belong
- * to this package or dangle into a deleted install. npm recreates them
- * during the install that follows, so this is always safe — and it is the
- * fix for `npm error code EEXIST ... File exists: ...\npm\claudex`.
+ * Remove only dangling `tau`/`claudex` launcher shims in the global bin dir.
+ * A healthy Tau-owned launcher is intentionally preserved until npm succeeds;
+ * removing it here would turn a network or install failure into a broken
+ * existing command. A later, confirmed EEXIST failure has its own narrowly
+ * scoped removal-and-retry path below.
  */
 export async function cleanStaleBinShims(
   prefix: string | null,
   isBun: boolean,
+  packageName = MACRO.PACKAGE_URL,
 ): Promise<void> {
   if (!prefix) return
   const binDir = getBinDir(prefix, isBun)
@@ -88,8 +178,8 @@ export async function cleanStaleBinShims(
           continue
         }
       }
-      const kind = await classifyShim(shimPath)
-      if (kind === 'ours' || kind === 'dangling') {
+      const kind = await classifyShim(shimPath, packageName)
+      if (kind === 'dangling') {
         try {
           await unlink(shimPath)
           logForDebugging(`installIntegrity: removed stale shim ${shimPath}`)
@@ -115,24 +205,58 @@ export function extractEexistPath(npmOutput: string): string | null {
   return match?.[1]?.trim() ?? null
 }
 
-/** Remove the EEXIST-conflicting file and its sibling shim variants. */
-export async function removeConflictingShim(filePath: string): Promise<void> {
+/**
+ * Remove an EEXIST-conflicting Tau shim and its sibling variants.
+ * Refuse paths outside the expected global bin directory and foreign files.
+ */
+export async function removeConflictingShim(
+  filePath: string,
+  prefix: string | null,
+  isBun: boolean,
+  packageName = MACRO.PACKAGE_URL,
+): Promise<boolean> {
+  if (!prefix) return false
+
+  const binDir = resolve(getBinDir(prefix, isBun))
+  const basePath = resolve(
+    process.platform === 'win32'
+      ? filePath.replace(/\.(cmd|ps1)$/i, '')
+      : filePath,
+  )
+  const normalizeForComparison = (value: string) =>
+    process.platform === 'win32' ? value.toLowerCase() : value
+  const expectedPaths = new Set(
+    BIN_NAMES.map(name => normalizeForComparison(resolve(binDir, name))),
+  )
+
+  if (!expectedPaths.has(normalizeForComparison(basePath))) {
+    logForDebugging(
+      `installIntegrity: refused EEXIST path outside Tau's global bin directory: ${filePath}`,
+    )
+    return false
+  }
+
   const variants =
     process.platform === 'win32'
       ? [
-          filePath.replace(/\.(cmd|ps1)$/i, ''),
-          `${filePath.replace(/\.(cmd|ps1)$/i, '')}.cmd`,
-          `${filePath.replace(/\.(cmd|ps1)$/i, '')}.ps1`,
+          basePath,
+          `${basePath}.cmd`,
+          `${basePath}.ps1`,
         ]
-      : [filePath]
+      : [basePath]
+  let removed = false
   for (const variant of variants) {
+    const kind = await classifyShim(variant, packageName)
+    if (kind !== 'ours' && kind !== 'dangling') continue
     try {
       await unlink(variant)
+      removed = true
       logForDebugging(`installIntegrity: removed conflicting ${variant}`)
     } catch {
       // already gone / never existed
     }
   }
+  return removed
 }
 
 /** Root directory of the globally installed package, or null. */
@@ -152,7 +276,7 @@ export async function getGlobalPackageRoot(): Promise<string | null> {
  */
 export async function verifyInstalledPackage(
   packageRoot: string,
-  options: { interactive?: boolean } = {},
+  options: { interactive?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Promise<boolean> {
   const script = join(packageRoot, 'scripts', 'verify-deps.mjs')
   if (!existsSync(script)) return true
@@ -164,7 +288,12 @@ export async function verifyInstalledPackage(
   const result = await execFileNoThrowWithCwd(
     process.execPath,
     [script, '--repair', '--quiet'],
-    { cwd: homedir(), timeout: 10 * 60 * 1000 },
+    {
+      cwd: homedir(),
+      env: options.env,
+      timeout: 10 * 60 * 1000,
+      killTreeOnTimeout: true,
+    },
   )
 
   if (options.interactive) {

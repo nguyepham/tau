@@ -1,0 +1,36 @@
+{
+  "name": "@abdoknbgit/tau-installer",
+  "version": "0.1.2",
+  "description": "Install Tau globally with its reviewed npm lifecycle scripts allowed for this install only.",
+  "type": "module",
+  "bin": {
+    "tau-installer": "bin/tau-installer.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "keywords": [
+    "tau",
+    "installer",
+    "cli"
+  ],
+  "author": "AbdoKnbGit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbdoKnbGit/tau.git",
+    "directory": "packages/tau-installer"
+  },
+  "homepage": "https://github.com/AbdoKnbGit/tau#readme",
+  "bugs": {
+    "url": "https://github.com/AbdoKnbGit/tau/issues"
+  }
+}

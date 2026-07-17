@@ -1,6 +1,9 @@
 {
   "name": "@abdoknbgit/tau",
-  "version": "0.92.14",
+  "version": "0.92.15",
+  "workspaces": [
+    "packages/*"
+  ],
   "description": "Tau - multi-provider AI coding CLI with Firecrawl-hosted WebSearch. Firecrawl offers 1k searches/month on free trials; just enter your API key.",
   "author": "AbdoKnbGit",
   "repository": {
@@ -17,12 +20,17 @@
     "claudex": "dist/cli.mjs"
   },
   "files": [
-    "dist",
+    "dist/cli.mjs",
+    "dist/shim.js",
+    "dist/tau.mjs",
+    "dist/tau.mjs.map",
+    "dist/tau-office.mjs",
+    "dist/tau-office.mjs.map",
     "docs",
     "native",
+    "npm-shrinkwrap.json",
     "scripts",
-    "README.md",
-    "BASH_SYNTAX_ROADMAP.md"
+    "README.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -32,9 +40,13 @@
     "build:bun": "bun run build.ts",
     "build:native-shell": "node scripts/build-native-shell-parser.mjs",
     "build:native-tools": "node scripts/build-native-tools.mjs",
+    "shrinkwrap:generate": "node release/production-shrinkwrap.mjs --write",
+    "shrinkwrap:check": "node release/production-shrinkwrap.mjs --check",
     "preinstall": "node scripts/preinstall.mjs",
     "postinstall": "node scripts/postinstall.mjs",
-    "prepublishOnly": "node build.mjs"
+    "prepublishOnly": "node release/production-shrinkwrap.mjs --check && node release/verify-installer-published.mjs && node build.mjs",
+    "prepack": "node release/production-shrinkwrap.mjs --stage",
+    "postpack": "node release/production-shrinkwrap.mjs --clean"
   },
   "keywords": [
     "tau",
@@ -52,7 +64,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.18.1"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.26.0",
@@ -170,7 +182,9 @@
   "allowScripts": {
     "@abdoknbgit/tau": true,
     "@whiskeysockets/baileys": true,
+    "core-js": true,
     "esbuild": true,
+    "fsevents": true,
     "node-pty": true,
     "protobufjs": true,
     "sharp": true

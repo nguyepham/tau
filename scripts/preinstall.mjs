@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tau preinstall — clears orphaned global bin shims before npm links bins.
+ * Tau preinstall — clears dangling global bin shims before npm links bins.
  *
  * When a previous global update was interrupted (EPERM cleanup on Windows,
  * Ctrl-C, antivirus locks), npm can lose track of the `tau` / `claudex`
@@ -10,9 +10,11 @@
  *   npm error File exists: C:\Users\...\npm\claudex
  *
  * npm runs this script after extracting the package but BEFORE linking bin
- * shims, so removing stale shims here lets the install proceed. Only shims
- * that belong to this package (or are dangling) are touched; a shim owned
- * by some other package gets a warning instead.
+ * shims. Only launchers whose embedded target no longer exists are removed.
+ * In particular, a healthy launcher owned by the previous Tau installation
+ * stays in place until npm successfully replaces it, so a failed update does
+ * not needlessly remove the user's working `tau` / `claudex` command. A shim
+ * owned by another package is preserved and gets a warning instead.
  *
  * Never fails the install: every path is wrapped and the script exits 0.
  */
@@ -62,8 +64,35 @@ function getGlobalBinDir() {
   return join(prefix, 'bin');
 }
 
+/** Resolve targets from npm's quoted sh/cmd/ps1 launcher templates. */
+function getEmbeddedShimTargets(shimPath, content) {
+  const quotedTargets = [
+    ...content.matchAll(/"([^"\r\n]*node_modules\/[^"\r\n]+)"/g),
+    ...content.matchAll(/'([^'\r\n]*node_modules\/[^'\r\n]+)'/g),
+  ];
+  const basedirPrefix =
+    /^(?:%~dp0%?|%dp0%|\$(?:basedir|\{basedir\}|PSScriptRoot|\{PSScriptRoot\}))(?:\/|$)/i;
+
+  return quotedTargets.flatMap((match) => {
+    let embeddedPath = match[1];
+    if (!embeddedPath) return [];
+
+    if (basedirPrefix.test(embeddedPath)) {
+      embeddedPath = embeddedPath.replace(
+        basedirPrefix,
+        `${dirname(shimPath)}/`,
+      );
+    } else if (/[$%`]/.test(embeddedPath)) {
+      // An unknown shell variable means we cannot prove where this points.
+      return [];
+    }
+
+    return [resolve(dirname(shimPath), embeddedPath)];
+  });
+}
+
 /** Does this shim/symlink belong to us, or point at nothing? */
-function classifyShim(shimPath, packageName) {
+export function classifyShim(shimPath, packageName) {
   try {
     const stat = lstatSync(shimPath);
     if (stat.isSymbolicLink()) {
@@ -75,29 +104,33 @@ function classifyShim(shimPath, packageName) {
         ? 'ours'
         : 'foreign';
     }
-    // Windows .cmd/.ps1 shims embed the package path with backslashes;
-    // normalize so '@scope\name' still matches '@scope/name'.
+    // Resolve npm's complete quoted target, including absolute/relative
+    // prefixes. Preserve custom launchers whose shell variables are unknown.
     const content = readFileSync(shimPath, 'utf8').split('\\').join('/');
-    if (content.includes(packageName)) return 'ours';
-    // sh/cmd/ps1 shims embed the relative target path; if that file is
-    // gone the shim is dead weight from a broken uninstall.
-    const match = content.match(/node_modules[\\/][^"'\s:]+/);
-    if (match) {
-      const target = resolve(dirname(shimPath), match[0]);
-      if (!existsSync(target)) return 'dangling';
+    const targets = getEmbeddedShimTargets(shimPath, content);
+    let hasMissingTarget = false;
+    for (const target of targets) {
+      if (!existsSync(target)) {
+        hasMissingTarget = true;
+        continue;
+      }
+      const normalized = target.split('\\').join('/');
+      if (normalized.includes(`node_modules/${packageName}/`)) return 'ours';
+      return 'foreign';
     }
-    return 'foreign';
+    return hasMissingTarget ? 'dangling' : 'foreign';
   } catch {
     return 'unknown';
   }
 }
 
-function main() {
-  const binDir = getGlobalBinDir();
-  if (!binDir || !existsSync(binDir)) return; // not a global install
-
-  const packageName = getPackageName();
-  const exts = process.platform === 'win32' ? WIN_EXTS : [''];
+export function cleanDanglingBinShims(
+  binDir,
+  packageName,
+  platform = process.platform,
+) {
+  if (!binDir || !existsSync(binDir)) return;
+  const exts = platform === 'win32' ? WIN_EXTS : [''];
 
   for (const name of BIN_NAMES) {
     for (const ext of exts) {
@@ -109,11 +142,11 @@ function main() {
       }
 
       const kind = classifyShim(shimPath, packageName);
-      if (kind === 'ours' || kind === 'dangling') {
+      if (kind === 'dangling') {
         try {
           unlinkSync(shimPath);
           console.log(
-            `[tau] Removed stale '${name}${ext}' launcher left by a previous install`,
+            `[tau] Removed dangling '${name}${ext}' launcher left by a previous install`,
           );
         } catch {
           // npm may still EEXIST; the error message tells the user what to delete.
@@ -129,9 +162,20 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch {
-  // Never block the install.
+function main() {
+  const binDir = getGlobalBinDir();
+  if (!binDir || !existsSync(binDir)) return; // not a global install
+  cleanDanglingBinShims(binDir, getPackageName());
 }
-process.exit(0);
+
+const invokedDirectly =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  try {
+    main();
+  } catch {
+    // Never block the install.
+  }
+  process.exit(0);
+}

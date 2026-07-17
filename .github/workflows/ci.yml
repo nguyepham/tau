@@ -1,6 +1,7 @@
 name: Cross-Platform CI
 
-# Runs on every push + PR to master, and on-demand via the Actions tab.
+# Runs on every push + PR to master, on-demand via the Actions tab, and runs
+# the registry-resolved install-policy check daily to catch dependency drift.
 # Tests the build + install + smoke-test pipeline across every OS Tau
 # claims to support, so a regression on macOS, Linux, or Windows is
 # caught before users hit it.
@@ -11,6 +12,8 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
 
 jobs:
   # Main matrix
@@ -18,12 +21,13 @@ jobs:
   # off so a macOS failure doesn't hide a Linux or Windows issue.
   test:
     name: ${{ matrix.os }} - Node ${{ matrix.node }}
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['20.x', '22.x']
+        node: ['20.18.1', '22.x']
 
     steps:
       - name: Checkout
@@ -38,6 +42,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test installer, release gate, lifecycle bridge, and production lock
+        run: node --test packages/tau-installer/test/installer.test.mjs test/lifecycle-bridge.test.mjs test/platform-support.test.mjs test/production-shrinkwrap.test.mjs test/release-gate.test.mjs test/update-routing.test.mjs
+
+      - name: Verify production shrinkwrap is current
+        run: npm run shrinkwrap:check
+
+      - name: Verify Tau installer package contents
+        shell: bash
+        run: |
+          trap 'rm -f .tau-installer-pack.json' EXIT
+          npm pack --dry-run --ignore-scripts --json ./packages/tau-installer > .tau-installer-pack.json
+          node -e "const { readFileSync } = require('node:fs'); const parsed = JSON.parse(readFileSync('.tau-installer-pack.json', 'utf8')); const pack = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0]; if (!pack) throw new Error('npm pack returned no package'); const actual = pack.files.map(file => file.path).sort(); const expected = ['README.md', 'bin/tau-installer.mjs', 'lib/installer.mjs', 'package.json'].sort(); if (pack.name !== '@abdoknbgit/tau-installer') throw new Error('Packed the wrong package: ' + pack.name); if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Unexpected installer tarball contents: ' + JSON.stringify(actual));"
+
       - name: Build with esbuild (default, Node-only)
         run: npm run build
 
@@ -48,6 +65,29 @@ jobs:
         shell: bash
         run: |
           TARBALL="$(npm pack --quiet | tail -n 1)"
+          PACKED_FILES="$(tar -tf "$TARBALL")"
+          if grep -E '^package/packages/' <<< "$PACKED_FILES" > /dev/null; then
+            echo 'The Tau tarball must not contain packages/.' >&2
+            exit 1
+          fi
+          for REQUIRED in \
+            package/npm-shrinkwrap.json \
+            package/scripts/update-lock.mjs \
+            package/native/shell-parser/go.mod \
+            package/native/tau-tools/go.mod; do
+            if ! grep -Fx "$REQUIRED" <<< "$PACKED_FILES" > /dev/null; then
+              echo "The Tau tarball is missing $REQUIRED." >&2
+              exit 1
+            fi
+          done
+          if grep -E '^package/dist/(native|vendor)/' <<< "$PACKED_FILES" > /dev/null; then
+            echo 'The universal Tau tarball must not contain host-built native/vendor artifacts.' >&2
+            exit 1
+          fi
+          if [ -e npm-shrinkwrap.json ]; then
+            echo 'postpack must remove the transient root npm-shrinkwrap.json.' >&2
+            exit 1
+          fi
           npm install -g "./$TARBALL"
 
       - name: Smoke test - global Tau binary runs
@@ -84,11 +124,97 @@ jobs:
           if (-not $proc.WaitForExit(30000)) { Stop-Process -Id $proc.Id -Force }
           Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Select-Object -First 50
 
+  # npm 11.16+ blocks unapproved dependency lifecycle scripts. Keep one job on
+  # the latest npm 12 release so Tau's reviewed installer policy is exercised
+  # against the behavior users see, independently of the npm bundled with Node.
+  npm12-install-policy:
+    name: Node 24 - npm 12 allow-scripts install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install npm 12
+        run: npm install --global npm@12 --no-audit --no-fund
+
+      - name: Install dependencies with reviewed project policy
+        shell: bash
+        run: |
+          set +e
+          INSTALL_OUTPUT="$(npm ci --ignore-scripts=false --dry-run=false --dangerously-allow-all-scripts=false --strict-allow-scripts=true --no-audit --no-fund 2>&1)"
+          INSTALL_STATUS=$?
+          set -e
+          printf '%s\n' "$INSTALL_OUTPUT"
+          if grep -E 'npm warn (allow-scripts|install-scripts)' <<< "$INSTALL_OUTPUT" > /dev/null; then
+            echo 'Project installation reported an unapproved lifecycle script.' >&2
+            exit 1
+          fi
+          if [ "$INSTALL_STATUS" -ne 0 ]; then
+            exit "$INSTALL_STATUS"
+          fi
+
+      - name: Build Tau
+        run: npm run build
+
+      - name: Exercise one-command installer on npm 12
+        shell: bash
+        run: |
+          TAU_VERSION="$(node -p "require('./package.json').version")"
+          INSTALLER_OUTPUT="$(npm exec --yes --package=./packages/tau-installer -- tau-installer --dry-run --tau-version "$TAU_VERSION" 2>&1)"
+          printf '%s\n' "$INSTALLER_OUTPUT"
+
+          if grep -E 'npm warn (allow-scripts|install-scripts)' <<< "$INSTALLER_OUTPUT" > /dev/null; then
+            echo 'The script-free installer itself produced an allow-scripts warning.' >&2
+            exit 1
+          fi
+          for EXPECTED in '--ignore-scripts=false' '--dry-run=false' '--dangerously-allow-all-scripts=false' '--strict-allow-scripts=true' '--allow-scripts='; do
+            if ! grep -F -- "$EXPECTED" <<< "$INSTALLER_OUTPUT" > /dev/null; then
+              echo "Installer command is missing $EXPECTED" >&2
+              exit 1
+            fi
+          done
+
+      - name: Global install has no allow-scripts warning
+        shell: bash
+        run: |
+          TARBALL="$(npm pack --quiet | tail -n 1)"
+          REGISTRY_ALLOW_SCRIPTS="$(node --input-type=module -e "import { ALLOWED_SCRIPTS } from './packages/tau-installer/lib/installer.mjs'; process.stdout.write(ALLOWED_SCRIPTS.filter(name => name !== '@abdoknbgit/tau').join(','))")"
+          # npm matches non-registry roots by their resolved file identity,
+          # not by the package.json name. Registry users still use Tau's name.
+          ALLOW_SCRIPTS="file:$PWD/$TARBALL,$REGISTRY_ALLOW_SCRIPTS"
+
+          set +e
+          INSTALL_OUTPUT="$(npm install --global "./$TARBALL" --ignore-scripts=false --dry-run=false --dangerously-allow-all-scripts=false --strict-allow-scripts=true "--allow-scripts=$ALLOW_SCRIPTS" --no-audit --no-fund 2>&1)"
+          INSTALL_STATUS=$?
+          set -e
+
+          printf '%s\n' "$INSTALL_OUTPUT"
+          if grep -E 'npm warn (allow-scripts|install-scripts)' <<< "$INSTALL_OUTPUT" > /dev/null; then
+            echo 'npm reported an unapproved lifecycle script during Tau installation.' >&2
+            exit 1
+          fi
+          if [ "$INSTALL_STATUS" -ne 0 ]; then
+            echo "Tau global installation failed with exit code $INSTALL_STATUS." >&2
+            exit "$INSTALL_STATUS"
+          fi
+
+          PACKAGE_ROOT="$(npm root --global)/@abdoknbgit/tau"
+          test -f "$PACKAGE_ROOT/.tau-lifecycle-complete.json"
+          node "$PACKAGE_ROOT/scripts/verify-deps.mjs" --quiet
+          tau --version
+
   # Windows without git-bash
   # Tau runs on vanilla Windows without Git for Windows installed. GitHub
   # runners come with git pre-installed, so we simulate a fresh install by
   # stripping every Git directory out of PATH before running the binary.
   windows-no-bash:
+    if: github.event_name != 'schedule'
     name: Windows without git-bash (PowerShell fallback)
     runs-on: windows-latest
     steps:
@@ -98,7 +224,7 @@ jobs:
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '20.18.1'
           cache: npm
 
       - name: Install dependencies
@@ -134,17 +260,25 @@ jobs:
   # rotting. Linux-only is fine; Bun on Windows CI is flaky, and this is
   # a contributor-convenience path, not a shipped artifact.
   build-bun:
+    if: github.event_name != 'schedule'
     name: Build with Bun (opt-in alternate path)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '20.18.1'
           cache: npm
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
       - run: npm ci
+      - name: Test filesystem safety helpers
+        run: |
+          bun run src/utils/execFileNoThrow.test.ts
+          bun run src/utils/installIntegrity.test.ts
+          bun run src/utils/localInstaller.test.ts
+          bun run src/utils/ripgrepBinary.test.ts
+          bun run src/utils/updateLock.test.ts
       - run: npm run build:bun
       - run: node dist/cli.mjs --version

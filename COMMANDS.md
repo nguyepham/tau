@@ -65,7 +65,7 @@ Creates a clean content report for the session in Markdown, PDF, or HTML. This i
 ## Features
 
 **`/tools` - Toggle optional prebuilt tools**
-Opens an interactive picker for optional Tau prebuilt tools. Basic agent tools stay fixed. Only available in normal power mode — cheap forces every optional tool off and full forces them all on, so `/tools` is hidden there.
+Opens an interactive picker for optional Tau prebuilt tools. Basic agent tools stay fixed. Only available in normal power mode: cheap forces every optional tool off and full forces them all on, so `/tools` is hidden there.
 
 ```
 /tools                     open the picker

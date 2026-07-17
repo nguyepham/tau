@@ -1,8 +1,8 @@
 import axios from 'axios'
 import { constants as fsConstants } from 'fs'
-import { access, writeFile } from 'fs/promises'
+import { access } from 'fs/promises'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { getDynamicConfig_BLOCKS_ON_INIT } from 'src/services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -12,14 +12,14 @@ import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
-import { ClaudeError, getErrnoCode, isENOENT } from './errors.js'
+import { ClaudeError } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
-import { getFsImplementation } from './fsOperations.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 import {
   cleanStaleBinShims,
   extractEexistPath,
   getGlobalPackageRoot,
+  packageRootsMatch,
   removeConflictingShim,
   verifyInstalledPackage,
 } from './installIntegrity.js'
@@ -33,9 +33,17 @@ import {
   writeFileLines,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
+import {
+  createUpdateLockHandoffEnvironment,
+  UpdateLock,
+} from './updateLock.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'
+
+const TAU_NPM_PACKAGE = '@abdoknbgit/tau'
+const TAU_INSTALLER_PACKAGE = '@abdoknbgit/tau-installer@latest'
+const TAU_INSTALL_TIMEOUT_MS = 20 * 60 * 1000
 
 class AutoUpdaterError extends ClaudeError {}
 
@@ -44,6 +52,7 @@ export type InstallStatus =
   | 'no_permissions'
   | 'install_failed'
   | 'in_progress'
+  | 'prefix_mismatch'
 
 export type AutoUpdaterResult = {
   version: string | null
@@ -166,91 +175,37 @@ export function shouldSkipVersion(targetVersion: string): boolean {
 }
 
 // Lock file for auto-updater to prevent concurrent updates
-const LOCK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minute timeout for locks
+// Refresh the lease while an update is alive. If the process crashes, another
+// updater may recover the abandoned lock after this timeout.
+const LOCK_TIMEOUT_MS = 15 * 60 * 1000
+const LOCK_HEARTBEAT_MS = 60 * 1000
 
 /**
  * Get the path to the lock file
  * This is a function to ensure it's evaluated at runtime after test setup
  */
 export function getLockFilePath(): string {
-  return join(getClaudeConfigHomeDir(), '.update.lock')
+  return resolve(getClaudeConfigHomeDir(), '.update.lock')
 }
+
+const updateLock = new UpdateLock({
+  getLockPath: getLockFilePath,
+  staleMs: LOCK_TIMEOUT_MS,
+  heartbeatMs: LOCK_HEARTBEAT_MS,
+  onHeartbeatError: error => {
+    logForDebugging(`autoUpdater: could not refresh update lock: ${error}`)
+  },
+})
 
 /**
  * Attempts to acquire a lock for auto-updater
  * @returns true if lock was acquired, false if another process holds the lock
  */
 async function acquireLock(): Promise<boolean> {
-  const fs = getFsImplementation()
-  const lockPath = getLockFilePath()
-
-  // Check for existing lock: 1 stat() on the happy path (fresh lock or ENOENT),
-  // 2 on stale-lock recovery (re-verify staleness immediately before unlink).
   try {
-    const stats = await fs.stat(lockPath)
-    const age = Date.now() - stats.mtimeMs
-    if (age < LOCK_TIMEOUT_MS) {
-      return false
-    }
-    // Lock is stale, remove it before taking over. Re-verify staleness
-    // immediately before unlinking to close a TOCTOU race: if two processes
-    // both observe the stale lock, A unlinks + writes a fresh lock, then B
-    // would unlink A's fresh lock and both believe they hold it. A fresh
-    // lock has a recent mtime, so re-checking staleness makes B back off.
-    try {
-      const recheck = await fs.stat(lockPath)
-      if (Date.now() - recheck.mtimeMs < LOCK_TIMEOUT_MS) {
-        return false
-      }
-      await fs.unlink(lockPath)
-    } catch (err) {
-      if (!isENOENT(err)) {
-        logError(err as Error)
-        return false
-      }
-    }
-  } catch (err) {
-    if (!isENOENT(err)) {
-      logError(err as Error)
-      return false
-    }
-    // ENOENT: no lock file, proceed to create one
-  }
-
-  // Create lock file atomically with O_EXCL (flag: 'wx'). If another process
-  // wins the race and creates it first, we get EEXIST and back off.
-  // Lazy-mkdir the config dir on ENOENT.
-  try {
-    await writeFile(lockPath, `${process.pid}`, {
-      encoding: 'utf8',
-      flag: 'wx',
-    })
-    return true
-  } catch (err) {
-    const code = getErrnoCode(err)
-    if (code === 'EEXIST') {
-      return false
-    }
-    if (code === 'ENOENT') {
-      try {
-        // fs.mkdir from getFsImplementation() is always recursive:true and
-        // swallows EEXIST internally, so a dir-creation race cannot reach the
-        // catch below — only writeFile's EEXIST (true lock contention) can.
-        await fs.mkdir(getClaudeConfigHomeDir())
-        await writeFile(lockPath, `${process.pid}`, {
-          encoding: 'utf8',
-          flag: 'wx',
-        })
-        return true
-      } catch (mkdirErr) {
-        if (getErrnoCode(mkdirErr) === 'EEXIST') {
-          return false
-        }
-        logError(mkdirErr as Error)
-        return false
-      }
-    }
-    logError(err as Error)
+    return await updateLock.acquire()
+  } catch (error) {
+    logError(error as Error)
     return false
   }
 }
@@ -259,19 +214,16 @@ async function acquireLock(): Promise<boolean> {
  * Releases the update lock if it's held by this process
  */
 async function releaseLock(): Promise<void> {
-  const fs = getFsImplementation()
-  const lockPath = getLockFilePath()
   try {
-    const lockData = await fs.readFile(lockPath, { encoding: 'utf8' })
-    if (lockData === `${process.pid}`) {
-      await fs.unlink(lockPath)
-    }
-  } catch (err) {
-    if (isENOENT(err)) {
-      return
-    }
-    logError(err as Error)
+    await updateLock.release()
+  } catch (error) {
+    logError(error as Error)
   }
+}
+
+/** Keep this process's update-lock lease fresh during slow native builds. */
+function startLockHeartbeat(): () => Promise<void> {
+  return updateLock.startHeartbeat()
 }
 
 async function getInstallationPrefix(): Promise<string | null> {
@@ -462,7 +414,10 @@ export async function getVersionHistory(limit: number): Promise<string[]> {
 
 export async function installGlobalPackage(
   specificVersion?: string | null,
-  options: { interactive?: boolean } = {},
+  options: {
+    interactive?: boolean
+    expectedPackageRoot?: string | null
+  } = {},
 ): Promise<InstallStatus> {
   const isAnthropicPackage = MACRO.PACKAGE_URL.startsWith('@anthropic-ai/')
   const productName = isAnthropicPackage ? 'Tau' : 'Tau'
@@ -480,12 +435,25 @@ export async function installGlobalPackage(
     return 'in_progress'
   }
 
+  const stopLockHeartbeat = startLockHeartbeat()
+
   try {
-    if (isAnthropicPackage) {
-      await removeClaudeAliasesFromShellConfigs()
+    const lockHandoff = updateLock.getHandoff()
+    if (!lockHandoff) {
+      logError(new AutoUpdaterError('Update lock ownership was lost'))
+      return 'install_failed'
     }
+    const updateEnvironment = {
+      ...process.env,
+      ...createUpdateLockHandoffEnvironment(
+        lockHandoff,
+        'TAU_UPDATE_LOCK',
+      ),
+    }
+
+    const isBun = env.isRunningWithBun()
     // Check if we're using npm from Windows path in WSL
-    if (!env.isRunningWithBun() && env.isNpmFromWindowsPath()) {
+    if (!isBun && env.isNpmFromWindowsPath()) {
       logError(new Error('Windows NPM detected in WSL environment'))
       logEvent('tengu_auto_updater_windows_npm_in_wsl', {
         currentVersion:
@@ -506,16 +474,38 @@ To fix this issue:
       return 'install_failed'
     }
 
+    if (Object.hasOwn(options, 'expectedPackageRoot')) {
+      const activeGlobalRoot = isBun ? null : await getGlobalPackageRoot()
+      if (
+        !options.expectedPackageRoot ||
+        !activeGlobalRoot ||
+        !(await packageRootsMatch(
+          options.expectedPackageRoot,
+          activeGlobalRoot,
+        ))
+      ) {
+        logError(
+          new AutoUpdaterError(
+            'The active package-manager prefix does not own the Tau installation that is currently running',
+          ),
+        )
+        return 'prefix_mismatch'
+      }
+    }
+
+    if (isAnthropicPackage) {
+      await removeClaudeAliasesFromShellConfigs()
+    }
+
     const { hasPermissions, npmPrefix } = await checkGlobalInstallPermissions()
     if (!hasPermissions) {
       return 'no_permissions'
     }
 
-    const isBun = env.isRunningWithBun()
-
-    // Interrupted updates can orphan the tau/claudex bin shims, which makes
-    // the next install abort with EEXIST. Clear ours/dangling shims first —
-    // npm recreates them as part of this install.
+    // Interrupted updates can orphan tau/claudex bin shims. Remove only
+    // dangling launchers here so a network or registry failure cannot delete
+    // the currently working Tau command. Proven EEXIST conflicts are handled
+    // by the targeted retry below.
     await cleanStaleBinShims(npmPrefix, isBun)
 
     // Use specific version if provided, otherwise use latest
@@ -526,10 +516,41 @@ To fix this issue:
     // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
     // which could be maliciously crafted to redirect to an attacker's registry
     const packageManager = isBun ? 'bun' : 'npm'
+    const useTauInstaller =
+      !isBun && MACRO.PACKAGE_URL === TAU_NPM_PACKAGE
+    const installArgs = useTauInstaller
+      ? [
+          'exec',
+          '--yes',
+          '--prefer-online',
+          '--ignore-scripts=false',
+          '--dry-run=false',
+          '--global=false',
+          '--package-lock-only=false',
+          '--bin-links=true',
+          '--no-fund',
+          '--no-audit',
+          `--package=${TAU_INSTALLER_PACKAGE}`,
+          '--',
+          'tau-installer',
+          ...(specificVersion ? ['--tau-version', specificVersion] : []),
+        ]
+      : ['install', '-g', packageSpec]
+    const installOptions = {
+      cwd: homedir(),
+      env: updateEnvironment,
+      ...(useTauInstaller
+        ? {
+            timeout: TAU_INSTALL_TIMEOUT_MS,
+            killTreeOnTimeout: true,
+          }
+        : {}),
+    }
+
     let installResult = await execFileNoThrowWithCwd(
       packageManager,
-      ['install', '-g', packageSpec],
-      { cwd: homedir() },
+      installArgs,
+      installOptions,
     )
 
     // EEXIST bin conflict: delete the conflicting shim npm named and retry
@@ -539,15 +560,21 @@ To fix this issue:
         `${installResult.stdout}\n${installResult.stderr}`,
       )
       if (conflictPath) {
-        logForDebugging(
-          `installGlobalPackage: retrying after removing EEXIST conflict at ${conflictPath}`,
+        const removed = await removeConflictingShim(
+          conflictPath,
+          npmPrefix,
+          isBun,
         )
-        await removeConflictingShim(conflictPath)
-        installResult = await execFileNoThrowWithCwd(
-          packageManager,
-          ['install', '-g', packageSpec],
-          { cwd: homedir() },
-        )
+        if (removed) {
+          logForDebugging(
+            `installGlobalPackage: retrying after removing EEXIST conflict at ${conflictPath}`,
+          )
+          installResult = await execFileNoThrowWithCwd(
+            packageManager,
+            installArgs,
+            installOptions,
+          )
+        }
       }
     }
 
@@ -563,18 +590,25 @@ To fix this issue:
     // locked file made npm leave holes) before declaring success.
     if (!isBun) {
       const packageRoot = await getGlobalPackageRoot()
-      if (packageRoot) {
-        const verified = await verifyInstalledPackage(packageRoot, {
-          interactive: options.interactive,
-        })
-        if (!verified) {
-          logError(
-            new AutoUpdaterError(
-              `Installed ${productName} but its dependency tree is incomplete and could not be repaired`,
-            ),
-          )
-          return 'install_failed'
-        }
+      if (!packageRoot) {
+        logError(
+          new AutoUpdaterError(
+            `Installed ${productName} but could not locate its global package tree for verification`,
+          ),
+        )
+        return 'install_failed'
+      }
+      const verified = await verifyInstalledPackage(packageRoot, {
+        interactive: options.interactive,
+        env: updateEnvironment,
+      })
+      if (!verified) {
+        logError(
+          new AutoUpdaterError(
+            `Installed ${productName} but its dependency tree is incomplete and could not be repaired`,
+          ),
+        )
+        return 'install_failed'
       }
     }
 
@@ -587,6 +621,7 @@ To fix this issue:
     return 'success'
   } finally {
     // Ensure we always release the lock
+    await stopLockHeartbeat()
     await releaseLock()
   }
 }

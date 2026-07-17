@@ -38,7 +38,16 @@ mkdirSync(outDir, { recursive: true })
 
 const build = spawnSync(
   'go',
-  ['-C', sourceDir, 'build', '-buildvcs=false', '-o', outPath, '.'],
+  [
+    '-C',
+    sourceDir,
+    'build',
+    '-buildvcs=false',
+    '-trimpath',
+    '-o',
+    outPath,
+    '.',
+  ],
   {
     stdio: 'inherit',
     windowsHide: true,

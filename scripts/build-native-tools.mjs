@@ -33,10 +33,23 @@ if (goProbe.status !== 0) {
 
 mkdirSync(outDir, { recursive: true })
 
-const build = spawnSync('go', ['-C', sourceDir, 'build', '-buildvcs=false', '-o', outPath, '.'], {
-  stdio: 'inherit',
-  windowsHide: true,
-})
+const build = spawnSync(
+  'go',
+  [
+    '-C',
+    sourceDir,
+    'build',
+    '-buildvcs=false',
+    '-trimpath',
+    '-o',
+    outPath,
+    '.',
+  ],
+  {
+    stdio: 'inherit',
+    windowsHide: true,
+  },
+)
 
 if (build.status !== 0) {
   finish(required ? build.status ?? 1 : 0, 'Native Tau tools build failed.')

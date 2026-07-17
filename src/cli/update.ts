@@ -16,9 +16,10 @@ import { logForDebugging } from 'src/utils/debug.js'
 import { getDoctorDiagnostic } from 'src/utils/doctorDiagnostic.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import {
-  installOrUpdateTauPackage,
-  localInstallationExists,
-} from 'src/utils/localInstaller.js'
+  getRunningPackageRoot,
+  verifyInstalledPackage,
+} from 'src/utils/installIntegrity.js'
+import { installOrUpdateTauPackage } from 'src/utils/localInstaller.js'
 import {
   installLatest as installLatestNative,
   removeInstalledSymlink,
@@ -28,89 +29,23 @@ import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 
-function isTauNpmPackage(): boolean {
-  return MACRO.PACKAGE_URL === '@abdoknbgit/tau'
-}
+async function verifyCurrentNpmInstallation(
+  installationType: 'npm-global' | 'npm-local',
+): Promise<boolean> {
+  const packageRoot = getRunningPackageRoot()
+  if (!packageRoot) return false
 
-async function updateTauFromNpm(): Promise<void> {
-  writeToStdout('Checking npm for latest Tau version...\n')
-
-  const latestVersion = await getLatestVersion('latest')
+  // Verify the package that is actually running, not whichever copy happens
+  // to belong to the npm currently first on PATH.
   logForDebugging(
-    `update: Latest Tau version from npm: ${latestVersion || 'FAILED'}`,
+    `update: Verifying current ${installationType} package at ${packageRoot}`,
   )
-
-  if (!latestVersion) {
-    process.stderr.write(chalk.red('Failed to check for Tau updates') + '\n')
-    process.stderr.write('Unable to fetch latest version from npm registry\n')
-    process.stderr.write('\n')
-    process.stderr.write('Try:\n')
-    process.stderr.write('  Check your internet connection\n')
-    process.stderr.write(
-      `  Manually check: npm view ${MACRO.PACKAGE_URL}@latest version\n`,
-    )
-    await gracefulShutdown(1)
-  }
-
-  if (latestVersion === MACRO.VERSION || gte(MACRO.VERSION, latestVersion)) {
-    writeToStdout(
-      chalk.green(`Tau is up to date (${MACRO.VERSION})`) + '\n',
-    )
-    await gracefulShutdown(0)
-  }
-
-  writeToStdout(
-    `New Tau version available: ${latestVersion} (current: ${MACRO.VERSION}) - run tau update\n`,
-  )
-  writeToStdout(`Installing ${MACRO.PACKAGE_URL}@${latestVersion} globally...\n`)
-
-  const status = await installGlobalPackage(latestVersion, {
-    interactive: true,
-  })
-  logForDebugging(`update: Tau npm installation status: ${status}`)
-
-  switch (status) {
-    case 'success':
-      writeToStdout(
-        chalk.green(
-          `Successfully updated Tau from ${MACRO.VERSION} to ${latestVersion}`,
-        ) + '\n',
-      )
-      await regenerateCompletionCache()
-      await gracefulShutdown(0)
-      break
-    case 'no_permissions':
-      process.stderr.write(
-        'Error: Insufficient permissions to install Tau update\n',
-      )
-      process.stderr.write('Try manually updating with:\n')
-      process.stderr.write(`  npm install -g ${MACRO.PACKAGE_URL}@latest\n`)
-      await gracefulShutdown(1)
-      break
-    case 'install_failed':
-      process.stderr.write('Error: Failed to install Tau update\n')
-      process.stderr.write('Try manually updating with:\n')
-      process.stderr.write(`  npm install -g ${MACRO.PACKAGE_URL}@latest\n`)
-      await gracefulShutdown(1)
-      break
-    case 'in_progress':
-      process.stderr.write(
-        'Error: Another instance is currently performing an update\n',
-      )
-      process.stderr.write('Please wait and try again later\n')
-      await gracefulShutdown(1)
-      break
-  }
+  return verifyInstalledPackage(packageRoot, { interactive: true })
 }
 
 export async function update() {
   logEvent('tengu_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
-
-  if (isTauNpmPackage()) {
-    await updateTauFromNpm()
-    return
-  }
 
   const channel: ReleaseChannel =
     getInitialSettings()?.autoUpdatesChannel ?? 'latest'
@@ -207,8 +142,14 @@ export async function update() {
       if (latest && !gte(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
-        writeToStdout('To update, run:\n')
-        writeToStdout(chalk.bold('  brew upgrade claude-code') + '\n')
+        if (MACRO.PACKAGE_URL === '@abdoknbgit/tau') {
+          writeToStdout(
+            'Use Homebrew to update the Tau package from the source that installed it.\n',
+          )
+        } else {
+          writeToStdout('To update, run:\n')
+          writeToStdout(chalk.bold('  brew upgrade claude-code') + '\n')
+        }
       } else {
         writeToStdout('Tau is up to date!\n')
       }
@@ -218,10 +159,16 @@ export async function update() {
       if (latest && !gte(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
-        writeToStdout('To update, run:\n')
-        writeToStdout(
-          chalk.bold('  winget upgrade Anthropic.ClaudeCode') + '\n',
-        )
+        if (MACRO.PACKAGE_URL === '@abdoknbgit/tau') {
+          writeToStdout(
+            'Use winget to update the Tau package from the source that installed it.\n',
+          )
+        } else {
+          writeToStdout('To update, run:\n')
+          writeToStdout(
+            chalk.bold('  winget upgrade Anthropic.ClaudeCode') + '\n',
+          )
+        }
       } else {
         writeToStdout('Tau is up to date!\n')
       }
@@ -231,8 +178,14 @@ export async function update() {
       if (latest && !gte(MACRO.VERSION, latest)) {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
-        writeToStdout('To update, run:\n')
-        writeToStdout(chalk.bold('  apk upgrade claude-code') + '\n')
+        if (MACRO.PACKAGE_URL === '@abdoknbgit/tau') {
+          writeToStdout(
+            'Use apk to update the Tau package from the repository that installed it.\n',
+          )
+        } else {
+          writeToStdout('To update, run:\n')
+          writeToStdout(chalk.bold('  apk upgrade claude-code') + '\n')
+        }
       } else {
         writeToStdout('Tau is up to date!\n')
       }
@@ -340,12 +293,6 @@ export async function update() {
   }
 
   // Fallback to existing JS/npm-based update logic
-  // Remove native installer symlink since we're not using native installation
-  // But only if user hasn't migrated to native installation
-  if (config.installMethod !== 'native') {
-    await removeInstalledSymlink()
-  }
-
   logForDebugging('update: Checking npm registry for latest version')
   logForDebugging(`update: Package URL: ${MACRO.PACKAGE_URL}`)
   const npmTag = channel === 'stable' ? 'stable' : 'latest'
@@ -385,10 +332,27 @@ export async function update() {
 
     process.stderr.write('  • Check if you need to login: npm whoami\n')
     await gracefulShutdown(1)
+    return
   }
 
-  // Check if versions match exactly, including any build metadata (like SHA)
-  if (latestVersion === MACRO.VERSION) {
+  // Never downgrade a local prerelease/newer build to an older registry tag.
+  if (latestVersion === MACRO.VERSION || gte(MACRO.VERSION, latestVersion)) {
+    if (
+      (diagnostic.installationType === 'npm-global' ||
+        diagnostic.installationType === 'npm-local') &&
+      !(await verifyCurrentNpmInstallation(diagnostic.installationType))
+    ) {
+      process.stderr.write(
+        'Tau is already on the selected version, but its installation is incomplete.\n',
+      )
+      process.stderr.write(
+        diagnostic.installationType === 'npm-global'
+          ? 'Repair it with:\n  npx -y @abdoknbgit/tau-installer@latest\n'
+          : 'Run "tau doctor", then retry:\n  tau update\n',
+      )
+      await gracefulShutdown(1)
+      return
+    }
     writeToStdout(
       chalk.green(`Tau is up to date (${MACRO.VERSION})`) + '\n',
     )
@@ -414,17 +378,23 @@ export async function update() {
       updateMethodName = 'global'
       break
     case 'unknown': {
-      // Fallback to detection if we can't determine installation type
-      const isLocal = await localInstallationExists()
-      useLocalUpdate = isLocal
-      updateMethodName = isLocal ? 'local' : 'global'
-      writeToStdout(
-        chalk.yellow('Warning: Could not determine installation type') + '\n',
+      // Never guess here. A stale managed-local tree can coexist with a
+      // pnpm/yarn/Volta installation, and choosing either local or npm-global
+      // could update a different copy while leaving the running Tau unchanged.
+      process.stderr.write(
+        chalk.red(
+          'Error: Could not determine how this Tau installation is managed',
+        ) +
+          '\n',
       )
-      writeToStdout(
-        `Attempting ${updateMethodName} update based on file detection...\n`,
+      process.stderr.write(
+        'No update was attempted, so no other Tau installation was changed.\n',
       )
-      break
+      process.stderr.write(
+        'Run "tau doctor", then update Tau with the package manager that installed the currently running executable.\n',
+      )
+      await gracefulShutdown(1)
+      return
     }
     default:
       process.stderr.write(
@@ -444,16 +414,24 @@ export async function update() {
     logForDebugging(
       'update: Calling installOrUpdateTauPackage() for local update',
     )
-    status = await installOrUpdateTauPackage(channel)
+    status = await installOrUpdateTauPackage(channel, latestVersion)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
-    status = await installGlobalPackage(null, { interactive: true })
+    status = await installGlobalPackage(latestVersion, {
+      interactive: true,
+      expectedPackageRoot: getRunningPackageRoot(),
+    })
   }
 
   logForDebugging(`update: Installation status: ${status}`)
 
   switch (status) {
     case 'success':
+      // Only retire a native launcher after a recognized JS update actually
+      // succeeded. Unknown or mismatched-prefix routes must not mutate it.
+      if (config.installMethod !== 'native') {
+        await removeInstalledSymlink()
+      }
       writeToStdout(
         chalk.green(
           `Successfully updated from ${MACRO.VERSION} to version ${latestVersion}`,
@@ -466,14 +444,15 @@ export async function update() {
         'Error: Insufficient permissions to install update\n',
       )
       if (useLocalUpdate) {
-        process.stderr.write('Try manually updating with:\n')
         process.stderr.write(
-          `  cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}\n`,
+          'Run "tau doctor" for diagnostics, then retry with:\n  tau update\n',
         )
       } else {
-        process.stderr.write('Try running with sudo or fix npm permissions\n')
+        process.stderr.write('Fix your npm global-prefix permissions, then run:\n')
         process.stderr.write(
-          'Or consider using native installation with: tau install\n',
+          MACRO.PACKAGE_URL === '@abdoknbgit/tau'
+            ? '  npx -y @abdoknbgit/tau-installer@latest\n'
+            : `  npm install -g ${MACRO.PACKAGE_URL}@latest\n`,
         )
       }
       await gracefulShutdown(1)
@@ -481,13 +460,15 @@ export async function update() {
     case 'install_failed':
       process.stderr.write('Error: Failed to install update\n')
       if (useLocalUpdate) {
-        process.stderr.write('Try manually updating with:\n')
         process.stderr.write(
-          `  cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}\n`,
+          'Run "tau doctor" for diagnostics, then retry with:\n  tau update\n',
         )
       } else {
+        process.stderr.write('Try manually updating with:\n')
         process.stderr.write(
-          'Or consider using native installation with: tau install\n',
+          MACRO.PACKAGE_URL === '@abdoknbgit/tau'
+            ? '  npx -y @abdoknbgit/tau-installer@latest\n'
+            : `  npm install -g ${MACRO.PACKAGE_URL}@latest\n`,
         )
       }
       await gracefulShutdown(1)
@@ -497,6 +478,16 @@ export async function update() {
         'Error: Another instance is currently performing an update\n',
       )
       process.stderr.write('Please wait and try again later\n')
+      await gracefulShutdown(1)
+      break
+    case 'prefix_mismatch':
+      process.stderr.write(
+        'Error: The npm currently on PATH does not own the Tau installation that is running.\n',
+      )
+      process.stderr.write(
+        'Switch to the Node/npm environment that installed this Tau executable, then retry "tau update".\n',
+      )
+      process.stderr.write('Run "tau doctor" to compare installation paths.\n')
       await gracefulShutdown(1)
       break
   }

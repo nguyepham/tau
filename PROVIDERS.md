@@ -1,6 +1,6 @@
 # Supported Providers
 
-Tau ships **22 native provider adapters**. Each speaks the provider's API directly — there's no routing proxy, no translation middleware, no shared bottleneck. Full streaming, rate-limit handling, and automatic tool-schema sanitization are wired per provider.
+Tau ships **22 native provider adapters**. Each speaks the provider's API directly: there's no routing proxy, no translation middleware, no shared bottleneck. Full streaming, rate-limit handling, and automatic tool-schema sanitization are wired per provider.
 
 | Provider | Notes |
 |---|---|
@@ -39,4 +39,4 @@ LM Studio defaults to `http://localhost:1234/v1` in Tau. Make sure LM Studio is 
 
 ## Switching providers mid-session
 
-Hit a rate limit, run out of credit, or want to compare outputs? Type `/login` or `/models` at any time. Tau swaps the active provider without ending the session — your conversation, file context, and tool history stay intact. The new provider just picks up where the last one left off.
+Hit a rate limit, run out of credit, or want to compare outputs? Type `/login` or `/models` at any time. Tau swaps the active provider without ending the session: your conversation, file context, and tool history stay intact. The new provider just picks up where the last one left off.

@@ -318,7 +318,7 @@ async function launchTau(options = {}) {
 
   if (!installed) {
     const action = await vscode.window.showErrorMessage(
-      `Tau command not found: ${executable}. Install it with: npm install -g @abdoknbgit/tau`,
+      `Tau command not found: ${executable}. Install it with: npx -y @abdoknbgit/tau-installer@latest`,
       'Open Setup Guide',
       'Open Repository',
     );

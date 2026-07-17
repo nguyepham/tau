@@ -1,9 +1,9 @@
-# `src/services/api/adapters/` — DEPRECATED (Phase 7 of native-lane redesign)
+# `src/services/api/adapters/` - DEPRECATED (Phase 7 of native-lane redesign)
 
 Every file in this directory is scheduled for deletion. They were the
 Anthropic-IR round-trip shim that routed third-party providers through
 Claude's wire format. The native lanes under `src/lanes/<name>/` now
-speak each provider's wire format directly — these adapters are no
+speak each provider's wire format directly. These adapters are no
 longer reached on any request that runs through a healthy native lane.
 
 ## Current status
@@ -15,8 +15,8 @@ longer reached on any request that runs through a healthy native lane.
 | `anthropic_to_openai.ts` | Legacy `openai_provider.ts` | Phase 7 |
 | `openai_to_anthropic.ts` | Legacy `openai_provider.ts` | Phase 7 |
 | `openai_responses.ts` | Legacy Codex path via `openai_provider.ts` | Phase 7 |
-| `tool_schema_cache.ts` | In-flight from the pre-redesign session — review contents before deleting | Phase 7 |
-| `gemini_thought_cache.ts` | Actively reads from disk across turns — verify no Gemini lane callers before deletion | Phase 7, gated on long-session fixture confirming no regression |
+| `tool_schema_cache.ts` | In-flight from the pre-redesign session - review contents before deleting | Phase 7 |
+| `gemini_thought_cache.ts` | Actively reads from disk across turns - verify no Gemini lane callers before deletion | Phase 7, gated on long-session fixture confirming no regression |
 
 ## Deletion gate (per plan)
 

@@ -3,6 +3,7 @@
 // By using execa, Windows automatically gets shell escaping + BAT / CMD handling
 
 import { type ExecaError, execa } from 'execa'
+import { win32 } from 'node:path'
 import { getCwd } from '../utils/cwd.js'
 import { logError } from './log.js'
 
@@ -10,6 +11,22 @@ export { execSyncWithDefaults_DEPRECATED } from './execFileNoThrowPortable.js'
 
 const MS_IN_SECOND = 1000
 const SECONDS_IN_MINUTE = 60
+
+export function resolveWindowsTaskkillPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  for (const value of [env.SystemRoot, env.WINDIR]) {
+    const windowsRoot = value?.trim()
+    if (
+      windowsRoot &&
+      win32.isAbsolute(windowsRoot) &&
+      !/[\0\r\n]/.test(windowsRoot)
+    ) {
+      return win32.join(windowsRoot, 'System32', 'taskkill.exe')
+    }
+  }
+  return null
+}
 
 type ExecFileOptions = {
   abortSignal?: AbortSignal
@@ -53,6 +70,8 @@ type ExecFileWithCwdOptions = {
   shell?: boolean | string | undefined
   stdin?: 'ignore' | 'inherit' | 'pipe'
   input?: string
+  /** Kill the full descendant tree on Windows when timeout elapses. */
+  killTreeOnTimeout?: boolean
 }
 
 type ExecaResultWithError = {
@@ -99,6 +118,7 @@ export function execFileNoThrowWithCwd(
     shell,
     stdin: finalStdin,
     input: finalInput,
+    killTreeOnTimeout = false,
   }: ExecFileWithCwdOptions = {
     timeout: 10 * SECONDS_IN_MINUTE * MS_IN_SECOND,
     preserveOutputOnError: true,
@@ -107,17 +127,85 @@ export function execFileNoThrowWithCwd(
 ): Promise<{ stdout: string; stderr: string; code: number; error?: string }> {
   return new Promise(resolve => {
     // Use execa for cross-platform .bat/.cmd compatibility on Windows
-    execa(file, args, {
+    const useTreeTimeout =
+      killTreeOnTimeout &&
+      typeof finalTimeout === 'number' &&
+      finalTimeout > 0
+    const subprocess = execa(file, args, {
       maxBuffer,
       cancelSignal: abortSignal,
-      timeout: finalTimeout,
+      timeout: useTreeTimeout ? undefined : finalTimeout,
       cwd: finalCwd,
       env: finalEnv,
       shell,
+      // A detached POSIX child leads its own process group, allowing timeout
+      // cleanup to terminate synchronous npm/node-gyp descendants as a unit.
+      detached: useTreeTimeout && process.platform !== 'win32',
       stdin: finalStdin,
       input: finalInput,
       reject: false, // Don't throw on non-zero exit codes
     })
+
+    const forceKillSubprocess = () => {
+      try {
+        subprocess.kill('SIGKILL')
+      } catch {
+        // The subprocess already exited.
+      }
+    }
+
+    let posixForceTimer: ReturnType<typeof setTimeout> | undefined
+    const treeTimeout = useTreeTimeout
+      ? setTimeout(() => {
+          const pid = subprocess.pid
+          if (!pid) {
+            forceKillSubprocess()
+            return
+          }
+
+          if (process.platform !== 'win32') {
+            try {
+              process.kill(-pid, 'SIGTERM')
+              posixForceTimer = setTimeout(() => {
+                try {
+                  process.kill(-pid, 'SIGKILL')
+                } catch {
+                  forceKillSubprocess()
+                }
+              }, 5 * MS_IN_SECOND)
+              posixForceTimer.unref?.()
+            } catch {
+              forceKillSubprocess()
+            }
+            return
+          }
+
+          const taskkillPath = resolveWindowsTaskkillPath(process.env)
+          if (!taskkillPath) {
+            // Never guess the Windows installation drive or trust a PATH
+            // taskkill shim. Direct termination is the safe degraded mode.
+            forceKillSubprocess()
+            return
+          }
+
+          void execa(
+            taskkillPath,
+            ['/PID', String(pid), '/T', '/F'],
+            {
+              reject: false,
+              timeout: 10 * MS_IN_SECOND,
+              stdin: 'ignore',
+              stdout: 'ignore',
+              stderr: 'ignore',
+              windowsHide: true,
+            },
+          ).then(result => {
+            if (result.failed) forceKillSubprocess()
+          }).catch(forceKillSubprocess)
+        }, finalTimeout)
+      : undefined
+
+    subprocess
       .then(result => {
         if (result.failed) {
           if (finalPreserveOutput) {
@@ -145,6 +233,20 @@ export function execFileNoThrowWithCwd(
       .catch((error: ExecaError) => {
         logError(error)
         void resolve({ stdout: '', stderr: '', code: 1 })
+      })
+      .finally(() => {
+        if (treeTimeout) clearTimeout(treeTimeout)
+        if (posixForceTimer) {
+          clearTimeout(posixForceTimer)
+          const pid = subprocess.pid
+          if (pid) {
+            try {
+              process.kill(-pid, 'SIGKILL')
+            } catch {
+              // The process group already exited after SIGTERM.
+            }
+          }
+        }
       })
   })
 }

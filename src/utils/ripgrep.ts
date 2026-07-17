@@ -13,6 +13,7 @@ import { execFileNoThrow } from './execFileNoThrow.js'
 import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
+import { isUsableRipgrep } from './ripgrepBinary.js'
 import { countCharInString } from './stringUtils.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -61,8 +62,17 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
       : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
 
-  if (existsSync(command)) {
+  const vendoredExists = existsSync(command)
+  const vendoredWorks = vendoredExists && isUsableRipgrep(command)
+
+  if (vendoredWorks) {
     return { mode: 'builtin', command, args: [] }
+  }
+
+  if (vendoredExists) {
+    logForDebugging(
+      `Vendored ripgrep cannot run on this host; falling back to system rg (${command})`,
+    )
   }
 
   // Vendored binary not found (npm install without bundled vendor/) — fall back to system rg.

@@ -7,11 +7,11 @@ The official VS Code companion for [Tau](https://github.com/AbdoKnbGit/tau), the
 When this extension is installed, every Tau run launched inside VS Code automatically:
 
 - Sees your **open file, current selection, and language-server diagnostics**.
-- Renders **inline diffs** as real VS Code diff tabs with accept / reject buttons — the CLI waits for your decision before applying changes.
+- Renders **inline diffs** as real VS Code diff tabs with accept / reject buttons. The CLI waits for your decision before applying changes.
 - Auto-attaches to **the right window** when you have multiple VS Code windows open.
 - Inherits the **provider** you've selected in the Control Center (Anthropic, OpenAI, Gemini, OpenRouter, Groq, NIM, DeepSeek, Ollama).
 
-You don't have to set `CLAUDE_CODE_USE_*` or `CLAUDE_CODE_SSE_PORT` yourself — the extension injects them into the launched terminal for you.
+You don't have to set `CLAUDE_CODE_USE_*` or `CLAUDE_CODE_SSE_PORT` yourself. The extension injects them into the launched terminal for you.
 
 ## How it works (short version)
 
@@ -52,7 +52,8 @@ All commands are also available through `Ctrl+Shift+P` -> search "Tau":
 ## Requirements
 
 - VS Code `1.95+`.
-- `tau` available on your terminal `PATH` — `npm install -g @abdoknbgit/tau`.
+- `tau` available on your terminal `PATH` - install it with
+  `npx -y @abdoknbgit/tau-installer@latest`.
 
 ## Tools the extension exposes to the CLI
 
@@ -73,7 +74,7 @@ Bundled: **Tau Dark** and **Tau Light**. Switch via `Ctrl+K Ctrl+T`.
 
 ## Privacy
 
-- The companion server binds to `127.0.0.1` only — it is not reachable from the network.
+- The companion server binds to `127.0.0.1` only, so it is not reachable from the network.
 - Connections are gated by a per-session random `authToken` written into the lockfile and validated via the `X-Claude-Code-Ide-Authorization` header.
 - The extension does not phone home and does not collect telemetry.
 
