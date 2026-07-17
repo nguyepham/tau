@@ -405,6 +405,22 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// The dependency tree needs require(esm) (e.g. e2b's CommonJS build requires
+// the ESM-only chalk 5): Node 20.19+, 22.12+, or 23+. Fail with a clear
+// message instead of a raw ERR_REQUIRE_ESM crash from deep inside a dependency.
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+const nodeSupportsRequireEsm =
+  (nodeMajor === 20 && nodeMinor >= 19) ||
+  (nodeMajor === 22 && nodeMinor >= 12) ||
+  nodeMajor >= 23
+if (!nodeSupportsRequireEsm) {
+  process.stderr.write(
+    '[tau] Tau requires Node.js 20.19+ or 22.12+ (require(esm) support); you are running ' +
+    process.version + '. Upgrade Node.js, then retry.\\n'
+  )
+  process.exit(1)
+}
+
 const distDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = dirname(distDir)
 // Preserve the canonical package location even when npm's POSIX bin symlink

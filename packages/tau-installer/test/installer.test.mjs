@@ -475,7 +475,11 @@ test("a valid outer updater handoff is borrowed and never released by installer"
   releaseInstallerUpdateLease(outer.lease);
 });
 
-test("spawn uses argument arrays, disables the shell, and propagates npm's exit code", async () => {
+test("spawn uses argument arrays, disables the shell, and propagates npm's exit code", async (t) => {
+  // The lock must live in a writable fixture: /home/tau-user does not exist on
+  // CI runners, and the installer must not touch the developer's real home.
+  const lockRoot = mkdtempSync(join(tmpdir(), "tau-installer-spawn-"));
+  t.after(() => rmSync(lockRoot, { recursive: true, force: true }));
   const prefix = "/opt/npm-global";
   const calls = [];
   const spawnImpl = (command, args, options) => {
@@ -508,6 +512,7 @@ test("spawn uses argument arrays, disables the shell, and propagates npm's exit 
       platform: "linux",
       spawnImpl,
       workingDirectory: "/home/tau-user",
+      lockPath: join(lockRoot, ".update.lock"),
     },
   );
 
@@ -548,7 +553,7 @@ test("spawn uses argument arrays, disables the shell, and propagates npm's exit 
   assert.equal(calls[2].options.env.npm_node_execpath, env.npm_node_execpath);
   assert.equal(
     calls[2].options.env.TAU_UPDATE_LOCK_PATH,
-    join(resolve("/home/tau-user"), ".claude", ".update.lock"),
+    join(lockRoot, ".update.lock"),
   );
   assert.match(calls[2].options.env.TAU_UPDATE_LOCK_TOKEN, /^[0-9a-f-]{36}$/i);
   assert.equal(calls[2].options.env.TAU_UPDATE_LOCK_PID, String(process.pid));

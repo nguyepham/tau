@@ -40,7 +40,7 @@ Tau gives you a way out. **You can work with any provider without that provider'
 npx -y @abdoknbgit/tau-installer@latest
 ```
 
-**Requirements:** Node.js >= 20.18.1, Git, Bash, `gh` for GitHub automation, and Go 1.25.8+ to build the optional native Tau helpers from source.
+**Requirements:** Node.js 20.19+ or 22.12+ (require(esm) support), Git, Bash, `gh` for GitHub automation, and Go 1.25.8+ to build the optional native Tau helpers from source.
 
 ---
 

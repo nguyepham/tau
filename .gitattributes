@@ -1,0 +1,4 @@
+# The production shrinkwrap is byte-compared against generator output, which
+# always emits LF. Never let autocrlf checkouts (Windows CI runners, fresh
+# Windows clones) rewrite it to CRLF.
+release/npm-shrinkwrap.production.json text eol=lf

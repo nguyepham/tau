@@ -304,7 +304,9 @@ function readReleaseInputs() {
 
 export function checkCanonicalShrinkwrap(options = {}) {
   const { manifest, sourceLock } = readReleaseInputs();
-  const canonical = readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8');
+  // Tolerate CRLF from autocrlf checkouts; the generator always emits LF.
+  const canonical = readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8')
+    .replaceAll('\r\n', '\n');
   const generated = serialize(
     generateProductionShrinkwrap({ ...options, manifest, sourceLock }),
   );

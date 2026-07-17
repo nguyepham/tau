@@ -88,7 +88,7 @@
         "zod": "^3.25.0"
       },
       "engines": {
-        "node": ">=20.18.1"
+        "node": ">=20.19.0 <21.0.0 || >=22.12.0"
       },
       "hasInstallScript": true,
       "license": "MIT",
@@ -110,7 +110,7 @@
           "optional": true
         }
       },
-      "version": "0.92.15"
+      "version": "0.92.16"
     },
     "node_modules/@agentclientprotocol/sdk": {
       "integrity": "sha512-ialrcI+RzKOYe+fw+TfpyTdRmEoqIkXLlwbTi6XgaXXfdhNcdod7TmE1VsTnG3yTlox8TMTSMQgWbLLbz3r86Q==",
@@ -8754,5 +8754,5 @@
     }
   },
   "requires": true,
-  "version": "0.92.15"
+  "version": "0.92.16"
 }
