@@ -1,5 +1,5 @@
 import { extname } from 'path'
-import { isNativeTauToolsAvailable, runNativeTauTool } from './nativeTauTools.js'
+import { isNativeZenToolsAvailable, runNativeZenTool } from './nativeZenTools.js'
 
 const MAX_CACHE_ENTRIES = 300
 const MAX_NATIVE_HIGHLIGHT_CHARS = 200_000
@@ -76,7 +76,7 @@ function scheduleNativeHighlight(
   inFlightHighlights.add(key)
   const args = ['--style', 'github-dark']
   if (language) args.push('--lang', language)
-  runNativeTauTool('highlight-code', args, {
+  runNativeZenTool('highlight-code', args, {
     input: code,
     timeoutMs: 5_000,
     maxBuffer: 2_000_000,
@@ -108,7 +108,7 @@ export function highlightCodeWithNative(
   filePathOrLanguage?: string,
 ): string | null {
   if (!code || code.length > MAX_NATIVE_HIGHLIGHT_CHARS) return null
-  if (!isNativeTauToolsAvailable()) return null
+  if (!isNativeZenToolsAvailable()) return null
   const language = languageFromPathOrHint(filePathOrLanguage)
   const key = `code:${language}:${filePathOrLanguage ?? ''}:${code}`
   const cached = highlightCache.get(key)
