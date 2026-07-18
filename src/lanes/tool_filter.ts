@@ -13,6 +13,7 @@ import { TEST_SEARCH_TOOL_NAME } from '../tools/TestSearchTool/constants.js'
 import { TOOL_GUIDE_TOOL_NAME } from '../tools/ToolGuideTool/constants.js'
 import { VISUAL_DESIGN_AUDIT_TOOL_NAME } from '../tools/VisualDesignAuditTool/constants.js'
 import { WEB_BROWSER_TOOL_NAME } from '../tools/WebBrowserTool/constants.js'
+import { BROWSER_TOOL_NAME } from '../tools/BrowserTool/constants.js'
 import type { ProviderTool } from '../services/api/providers/base_provider.js'
 import type { SharedTool } from './types.js'
 
@@ -24,6 +25,7 @@ const CURSOR_EXCLUDED_ADDITION_TOOLS = new Set([
   GIT_HISTORY_SEARCH_TOOL_NAME,
   INSPECT_SITE_TOOL_NAME,
   WEB_BROWSER_TOOL_NAME,
+  BROWSER_TOOL_NAME,
   ARTIFACT_CANVAS_TOOL_NAME,
   DIFF_ARTIFACT_TOOL_NAME,
   PACKAGE_MANAGER_TOOL_NAME,

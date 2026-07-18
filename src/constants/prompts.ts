@@ -61,6 +61,7 @@ import { INTEGRATION_HUB_TOOL_NAME } from '../tools/IntegrationHubTool/constants
 import { DEPLOY_PREVIEW_TOOL_NAME } from '../tools/DeployPreviewTool/constants.js'
 import { VISUAL_DESIGN_AUDIT_TOOL_NAME } from '../tools/VisualDesignAuditTool/constants.js'
 import { WEB_BROWSER_TOOL_NAME } from '../tools/WebBrowserTool/constants.js'
+import { BROWSER_TOOL_NAME } from '../tools/BrowserTool/constants.js'
 import {
   EXPLORE_AGENT,
   EXPLORE_AGENT_MIN_QUERIES,
@@ -319,6 +320,7 @@ function getUsingYourToolsSection(enabledTools: Set<string>): string {
   const hasGitHistorySearchTool = enabledTools.has(GIT_HISTORY_SEARCH_TOOL_NAME)
   const hasInspectSiteTool = enabledTools.has(INSPECT_SITE_TOOL_NAME)
   const hasWebBrowserTool = enabledTools.has(WEB_BROWSER_TOOL_NAME)
+  const hasBrowserTool = enabledTools.has(BROWSER_TOOL_NAME)
   const hasPackageManagerTool = enabledTools.has(PACKAGE_MANAGER_TOOL_NAME)
   const hasSpecQuestTool = enabledTools.has(SPEC_QUEST_TOOL_NAME)
   const hasMermaidRenderTool = enabledTools.has(MERMAID_RENDER_TOOL_NAME)
@@ -445,6 +447,11 @@ function getUsingYourToolsSection(enabledTools: Set<string>): string {
     ...(hasWebBrowserTool
       ? [
           `For local HTML artifacts, load ${WEB_BROWSER_TOOL_NAME} with ${TOOL_SEARCH_TOOL_NAME} when you need a compact page snapshot. Pass the artifact tool's absolute path or canonical htmlUrl/fileUrl directly; do not construct relative file URLs like file://.tau/... yourself.`,
+        ]
+      : []),
+    ...(hasBrowserTool
+      ? [
+          `When a task needs a page's rendered (post-JavaScript) content, clicking, typing, form submission, multi-step web flows, tabs, or screenshots of live pages, load ${BROWSER_TOOL_NAME} with ${TOOL_SEARCH_TOOL_NAME}. It drives a real Chrome/Edge browser: open once, observe to get numbered element refs, then click/fill/type by ref. Prefer it over ${WEB_BROWSER_TOOL_NAME}/${INSPECT_SITE_TOOL_NAME} (static HTML only) for interactive or SPA pages, and over the desktop Computer tool for anything inside a web page.`,
         ]
       : []),
     ...(hasPackageManagerTool

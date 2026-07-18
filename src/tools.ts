@@ -87,6 +87,7 @@ import { ChangeRiskTool } from './tools/ChangeRiskTool/ChangeRiskTool.js'
 import { GitHistorySearchTool } from './tools/GitHistorySearchTool/GitHistorySearchTool.js'
 import { InspectSiteTool } from './tools/InspectSiteTool/InspectSiteTool.js'
 import { WebBrowserTool } from './tools/WebBrowserTool/WebBrowserTool.js'
+import { BrowserTool } from './tools/BrowserTool/BrowserTool.js'
 import { ArtifactCanvasTool } from './tools/ArtifactCanvasTool/ArtifactCanvasTool.js'
 import { DiffArtifactTool } from './tools/DiffArtifactTool/DiffArtifactTool.js'
 import { PackageManagerTool } from './tools/PackageManagerTool/PackageManagerTool.js'
@@ -240,6 +241,7 @@ export function getAllBaseTools(): Tools {
     ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),
     ...(SuggestBackgroundPRTool ? [SuggestBackgroundPRTool] : []),
     WebBrowserTool,
+    BrowserTool,
     ...(isTodoV2Enabled()
       ? [TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool]
       : []),

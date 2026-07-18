@@ -8,6 +8,7 @@ import {
 import { ARTIFACT_CANVAS_TOOL_NAME } from '../tools/ArtifactCanvasTool/constants.js'
 import { DEPLOY_PREVIEW_TOOL_NAME } from '../tools/DeployPreviewTool/constants.js'
 import { DIFF_ARTIFACT_TOOL_NAME } from '../tools/DiffArtifactTool/constants.js'
+import { BROWSER_TOOL_NAME } from '../tools/BrowserTool/constants.js'
 import { INSPECT_SITE_TOOL_NAME } from '../tools/InspectSiteTool/constants.js'
 import { INTEGRATION_HUB_TOOL_NAME } from '../tools/IntegrationHubTool/constants.js'
 import { LSP_TOOL_NAME } from '../tools/LSPTool/prompt.js'
@@ -111,6 +112,12 @@ export const PREBUILT_TOOL_TOGGLE_GROUPS = [
         purpose:
           'Open URLs/local files in the native browser or capture compact HTTP/local HTML snapshots.',
         toolNames: [WEB_BROWSER_TOOL_NAME],
+      },
+      {
+        id: BROWSER_TOOL_NAME,
+        purpose:
+          'Drive a real Chrome/Edge browser: navigate, read the page as numbered elements, click, fill, type, scroll, screenshot, and manage tabs.',
+        toolNames: [BROWSER_TOOL_NAME],
       },
       {
         id: VISUAL_DESIGN_AUDIT_TOOL_NAME,
