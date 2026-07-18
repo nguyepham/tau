@@ -7,6 +7,7 @@ import btw from './commands/btw/index.js'
 import github from './commands/github/index.js'
 import githubRun from './commands/github/github-run.js'
 import goodClaude from './commands/good-claude/index.js'
+import goal from './commands/goal/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
@@ -309,6 +310,7 @@ const COMMANDS = memoize((): Command[] => [
   files,
   github,
   githubRun,
+  goal,
   heapDump,
   help,
   ide,

@@ -11,6 +11,8 @@ import {
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
+import { evaluateGoalTurn } from './services/goal/controller.js'
+import { getGoal } from './services/goal/store.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = feature('REACTIVE_COMPACT')
   ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
@@ -1581,6 +1583,52 @@ async function* queryLoop(
             queryChainId: queryChainIdForAnalytics,
             queryDepth: queryTracking.depth,
           })
+        }
+      }
+
+      // Objective goal loop (/goal): at the point the main thread would stop,
+      // run the goal's check command. Pass → stop; fail under maxTurns → append
+      // a continuation nudge (append-only, no history rewrite) and loop. Strict
+      // no-op when no goal is active, so ordinary sessions are unaffected.
+      if (getGoal()?.status === 'active') {
+        const terminalAssistant = assistantMessages.at(-1)
+        const goalDecision = await evaluateGoalTurn(
+          toolUseContext,
+          terminalAssistant
+            ? {
+                uuid: terminalAssistant.uuid,
+                text: terminalAssistant.message.content
+                  .map(b => (b.type === 'text' ? b.text : ''))
+                  .join('\n'),
+              }
+            : undefined,
+        )
+        if (goalDecision.kind === 'achieved') {
+          yield createSystemMessage(goalDecision.systemText, 'info')
+        } else if (goalDecision.kind === 'paused') {
+          yield createSystemMessage(goalDecision.systemText, 'warning')
+        } else if (goalDecision.kind === 'continue') {
+          yield createSystemMessage(goalDecision.systemText, 'info')
+          state = {
+            messages: [
+              ...messagesForQuery,
+              ...assistantMessages,
+              createUserMessage({
+                content: goalDecision.continuationText,
+                isMeta: true,
+              }),
+            ],
+            toolUseContext,
+            autoCompactTracking: tracking,
+            maxOutputTokensRecoveryCount: 0,
+            hasAttemptedReactiveCompact,
+            maxOutputTokensOverride: undefined,
+            pendingToolUseSummary: undefined,
+            stopHookActive: undefined,
+            turnCount,
+            transition: { reason: 'next_turn' },
+          }
+          continue
         }
       }
 
