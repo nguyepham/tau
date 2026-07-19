@@ -122,7 +122,14 @@ export async function launchBrowser(options: {
     '--disable-search-engine-choice-screen',
     '--disable-session-crashed-bubble',
     '--hide-crash-restore-bubble',
-    '--disable-features=DefaultBrowserSettingEnabled',
+    // AutomationControlled is the big anti-bot tell: leaving it on advertises
+    // navigator.webdriver=true and shows the "controlled by automated test
+    // software" infobar, which sites like Google use to gate CAPTCHAs.
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=DefaultBrowserSettingEnabled,AutomationControlled,Translate',
+    // A stable, human-plausible locale; a missing/odd Accept-Language is another
+    // fingerprinting signal. The page-side stealth script matches this.
+    '--lang=en-US',
     '--window-size=1280,900',
     ...(options.headless ? ['--headless=new'] : []),
     'about:blank',
