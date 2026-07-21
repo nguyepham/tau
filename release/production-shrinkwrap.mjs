@@ -7,9 +7,12 @@
  * production-only file at the repository root would break normal `npm ci`
  * (package.json intentionally still declares development dependencies).
  *
- * `npm pack` / `npm publish` stage the canonical file at the package root in
- * prepack and remove it in postpack, so downstream installs still receive the
- * standard root npm-shrinkwrap.json.
+ * The canonical file pins the production dependency graph. Its root package
+ * version is materialized from package.json when checking and staging, so a
+ * version-only release does not require regenerating an unchanged graph.
+ * `npm pack` / `npm publish` stage that materialized file at the package root
+ * in prepack and remove it in postpack, so downstream installs still receive
+ * the standard root npm-shrinkwrap.json.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -107,12 +110,42 @@ function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+/** Apply only the current root package version to a canonical graph snapshot. */
+export function materializeCanonicalShrinkwrap(canonical, manifest) {
+  const materialized = clone(canonical);
+  const root = materialized?.packages?.[''];
+  invariant(root, 'Shrinkwrap has no root package entry.');
+  invariant(
+    materialized.version === root.version,
+    'Shrinkwrap root package version does not match its top-level version.',
+  );
+  materialized.version = manifest.version;
+  root.version = manifest.version;
+  return materialized;
+}
+
 /** Validate that a candidate is production-only and pins the tested graph. */
 export function verifyProductionShrinkwrap(
   candidate,
   manifest,
   sourceLock,
 ) {
+  invariant(sourceLock.name === manifest.name, 'package-lock.json package name is stale.');
+  invariant(
+    sourceLock.version === manifest.version,
+    'package-lock.json package version is stale.',
+  );
+  const sourceRoot = sourceLock.packages?.[''];
+  invariant(sourceRoot, 'package-lock.json has no root package entry.');
+  invariant(
+    sourceRoot.name === manifest.name,
+    'package-lock.json root package name is stale.',
+  );
+  invariant(
+    sourceRoot.version === manifest.version,
+    'package-lock.json root package version is stale.',
+  );
+
   invariant(candidate?.lockfileVersion === 3, 'Shrinkwrap must use lockfileVersion 3.');
   invariant(candidate.name === manifest.name, 'Shrinkwrap package name is stale.');
   invariant(candidate.version === manifest.version, 'Shrinkwrap package version is stale.');
@@ -183,6 +216,22 @@ export function verifyProductionShrinkwrap(
     );
   }
 
+  return true;
+}
+
+/** Verify a canonical graph after applying version-only release metadata. */
+export function verifyCanonicalShrinkwrap(
+  canonical,
+  generated,
+  manifest,
+  sourceLock,
+) {
+  const materialized = materializeCanonicalShrinkwrap(canonical, manifest);
+  verifyProductionShrinkwrap(materialized, manifest, sourceLock);
+  invariant(
+    sameJson(materialized, generated),
+    'Production shrinkwrap is stale. Run `npm run shrinkwrap:generate`.',
+  );
   return true;
 }
 
@@ -304,33 +353,32 @@ function readReleaseInputs() {
 
 export function checkCanonicalShrinkwrap(options = {}) {
   const { manifest, sourceLock } = readReleaseInputs();
-  // Tolerate CRLF from autocrlf checkouts; the generator always emits LF.
-  const canonical = readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8')
-    .replaceAll('\r\n', '\n');
-  const generated = serialize(
-    generateProductionShrinkwrap({ ...options, manifest, sourceLock }),
+  const canonical = JSON.parse(
+    readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8'),
   );
-  if (canonical !== generated) {
-    throw new Error(
-      'Production shrinkwrap is stale. Run `npm run shrinkwrap:generate`.',
-    );
-  }
-  return true;
+  const generated = generateProductionShrinkwrap({ ...options, manifest, sourceLock });
+  return verifyCanonicalShrinkwrap(canonical, generated, manifest, sourceLock);
 }
 
 export function stageCanonicalShrinkwrap() {
   const { manifest, sourceLock } = readReleaseInputs();
-  const canonicalText = readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8');
-  const canonical = JSON.parse(canonicalText);
-  verifyProductionShrinkwrap(canonical, manifest, sourceLock);
-  replaceFileAtomically(STAGED_SHRINKWRAP_PATH, canonicalText);
+  const canonical = JSON.parse(
+    readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8'),
+  );
+  const materialized = materializeCanonicalShrinkwrap(canonical, manifest);
+  verifyProductionShrinkwrap(materialized, manifest, sourceLock);
+  replaceFileAtomically(STAGED_SHRINKWRAP_PATH, serialize(materialized));
 }
 
 export function cleanStagedShrinkwrap() {
   if (!existsSync(STAGED_SHRINKWRAP_PATH)) return;
+  const { manifest } = readReleaseInputs();
   const staged = readFileSync(STAGED_SHRINKWRAP_PATH, 'utf8');
-  const canonical = readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8');
-  if (staged !== canonical) {
+  const canonical = JSON.parse(
+    readFileSync(CANONICAL_SHRINKWRAP_PATH, 'utf8'),
+  );
+  const expected = serialize(materializeCanonicalShrinkwrap(canonical, manifest));
+  if (staged !== expected) {
     throw new Error(
       'Refusing to remove npm-shrinkwrap.json because it differs from the staged production lock.',
     );
