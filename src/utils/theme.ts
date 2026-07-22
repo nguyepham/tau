@@ -46,6 +46,7 @@ export type Theme = {
   orange_FOR_SUBAGENTS_ONLY: string
   pink_FOR_SUBAGENTS_ONLY: string
   cyan_FOR_SUBAGENTS_ONLY: string
+  silver_FOR_SUBAGENTS_ONLY: string
   // Grove colors
   professionalBlue: string
   // Chrome colors
@@ -176,6 +177,7 @@ const lightTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(234,88,12)', // Orange 600
   pink_FOR_SUBAGENTS_ONLY: 'rgb(219,39,119)', // Pink 600
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(8,145,178)', // Cyan 600
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)', // Silver/zinc
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -274,6 +276,7 @@ const lightAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyan',
+  silver_FOR_SUBAGENTS_ONLY: 'ansi:white',
   // Grove colors
   professionalBlue: 'ansi:blueBright',
   // Chrome colors
@@ -371,6 +374,7 @@ const darkAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyanBright',
+  silver_FOR_SUBAGENTS_ONLY: 'ansi:white',
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -468,6 +472,7 @@ const lightDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,128,0)', // True orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,102,178)', // Adjusted pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(0,178,178)', // Adjusted cyan
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)', // Silver/zinc
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -565,6 +570,7 @@ const darkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,140,50)', // Neon orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,90,190)', // Neon pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(50,220,230)', // Neon cyan
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(180,180,188)', // Silver (bright for dark bg)
   // Grove colors
   professionalBlue: 'rgb(120,170,230)',
   // Chrome colors
@@ -664,6 +670,7 @@ const tauDarkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(220,104,58)',
   pink_FOR_SUBAGENTS_ONLY: 'rgb(228,96,116)',
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(155,132,110)',
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(168,168,176)', // Silver (muted for tauDark)
   professionalBlue: 'rgb(148,116,108)',
   chromeYellow: 'rgb(232,174,82)',
   clawd_body: 'rgb(210,210,216)',
@@ -753,6 +760,7 @@ const darkDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,178,102)', // Bright orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,153,204)', // Bright pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(102,204,204)', // Bright cyan
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(180,180,188)', // Silver (bright for dark bg)
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -855,6 +863,7 @@ const studioTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(245,167,66)',
   pink_FOR_SUBAGENTS_ONLY: 'rgb(224,108,117)',
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(86,182,194)',
+  silver_FOR_SUBAGENTS_ONLY: 'rgb(180,180,188)', // Silver (neutral for studio)
   // Misc
   professionalBlue: 'rgb(92,156,245)',
   chromeYellow: 'rgb(229,192,123)',

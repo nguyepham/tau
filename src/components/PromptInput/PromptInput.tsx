@@ -2925,7 +2925,7 @@ function PromptInput({
 
     // In-process teammates run headless - don't apply teammate colors to leader UI
     if (isInProcessTeammate()) {
-      return "brand";
+      return "silver_FOR_SUBAGENTS_ONLY";
     }
 
     // Check for teammate color from environment
@@ -2936,7 +2936,7 @@ function PromptInput({
     ) {
       return AGENT_COLOR_TO_THEME_COLOR[teammateColorName as AgentColorName];
     }
-    return isCenteredPrompt ? "brandBright" : "brand";
+    return "silver_FOR_SUBAGENTS_ONLY";
   };
   if (isExternalEditorActive) {
     // Studio prompt frame: left bar + filled panel + ╵ foot.
