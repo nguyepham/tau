@@ -72,6 +72,13 @@ ANTIGRAVITY_MODELS = [
 
 LOG_FILE: str | None = None
 
+# Per-session counters (reset on session_start)
+_session_system_reminder_msgs: int = 0
+_session_request_msgs: int = 0
+_session_response_msgs: int = 0
+# Antigravity: cumulative promptTokenCount for per-request delta calculation
+_ag_session_request_tokens: int = 0
+
 
 def log(msg: str = ""):
     if not LOG_FILE:
@@ -92,14 +99,14 @@ def resolve_model(raw: str) -> str:
 
 def resolve_antigravity_wire_model(model: str) -> str:
     m = model.lower()
-    if m == "gemini-3.1-pro-high":
-        return "gemini-pro-agent"
-    if m == "gemini-3.5-flash-high":
-        return "gemini-3-flash-agent"
-    if m == "gemini-3.5-flash-medium":
-        return "gemini-3.5-flash-low"
+    if m == "gemini-pro-agent":
+        return "gemini-3.1-pro-high"
+    if m == "gemini-3-flash-agent":
+        return "gemini-3.5-flash-high"
     if m == "gemini-3.5-flash-low":
-        return "gemini-3.5-flash-extra-low"
+        return "gemini-3.5-flash-medium"
+    if m == "gemini-3.5-flash-extra-low":
+        return "gemini-3.5-flash-low"
     return model
 
 
@@ -134,6 +141,25 @@ def extract_last_user_message(messages) -> str:
     return ""
 
 
+def count_messages(messages) -> dict:
+    system_reminder = 0
+    request = 0
+    response = 0
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+        if role == "user":
+            if content.startswith("<system-reminder>"):
+                system_reminder += 1
+            else:
+                request += 1
+        elif role in ("assistant", "model"):
+            response += 1
+    return {"system_reminder": system_reminder, "request": request, "response": response}
+
+
 def is_antigravity_request(path: str) -> bool:
     return any(m in path for m in ANTIGRAVITY_METHODS)
 
@@ -156,6 +182,13 @@ def session_start():
 
     global LOG_FILE
     LOG_FILE = path
+
+    global _session_system_reminder_msgs, _session_request_msgs, _session_response_msgs
+    _session_system_reminder_msgs = 0
+    _session_request_msgs = 0
+    _session_response_msgs = 0
+    global _ag_session_request_tokens
+    _ag_session_request_tokens = 0
 
     with open(LOG_FILE, "w") as f:
         f.write("=" * 60 + "\n")
@@ -220,9 +253,6 @@ def proxy_deepseek():
     data["top_p"] = TOP_P
 
     last_msg = extract_last_user_message(data["messages"])
-    log("---")
-    log(f"[DEEPSEEK] msgs={len(data['messages'])} user={sum(1 for m in data['messages'] if m.get('role') == 'user')} temp={temperature} top_p={TOP_P}")
-    log(f"[DEEPSEEK USER] {last_msg[:500]}")
 
     resp = requests.post(
         f"{DEEPSEEK_API}/chat/completions",
@@ -234,10 +264,42 @@ def proxy_deepseek():
         stream=data.get("stream", False),
     )
 
+    def _log_deepseek(usage_data):
+        hit = usage_data.get("prompt_cache_hit_tokens", 0) or 0
+        miss = usage_data.get("prompt_cache_miss_tokens", 0) or 0
+        total = usage_data.get("total_tokens", 0) or 0
+        completion = usage_data.get("completion_tokens", 0) or 0
+        cached_pct = f"{hit / (hit + miss) * 100:.1f}%" if (hit + miss) > 0 else "N/A"
+
+        # Count messages after forwarding (what the API actually saw)
+        msg_counts = count_messages(data["messages"])
+        global _session_system_reminder_msgs, _session_request_msgs, _session_response_msgs
+        _session_system_reminder_msgs += msg_counts["system_reminder"]
+        _session_request_msgs += msg_counts["request"]
+        _session_response_msgs += msg_counts["response"]
+        session_msg_total = _session_system_reminder_msgs + _session_request_msgs + _session_response_msgs
+
+        # Don't log the first system reminder (it's the session-start boilerplate)
+        logged_sys = max(0, msg_counts["system_reminder"] - 1)
+
+        log("---")
+        log(f"[MODEL] {resolved}")
+        log(f"[OVERRIDE] temperature: {temperature}, top_p: {TOP_P}")
+        log("[MESSAGE COUNT]")
+        log(f"  system_reminder: {logged_sys}")
+        log(f"  request: {msg_counts['request']}")
+        log(f"  response: {msg_counts['response']}")
+        log(f"  session: {session_msg_total}")
+        log("[TOKEN COUNT]")
+        log(f"  CACHED: {cached_pct}")
+        log(f"  request: {miss}")
+        log(f"  response: {completion}")
+        log(f"  session: {total}")
+        log(f"[REQUEST] {last_msg[:500]}")
+
     if data.get("stream"):
         def generate():
             usage_data = None
-            finish_reason = None
             for chunk in resp.iter_content(chunk_size=None):
                 if chunk:
                     chunk_str = chunk.decode() if isinstance(chunk, bytes) else chunk
@@ -246,27 +308,13 @@ def proxy_deepseek():
                         if line.startswith("data: ") and line != "data: [DONE]":
                             try:
                                 parsed = json.loads(line[6:])
-                                choices = parsed.get("choices", [])
-                                if choices:
-                                    finish_reason = choices[0].get("finish_reason") or finish_reason
                                 if "usage" in parsed:
                                     usage_data = parsed["usage"]
                             except json.JSONDecodeError:
                                 pass
                     yield chunk
             if usage_data:
-                log("[DEEPSEEK USAGE]")
-                log(f"  prompt_tokens: {usage_data.get('prompt_tokens')}")
-                log(f"  completion_tokens: {usage_data.get('completion_tokens')}")
-                log(f"  total_tokens: {usage_data.get('total_tokens')}")
-                log(f"  prompt_cache_hit_tokens: {usage_data.get('prompt_cache_hit_tokens')}")
-                log(f"  prompt_cache_miss_tokens: {usage_data.get('prompt_cache_miss_tokens')}")
-                ctd = usage_data.get("completion_tokens_details")
-                if ctd:
-                    log("  completion_tokens_details:")
-                    log(f"    reasoning_tokens: {ctd.get('reasoning_tokens')}")
-            if finish_reason:
-                log(f"[ DEEPSEEK FINISH_REASON] {finish_reason}")
+                _log_deepseek(usage_data)
 
         return Response(
             generate(),
@@ -281,21 +329,7 @@ def proxy_deepseek():
     resp_json = resp.json()
     usage_data = resp_json.get("usage")
     if usage_data:
-        log("[DEEPSEEK USAGE]")
-        log(f"  prompt_tokens: {usage_data.get('prompt_tokens')}")
-        log(f"  completion_tokens: {usage_data.get('completion_tokens')}")
-        log(f"  total_tokens: {usage_data.get('total_tokens')}")
-        log(f"  prompt_cache_hit_tokens: {usage_data.get('prompt_cache_hit_tokens')}")
-        log(f"  prompt_cache_miss_tokens: {usage_data.get('prompt_cache_miss_tokens')}")
-        ctd = usage_data.get("completion_tokens_details")
-        if ctd:
-            log("  completion_tokens_details:")
-            log(f"    reasoning_tokens: {ctd.get('reasoning_tokens')}")
-    choices = resp_json.get("choices", [])
-    if choices:
-        fr = choices[0].get("finish_reason")
-        if fr:
-            log(f"[DEEPSEEK FINISH_REASON] {fr}")
+        _log_deepseek(usage_data)
 
     return Response(
         json.dumps(resp_json, ensure_ascii=False),
@@ -313,6 +347,9 @@ def proxy_antigravity(path: str):
     data = request.get_json()
     if data and "model" in data:
         data["model"] = resolve_antigravity_wire_model(data["model"])
+
+    # Set in generatecontent block, used by _log_antigravity
+    _log_antigravity = None  # type: ignore
 
     if "generatecontent" in path.lower():
         inner = data.setdefault("request", {})
@@ -345,9 +382,38 @@ def proxy_antigravity(path: str):
         gen_config["topP"] = TOP_P
 
         last_msg = messages[-1]["content"][:500] if messages else ""
-        log("---")
-        log(f"[ANTIGRAVITY] msgs={len(messages)} user={sum(1 for m in messages if m.get('role') == 'user')} temp={temp} topP={TOP_P}")
-        log(f"[ANTIGRAVITY USER] {last_msg}")
+
+        def _log_antigravity(usage_data):
+            global _ag_session_request_tokens, _session_system_reminder_msgs, _session_request_msgs, _session_response_msgs
+            prompt = usage_data.get("promptTokenCount", 0) or 0
+            completion = usage_data.get("candidatesTokenCount", 0) or 0
+            total = usage_data.get("totalTokenCount", 0) or 0
+            request_tokens = prompt - _ag_session_request_tokens
+            _ag_session_request_tokens = prompt
+
+            # Count messages after forwarding (what the API actually saw)
+            msg_counts = count_messages(messages)
+            _session_system_reminder_msgs += msg_counts["system_reminder"]
+            _session_request_msgs += msg_counts["request"]
+            _session_response_msgs += msg_counts["response"]
+            session_msg_total = _session_system_reminder_msgs + _session_request_msgs + _session_response_msgs
+
+            # Don't log the first system reminder (it's the session-start boilerplate)
+            logged_sys = max(0, msg_counts["system_reminder"] - 1)
+
+            log("---")
+            log(f"[MODEL] {data.get('model', '')}")
+            log(f"[OVERRIDE] temperature: {temp}, top_p: {TOP_P}")
+            log("[MESSAGE COUNT]")
+            log(f"  system_reminder: {logged_sys}")
+            log(f"  request: {msg_counts['request']}")
+            log(f"  response: {msg_counts['response']}")
+            log(f"  session: {session_msg_total}")
+            log("[TOKEN COUNT]")
+            log(f"  request: {request_tokens}")
+            log(f"  response: {completion}")
+            log(f"  session: {total}")
+            log(f"[REQUEST] {last_msg}")
 
     qs = request.query_string.decode("utf-8")
     url = f"{ANTIGRAVITY_API}{path}"
@@ -379,11 +445,8 @@ def proxy_antigravity(path: str):
                 except json.JSONDecodeError:
                     pass
 
-        if usage_data:
-            log("[ANTIGRAVITY USAGE]")
-            log(f"  prompt_tokens: {usage_data.get('promptTokenCount')}")
-            log(f"  completion_tokens: {usage_data.get('candidatesTokenCount')}")
-            log(f"  total_tokens: {usage_data.get('totalTokenCount')}")
+        if usage_data and _log_antigravity:
+            _log_antigravity(usage_data)
 
         def generate():
             for c in raw_chunks:
@@ -401,16 +464,8 @@ def proxy_antigravity(path: str):
 
     resp_json = resp.json()
     usage = resp_json.get("usageMetadata") or (resp_json.get("response") or {}).get("usageMetadata")
-    if usage:
-        log("[ANTIGRAVITY USAGE]")
-        log(f"  prompt_tokens: {usage.get('promptTokenCount')}")
-        log(f"  completion_tokens: {usage.get('candidatesTokenCount')}")
-        log(f"  total_tokens: {usage.get('totalTokenCount')}")
-    candidates = (resp_json.get("response") or resp_json).get("candidates", [])
-    if candidates:
-        fr = candidates[0].get("finishReason")
-        if fr:
-            log(f"[ANTIGRAVITY FINISH_REASON] {fr}")
+    if usage and _log_antigravity:
+        _log_antigravity(usage)
 
     return Response(
         json.dumps(resp_json, ensure_ascii=False),

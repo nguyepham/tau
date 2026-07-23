@@ -11,6 +11,7 @@ reference/
 tmp/
 proxy/__pycache__/
 proxy/logs/
+proxy/daemon.pid
 
 # Local-only tests / scratch
 src/utils/fallback/detect.test.ts
