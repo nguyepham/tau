@@ -10,8 +10,8 @@
 
 import express from "express";
 import { randomBytes } from "node:crypto";
-import { hostname } from "node:os";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -79,6 +79,8 @@ const ZEN_TAGS = [
 // ─── Logging ──────────────────────────────────────────────────────────────
 
 let LOG_FILE = null;
+let _sessionRequestTokens = 0;
+let _sessionActive = false;
 
 function log(msg = "") {
   if (!LOG_FILE) return;
@@ -186,7 +188,8 @@ function countMessages(messages) {
           }
         }
 
-        const onlyZenTags = lastClose !== -1 && lastClose + closeLen === c.length;
+        const onlyZenTags =
+          lastClose !== -1 && lastClose + closeLen === c.length;
         const hasZenTags = lastClose !== -1;
 
         if (onlyZenTags) {
@@ -233,18 +236,20 @@ function logDeepSeekUsage(usageData, temperature, lastMsg, msgCounts) {
   log(`[MODEL] ${usageData._model || "unknown"}`);
   log(`[OVERRIDE] temperature: ${temperature}`);
   log("[MESSAGE COUNT]");
-  log(`  user: ${msgCounts.user}`);
   log(`  injected: ${msgCounts.injected}`);
   log(`  zen: ${zenMsgs}`);
-  log(`  response: ${respMsgs}`);
   log(`  tool: ${msgCounts.tool}`);
+  log(`  user: ${msgCounts.user}`);
+  log(`  response: ${respMsgs}`);
   log(`  session: ${msgCounts.session}`);
+  const requestTokens = Math.max(0, prompt - _sessionRequestTokens);
+  _sessionRequestTokens = prompt;
+
   log("[TOKEN COUNT]");
-  log(`  CACHED: ${cachedPct}`);
-  log(`  request: ${prompt}`);
+  log(`  request: ${requestTokens} (cached: ${cachedPct})`);
   log(`  response: ${completion}`);
   log(`  session: ${total}`);
-  log(`[REQUEST]:\n${(lastMsg || "").slice(0, 500)}`);
+  log(`[USER]:\n${(lastMsg || "").slice(0, 500)}`);
 }
 
 // ─── Express app ──────────────────────────────────────────────────────────
@@ -258,7 +263,7 @@ app.use(express.json({ limit: "10mb" }));
 app.post("/v1/session/start", (req, res) => {
   const body = req.body || {};
   const sessionId = body.session_id || randomBytes(8).toString("hex");
-  const projectDir = process.cwd();
+  const projectDir = body.project_dir || process.cwd();
   const now = new Date();
 
   const logDir = join(__dirname, "logs");
@@ -283,6 +288,9 @@ app.post("/v1/session/start", (req, res) => {
 
   writeFileSync(LOG_FILE, header);
 
+  _sessionRequestTokens = 0;
+  _sessionActive = true;
+
   res.json({ status: "ok", log_file: LOG_FILE, session_id: sessionId });
 });
 
@@ -306,25 +314,6 @@ app.post(["/v1/chat/completions", "/chat/completions"], async (req, res) => {
   // Mutate request
   data.thinking = { type: THINKING_MODE };
   delete data.temperature;
-
-  // Append "\n\ntalk less" to last user message
-  for (let i = data.messages.length - 1; i >= 0; i--) {
-    const msg = data.messages[i];
-    if (msg.role !== "user") continue;
-    const c = msg.content;
-    if (typeof c === "string") {
-      msg.content = c + "\n\ntalk less";
-    } else if (Array.isArray(c)) {
-      for (let j = c.length - 1; j >= 0; j--) {
-        const p = c[j];
-        if (typeof p === "object" && "text" in p) {
-          p.text = p.text + "\n\ntalk less";
-          break;
-        }
-      }
-    }
-    break;
-  }
 
   const temperature = getTemperatureFromRequest(data.messages);
   data.temperature = temperature;
