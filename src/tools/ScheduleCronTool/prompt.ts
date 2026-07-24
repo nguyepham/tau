@@ -67,64 +67,64 @@ export const CRON_LIST_TOOL_NAME = 'CronList'
 
 export function buildCronCreateDescription(durableEnabled: boolean): string {
   return durableEnabled
-    ? 'Schedule a prompt to run at a future time — either recurring on a cron schedule, or once at a specific time. Pass durable: true to persist to .claude/scheduled_tasks.json; otherwise session-only.'
-    : 'Schedule a prompt to run at a future time within this Claude session — either recurring on a cron schedule, or once at a specific time.'
+    ? 'Schedule a prompt at a future time — recurring on cron or one-shot. Pass durable: true to persist to .claude/scheduled_tasks.json; otherwise session-only.'
+    : 'Schedule a prompt at a future time within this Claude session — recurring on cron or one-shot.'
 }
 
 export function buildCronCreatePrompt(durableEnabled: boolean): string {
   const durabilitySection = durableEnabled
     ? `## Durability
 
-By default (durable: false) the job lives only in this Claude session — nothing is written to disk, and the job is gone when Claude exits. Pass durable: true to write to .claude/scheduled_tasks.json so the job survives restarts. Only use durable: true when the user explicitly asks for the task to persist ("keep doing this every day", "set this up permanently"). Most "remind me in 5 minutes" / "check back in an hour" requests should stay session-only.`
+Default (durable: false): job lives only in this Claude session — nothing to disk, gone on exit. Pass durable: true to write to .claude/scheduled_tasks.json so job survives restarts. Only use durable: true when user explicitly asks for persistence ("keep doing this every day", "set this up permanently"). Most "remind me in 5 minutes" / "check back in an hour" should stay session-only.`
     : `## Session-only
 
-Jobs live only in this Claude session — nothing is written to disk, and the job is gone when Claude exits.`
+Jobs live only in this Claude session — nothing to disk, gone on exit.`
 
   const durableRuntimeNote = durableEnabled
-    ? 'Durable jobs persist to .claude/scheduled_tasks.json and survive session restarts — on next launch they resume automatically. One-shot durable tasks that were missed while the REPL was closed are surfaced for catch-up. Session-only jobs die with the process. '
+    ? 'Durable jobs persist to .claude/scheduled_tasks.json, survive restarts — resume on next launch. Missed one-shot durable tasks surfaced for catch-up. Session-only jobs die with process. '
     : ''
 
-  return `Schedule a prompt to be enqueued at a future time. Use for both recurring schedules and one-shot reminders.
+  return `Schedule a prompt at a future time. Use for recurring schedules + one-shot reminders.
 
-Uses standard 5-field cron in the user's local timezone: minute hour day-of-month month day-of-week. "0 9 * * *" means 9am local — no timezone conversion needed.
+Uses standard 5-field cron in local timezone: minute hour day-of-month month day-of-week. "0 9 * * *" = 9am local — no timezone conversion needed.
 
 ## One-shot tasks (recurring: false)
 
-For "remind me at X" or "at <time>, do Y" requests — fire once then auto-delete.
+For "remind me at X" or "at <time>, do Y" — fire once then auto-delete.
 Pin minute/hour/day-of-month/month to specific values:
-  "remind me at 2:30pm today to check the deploy" → cron: "30 14 <today_dom> <today_month> *", recurring: false
-  "tomorrow morning, run the smoke test" → cron: "57 8 <tomorrow_dom> <tomorrow_month> *", recurring: false
+  "remind me at 2:30pm today to check deploy" → cron: "30 14 <today_dom> <today_month> *", recurring: false
+  "tomorrow morning, run smoke test" → cron: "57 8 <tomorrow_dom> <tomorrow_month> *", recurring: false
 
-## Recurring jobs (recurring: true, the default)
+## Recurring jobs (recurring: true, default)
 
-For "every N minutes" / "every hour" / "weekdays at 9am" requests:
+For "every N minutes" / "every hour" / "weekdays at 9am":
   "*/5 * * * *" (every 5 min), "0 * * * *" (hourly), "0 9 * * 1-5" (weekdays at 9am local)
 
-## Avoid the :00 and :30 minute marks when the task allows it
+## Avoid :00 and :30 minute marks when task allows
 
-Every user who asks for "9am" gets \`0 9\`, and every user who asks for "hourly" gets \`0 *\` — which means requests from across the planet land on the API at the same instant. When the user's request is approximate, pick a minute that is NOT 0 or 30:
+Every "9am" request gets \`0 9\`, every "hourly" gets \`0 *\` — requests from across planet land on API at same instant. When request approximate, pick minute NOT 0 or 30:
   "every morning around 9" → "57 8 * * *" or "3 9 * * *" (not "0 9 * * *")
   "hourly" → "7 * * * *" (not "0 * * * *")
-  "in an hour or so, remind me to..." → pick whatever minute you land on, don't round
+  "in an hour or so, remind me to..." → pick whatever minute, don't round
 
-Only use minute 0 or 30 when the user names that exact time and clearly means it ("at 9:00 sharp", "at half past", coordinating with a meeting). When in doubt, nudge a few minutes early or late — the user will not notice, and the fleet will.
+Only use minute 0 or 30 when user names exact time and clearly means it ("at 9:00 sharp", "at half past", coordinating with meeting). When in doubt, nudge a few minutes early or late — user won't notice, fleet will.
 
 ${durabilitySection}
 
 ## Runtime behavior
 
-Jobs only fire while the REPL is idle (not mid-query). ${durableRuntimeNote}The scheduler adds a small deterministic jitter on top of whatever you pick: recurring tasks fire up to 10% of their period late (max 15 min); one-shot tasks landing on :00 or :30 fire up to 90 s early. Picking an off-minute is still the bigger lever.
+Jobs only fire while REPL idle (not mid-query). ${durableRuntimeNote}Scheduler adds deterministic jitter: recurring tasks fire up to 10% of period late (max 15 min); one-shot tasks on :00 or :30 fire up to 90 s early. Off-minute is still bigger lever.
 
-Recurring tasks auto-expire after ${DEFAULT_MAX_AGE_DAYS} days — they fire one final time, then are deleted. This bounds session lifetime. Tell the user about the ${DEFAULT_MAX_AGE_DAYS}-day limit when scheduling recurring jobs.
+Recurring tasks auto-expire after ${DEFAULT_MAX_AGE_DAYS} days — fire one final time, then deleted. Bounds session lifetime. Tell user about ${DEFAULT_MAX_AGE_DAYS}-day limit when scheduling recurring jobs.
 
-Returns a job ID you can pass to ${CRON_DELETE_TOOL_NAME}.`
+Returns job ID for ${CRON_DELETE_TOOL_NAME}.`
 }
 
 export const CRON_DELETE_DESCRIPTION = 'Cancel a scheduled cron job by ID'
 export function buildCronDeletePrompt(durableEnabled: boolean): string {
   return durableEnabled
-    ? `Cancel a cron job previously scheduled with ${CRON_CREATE_TOOL_NAME}. Removes it from .claude/scheduled_tasks.json (durable jobs) or the in-memory session store (session-only jobs).`
-    : `Cancel a cron job previously scheduled with ${CRON_CREATE_TOOL_NAME}. Removes it from the in-memory session store.`
+    ? `Cancel a cron job scheduled with ${CRON_CREATE_TOOL_NAME}. Removes from .claude/scheduled_tasks.json (durable) or in-memory session store (session-only).`
+    : `Cancel a cron job scheduled with ${CRON_CREATE_TOOL_NAME}. Removes from in-memory session store.`
 }
 
 export const CRON_LIST_DESCRIPTION = 'List scheduled cron jobs'

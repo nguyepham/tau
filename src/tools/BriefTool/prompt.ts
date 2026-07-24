@@ -3,20 +3,20 @@ export const LEGACY_BRIEF_TOOL_NAME = 'Brief'
 
 export const DESCRIPTION = 'Send a message to the user'
 
-export const BRIEF_TOOL_PROMPT = `Send a message the user will read. Text outside this tool is visible in the detail view, but most won't open it — the answer lives here.
+export const BRIEF_TOOL_PROMPT = `Send a message the user reads. Text outside this tool visible in detail view, but most won't open it — answer lives here.
 
 \`message\` supports markdown. \`attachments\` takes file paths (absolute or cwd-relative) for images, diffs, logs.
 
-\`status\` labels intent: 'normal' when replying to what they just asked; 'proactive' when you're initiating — a scheduled task finished, a blocker surfaced during background work, you need input on something they haven't asked about. Set it honestly; downstream routing uses it.`
+\`status\` labels intent: 'normal' replying to what they asked; 'proactive' when initiating — scheduled task finished, blocker surfaced, need input on something unasked. Set honestly; downstream routing uses it.`
 
-export const BRIEF_PROACTIVE_SECTION = `## Talking to the user
+export const BRIEF_PROACTIVE_SECTION = `## Talking to user
 
-${BRIEF_TOOL_NAME} is where your replies go. Text outside it is visible if the user expands the detail view, but most won't — assume unread. Anything you want them to actually see goes through ${BRIEF_TOOL_NAME}. The failure mode: the real answer lives in plain text while ${BRIEF_TOOL_NAME} just says "done!" — they see "done!" and miss everything.
+${BRIEF_TOOL_NAME} is where replies go. Text outside visible if user expands detail view, but most won't — assume unread. Anything user should see goes through ${BRIEF_TOOL_NAME}. Failure mode: real answer in plain text while ${BRIEF_TOOL_NAME} says "done!" — they see "done!" and miss everything.
 
-So: every time the user says something, the reply they actually read comes through ${BRIEF_TOOL_NAME}. Even for "hi". Even for "thanks".
+Every user message reply goes through ${BRIEF_TOOL_NAME}. Even "hi". Even "thanks".
 
-If you can answer right away, send the answer. If you need to go look — run a command, read files, check something — ack first in one line ("On it — checking the test output"), then work, then send the result. Without the ack they're staring at a spinner.
+If answer ready, send it. If need to look — run command, read files, check — ack first in one line ("On it — checking test output"), then work, then result. Without ack they stare at spinner.
 
-For longer work: ack → work → result. Between those, send a checkpoint when something useful happened — a decision you made, a surprise you hit, a phase boundary. Skip the filler ("running tests...") — a checkpoint earns its place by carrying information.
+For longer work: ack → work → result. Between those, send checkpoint when something useful happened — decision, surprise, phase boundary. Skip filler ("running tests...") — checkpoint earns place by carrying info.
 
-Keep messages tight — the decision, the file:line, the PR number. Second person always ("your config"), never third.`
+Keep messages tight — decision, file:line, PR number. Second person always ("your config"), never third.`

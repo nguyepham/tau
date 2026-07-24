@@ -1,76 +1,76 @@
 export const DESCRIPTION = 'Update a task in the task list'
 
-export const PROMPT = `Use this tool to update a task in the task list.
+export const PROMPT = `Update a task in task list.
 
-## When to Use This Tool
+## When to Use
 
-**Mark tasks as resolved:**
-- When you have completed the work described in a task
-- When a task is no longer needed or has been superseded
-- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
-- After resolving, call TaskList to find your next task
+**Mark tasks resolved:**
+- Completed work described in task
+- Task no longer needed or superseded
+- IMPORTANT: Always mark assigned tasks resolved when finished
+- After resolving, call TaskList for next task
 
-- ONLY mark a task as completed when you have FULLY accomplished it
-- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
-- When blocked, create a new task describing what needs to be resolved
-- Never mark a task as completed if:
-  - Tests are failing
-  - Implementation is partial
-  - You encountered unresolved errors
-  - You couldn't find necessary files or dependencies
+- ONLY mark completed when FULLY accomplished
+- Errors, blockers, or cannot finish? Keep as in_progress
+- When blocked, create new task describing what needs resolution
+- Never mark completed if:
+  - Tests failing
+  - Implementation partial
+  - Unresolved errors
+  - Couldn't find necessary files or dependencies
 
 **Delete tasks:**
-- When a task is no longer relevant or was created in error
-- Setting status to \`deleted\` permanently removes the task
+- Task no longer relevant or created in error
+- Set status to \`deleted\` to permanently remove
 
 **Update task details:**
-- When requirements change or become clearer
-- When establishing dependencies between tasks
+- Requirements change or become clearer
+- Establishing dependencies between tasks
 
 ## Fields You Can Update
 
-- **status**: The task status (see Status Workflow below)
-- **subject**: Change the task title (imperative form, e.g., "Run tests")
-- **description**: Change the task description
+- **status**: Task status (see Status Workflow below)
+- **subject**: Change title (imperative form, e.g., "Run tests")
+- **description**: Change description
 - **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
-- **owner**: Change the task owner (agent name)
-- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
-- **addBlocks**: Mark tasks that cannot start until this one completes
-- **addBlockedBy**: Mark tasks that must complete before this one can start
+- **owner**: Change owner (agent name)
+- **metadata**: Merge metadata keys (set key to null to delete)
+- **addBlocks**: Tasks that cannot start until this one completes
+- **addBlockedBy**: Tasks that must complete before this one starts
 
 ## Status Workflow
 
-Status progresses: \`pending\` → \`in_progress\` → \`completed\`
+\`pending\` → \`in_progress\` → \`completed\`
 
-Use \`deleted\` to permanently remove a task.
+Use \`deleted\` to permanently remove.
 
 ## Staleness
 
-Make sure to read a task's latest state using \`TaskGet\` before updating it.
+Read task's latest state with \`TaskGet\` before updating.
 
 ## Examples
 
-Mark task as in progress when starting work:
+Mark in progress:
 \`\`\`json
 {"taskId": "1", "status": "in_progress"}
 \`\`\`
 
-Mark task as completed after finishing work:
+Mark completed:
 \`\`\`json
 {"taskId": "1", "status": "completed"}
 \`\`\`
 
-Delete a task:
+Delete:
 \`\`\`json
 {"taskId": "1", "status": "deleted"}
 \`\`\`
 
-Claim a task by setting owner:
+Claim by setting owner:
 \`\`\`json
 {"taskId": "1", "owner": "my-name"}
 \`\`\`
 
-Set up task dependencies:
+Set dependencies:
 \`\`\`json
 {"taskId": "2", "addBlockedBy": ["1"]}
 \`\`\`

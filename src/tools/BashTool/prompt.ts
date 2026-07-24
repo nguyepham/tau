@@ -41,7 +41,7 @@ function getBackgroundUsageNote(): string | null {
   if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)) {
     return null
   }
-  return "Use `run_in_background: true` to run a long-running command as a tracked background task. This is required for servers, watchers, port-forwards, SSH tunnels, and foreground container runs you would otherwise detach. Do not put `&`, `nohup`, `disown`, `echo $!`, `docker compose up -d`, or `docker run -d` in the command; keep log redirection, remove shell-level detaching, and set `run_in_background: true` on the tool call instead. Examples: `uvicorn app:app --host 0.0.0.0 > \"$TMPDIR/app.log\" 2>&1`, `kubectl port-forward svc/api 8080:80`, or `docker compose up`, with `run_in_background: true`. You will be notified when it finishes and can stop it by task ID."
+  return "Use `run_in_background: true` for long-running commands as tracked background tasks. Required for servers, watchers, port-forwards, SSH tunnels, foreground container runs. Do not put `&`, `nohup`, `disown`, `echo $!`, `docker compose up -d`, or `docker run -d` in command; keep log redirection, remove shell-level detaching, set `run_in_background: true` on tool call. Examples: `uvicorn app:app --host 0.0.0.0 > \"$TMPDIR/app.log\" 2>&1`, `kubectl port-forward svc/api 8080:80`, or `docker compose up`, with `run_in_background: true`. Notified on completion; can stop by task ID."
 }
 
 function getCommitAndPRInstructions(): string {
@@ -286,12 +286,12 @@ export function getSimplePrompt(): string {
     ...(embedded
       ? []
       : [
-          `File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)`,
-          `Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)`,
+          `File search: ${GLOB_TOOL_NAME} (NOT find or ls)`,
+          `Content search: ${GREP_TOOL_NAME} (NOT grep or rg)`,
         ]),
-    `Read files: Use ${FILE_READ_TOOL_NAME} (NOT cat/head/tail)`,
-    `Edit files: Use ${FILE_EDIT_TOOL_NAME} (NOT sed/awk)`,
-    `Write files: Use ${FILE_WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)`,
+    `Read files: ${FILE_READ_TOOL_NAME} (NOT cat/head/tail)`,
+    `Edit files: ${FILE_EDIT_TOOL_NAME} (NOT sed/awk)`,
+    `Write files: ${FILE_WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)`,
     'Communication: Output text directly (NOT echo/printf)',
   ]
 
@@ -300,35 +300,35 @@ export function getSimplePrompt(): string {
     : '`find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo`'
 
   const multipleCommandsSubitems = [
-    `If the commands are independent and can run in parallel, make multiple ${BASH_TOOL_NAME} tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two ${BASH_TOOL_NAME} tool calls in parallel.`,
-    `If the commands depend on each other and must run sequentially, use a single ${BASH_TOOL_NAME} call with '&&' to chain them together.`,
-    "Use ';' only when you need to run commands sequentially but don't care if earlier commands fail.",
-    'DO NOT use newlines to separate commands (newlines are ok in quoted strings).',
+    `Independent + can run in parallel: multiple ${BASH_TOOL_NAME} calls in single message. E.g., "git status" + "git diff" as two parallel calls.`,
+    `Dependent + must run sequentially: single ${BASH_TOOL_NAME} call with '&&' to chain.`,
+    "Use ';' only when running sequentially but don't care if earlier fail.",
+    'DO NOT use newlines to separate commands (ok in quoted strings).',
   ]
 
   const gitSubitems = [
-    'Prefer to create a new commit rather than amending an existing commit.',
-    'Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative that achieves the same goal. Only use destructive operations when they are truly the best approach.',
-    'Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue.',
+    'Prefer new commit over amending existing.',
+    'Before destructive ops (git reset --hard, git push --force, git checkout --), consider safer alternative. Only use destructive when truly best approach.',
+    'Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless user explicitly asks. If hook fails, investigate + fix underlying issue.',
   ]
 
   const sleepSubitems = [
     'Do not sleep between commands that can run immediately — just run them.',
     ...(feature('MONITOR_TOOL')
       ? [
-          'Use the Monitor tool to stream events from a background process (each stdout line is a notification). For one-shot "wait until done," use Bash with run_in_background instead.',
+          'Use Monitor tool to stream events from background process (each stdout line = notification). For one-shot "wait until done," use Bash with run_in_background.',
         ]
       : []),
-    'If your command is long running and you would like to be notified when it finishes — use `run_in_background`. No sleep needed.',
-    'Do not retry failing commands in a sleep loop — diagnose the root cause.',
-    'If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.',
+    'Long-running command? Use `run_in_background`. No sleep needed — notified on completion.',
+    'Do not retry failing commands in sleep loop — diagnose root cause.',
+    'If waiting for background task started with `run_in_background`, notified on completion — do not poll.',
     ...(feature('MONITOR_TOOL')
       ? [
-          '`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.',
+          '`sleep N` as first command with N ≥ 2 blocked. If need delay (rate limiting, pacing), keep under 2 seconds.',
         ]
       : [
-          'If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.',
-          'If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.',
+          'If must poll external process, use check command (e.g. `gh run view`) rather than sleeping first.',
+          'If must sleep, keep short (1-5 seconds) to avoid blocking user.',
         ]),
   ]
   const backgroundNote = getBackgroundUsageNote()
@@ -343,47 +343,43 @@ export function getSimplePrompt(): string {
   }
 
   const instructionItems: Array<string | string[]> = [
-    'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
-    'Always quote filepaths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
-    'To target a different directory, resolve it to an absolute path and put that path in the command itself. Prefer the command\'s own path/directory flag when one exists (for example `git -C /absolute/path status`, `npm --prefix /absolute/path run build`, `docker compose -f /absolute/path/docker-compose.yml down`) or pass the exact absolute file/directory path as an argument. Avoid `cd <dir> && <command>` unless the user explicitly asks.',
-    'When the user names a specific directory to act on (e.g. "stop the container in C:/proj/TP1", "run the build in ./service-b"), you MUST target that exact directory by using its absolute path or the command\'s own path flag. NEVER fall back to running in the current session cwd just because a command would succeed there: the cwd may hold a DIFFERENT project (another compose file, another package), so a bare `docker compose down` / `npm run` / `mvn ...` would silently act on the wrong target. If the named directory is outside the current tree, pass its absolute path.',
-    'Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run `pwd` plus a directory listing or manifest search first; do not assume folders like `frontend` exist under the current session cwd.',
-    'CRITICAL: Before running commands that depend on a specific directory (docker compose, npm, python, etc.), ALWAYS verify the target exists first using Glob or Read. Do NOT guess or hallucinate paths. If the target is not in the current directory, use ABSOLUTE PATHS with command flags (e.g., `docker compose -f /absolute/path/to/compose.yml up -d`) or absolute path arguments instead of relying on the current directory.',
-    'Run normal Bash commands directly. Use `plan_only: true` only when the user explicitly asks for a dry-run plan; do not use it as a routine preflight for Python, package-manager, build, test, or cleanup commands.',
-    `You may specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). By default, your command will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).`,
+    'If creating new directories/files, first run `ls` to verify parent directory exists + correct location.',
+    'Always quote filepaths with spaces in double quotes (e.g., cd "path with spaces/file.txt")',
+    'To target different directory, resolve to absolute path in command. Prefer command\'s own path/directory flag (e.g. `git -C /absolute/path status`, `npm --prefix /absolute/path run build`, `docker compose -f /absolute/path/docker-compose.yml down`) or pass absolute file/directory path as argument. Avoid `cd <dir> && <command>` unless user explicitly asks.',
+    'When user names specific directory (e.g. "stop container in C:/proj/TP1", "run build in ./service-b"), MUST target exact directory with absolute path or command\'s path flag. NEVER fall back to current session cwd — cwd may hold DIFFERENT project (another compose file, another package), so bare `docker compose down` / `npm run` / `mvn ...` silently acts on wrong target. If named directory outside current tree, pass absolute path.',
+    'Before build/test/package-manager commands for subproject, verify target directory + manifest exist in active cwd. If unsure, run `pwd` + directory listing or manifest search; do not assume folders like `frontend` exist under current session cwd.',
+    'CRITICAL: Before commands depending on specific directory (docker compose, npm, python, etc.), ALWAYS verify target exists with Glob or Read. Do NOT guess or hallucinate paths. If target not in current directory, use ABSOLUTE PATHS with command flags (e.g., `docker compose -f /absolute/path/to/compose.yml up -d`) or absolute path arguments instead of relying on current directory.',
+    'Run normal Bash directly. Use `plan_only: true` only when user explicitly asks for dry-run plan; not as routine preflight for Python, package-manager, build, test, or cleanup.',
+    `Optional timeout in ms (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} min). Default: ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} min).`,
     ...(backgroundNote !== null ? [backgroundNote] : []),
     'Shell correctness rules:',
     commandBestPractices,
     'Platform-specific shell rules:',
     platformBestPractices,
-    'When issuing multiple commands:',
+    'Multiple commands:',
     multipleCommandsSubitems,
-    'For git commands:',
+    'Git commands:',
     gitSubitems,
-    'Avoid unnecessary `sleep` commands:',
+    'Avoid unnecessary `sleep`:',
     sleepSubitems,
     ...(embedded
       ? [
-          // bfs (which backs `find`) uses Oniguruma for -regex, which picks the
-          // FIRST matching alternative (leftmost-first), unlike GNU find's
-          // POSIX leftmost-longest. This silently drops matches when a shorter
-          // alternative is a prefix of a longer one.
-          "When using `find -regex` with alternation, put the longest alternative first. Example: use `'.*\\.\\(tsx\\|ts\\)'` not `'.*\\.\\(ts\\|tsx\\)'` — the second form silently skips `.tsx` files.",
+          "When using `find -regex` with alternation, put longest alternative first. Example: `'.*\\.\\(tsx\\|ts\\)'` not `'.*\\.\\(ts\\|tsx\\)'` — second form silently skips `.tsx` files.",
         ]
       : []),
   ]
 
   return [
-    'Executes a given bash command and returns its output.',
+    'Execute bash command, return output.',
     '',
-    "The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile (bash or zsh).",
+    'Working directory persists between commands; shell state does not. Shell environment initialized from user profile (bash or zsh).',
     '',
-    'Directory awareness: whenever a command runs anywhere other than the session cwd — or the session cwd itself moves or drifts from the project root — the result includes a bracketed note stating the directory it actually ran in. ALWAYS trust these notes over your memory of earlier `cd` calls, especially in long sessions. To run a command against another directory, use that directory\'s absolute path in the command itself or use the command\'s native path flag; do not rely on remembered shell cwd state.',
+    'Directory awareness: when command runs outside session cwd — or cwd drifts from project root — result includes bracketed note stating actual directory. ALWAYS trust these notes over memory of earlier `cd` calls. To target another directory, use absolute path in command or native path flag; do not rely on remembered shell cwd state.',
     '',
-    `IMPORTANT: Avoid using this tool to run ${avoidCommands} commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:`,
+    `IMPORTANT: Avoid running ${avoidCommands} commands unless explicitly instructed or after verifying dedicated tool cannot accomplish task. Use dedicated tool instead — better user experience:`,
     '',
     ...prependBullets(toolPreferenceItems),
-    `While the ${BASH_TOOL_NAME} tool can do similar things, it’s better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.`,
+    `Built-in tools provide better UX + easier review and permission granting than ${BASH_TOOL_NAME}.`,
     '',
     '# Instructions',
     ...prependBullets(instructionItems),

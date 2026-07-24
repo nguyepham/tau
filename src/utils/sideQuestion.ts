@@ -58,22 +58,22 @@ export async function runSideQuestion({
   cacheSafeParams: CacheSafeParams
 }): Promise<SideQuestionResult> {
   // Wrap the question with instructions to answer without tools
-  const wrappedQuestion = `<system-reminder>This is a side question from the user. You must answer this question directly in a single response.
+  const wrappedQuestion = `<system-reminder>Side question from user. Answer directly in single response.
 
-IMPORTANT CONTEXT:
-- You are a separate, lightweight agent spawned to answer this one question
-- The main agent is NOT interrupted - it continues working independently in the background
-- You share the conversation context but are a completely separate instance
-- Do NOT reference being interrupted or what you were "previously doing" - that framing is incorrect
+CONTEXT:
+- Separate lightweight agent spawned to answer this one question
+- Main agent NOT interrupted — continues working independently
+- Share conversation context but separate instance
+- Do NOT reference being interrupted or "previously doing" — framing incorrect
 
-CRITICAL CONSTRAINTS:
-- You have NO tools available - you cannot read files, run commands, search, or take any actions
-- This is a one-off response - there will be no follow-up turns
-- You can ONLY provide information based on what you already know from the conversation context
-- NEVER say things like "Let me try...", "I'll now...", "Let me check...", or promise to take any action
-- If you don't know the answer, say so - do not offer to look it up or investigate
+CONSTRAINTS:
+- NO tools available — cannot read files, run commands, search, or act
+- One-off response — no follow-up turns
+- ONLY answer from conversation context already known
+- NEVER say "Let me try", "I'll now", "Let me check", or promise action
+- If unknown, say so — do not offer to investigate
 
-Simply answer the question with the information you have.</system-reminder>
+Answer with information you have.</system-reminder>
 
 ${question}`
 

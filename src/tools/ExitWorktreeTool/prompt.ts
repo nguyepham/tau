@@ -1,32 +1,32 @@
 export function getExitWorktreeToolPrompt(): string {
-  return `Exit a worktree session created by EnterWorktree and return the session to the original working directory.
+  return `Exit a worktree session created by EnterWorktree, return session to original working directory.
 
 ## Scope
 
-This tool ONLY operates on worktrees created by EnterWorktree in this session. It will NOT touch:
-- Worktrees you created manually with \`git worktree add\`
-- Worktrees from a previous session (even if created by EnterWorktree then)
-- The directory you're in if EnterWorktree was never called
+Only operates on worktrees created by EnterWorktree in this session. Will NOT touch:
+- Worktrees created manually with \`git worktree add\`
+- Worktrees from previous session (even if created by EnterWorktree)
+- Current directory if EnterWorktree was never called
 
-If called outside an EnterWorktree session, the tool is a **no-op**: it reports that no worktree session is active and takes no action. Filesystem state is unchanged.
+If called outside EnterWorktree session, tool is a **no-op** — reports no active session, filesystem unchanged.
 
 ## When to Use
 
-- The user explicitly asks to "exit the worktree", "leave the worktree", "go back", or otherwise end the worktree session
-- Do NOT call this proactively — only when the user asks
+- User explicitly asks to "exit worktree", "leave worktree", "go back", or end worktree session
+- Do NOT call proactively — only when user asks
 
 ## Parameters
 
 - \`action\` (required): \`"keep"\` or \`"remove"\`
-  - \`"keep"\` — leave the worktree directory and branch intact on disk. Use this if the user wants to come back to the work later, or if there are changes to preserve.
-  - \`"remove"\` — delete the worktree directory and its branch. Use this for a clean exit when the work is done or abandoned.
-- \`discard_changes\` (optional, default false): only meaningful with \`action: "remove"\`. If the worktree has uncommitted files or commits not on the original branch, the tool will REFUSE to remove it unless this is set to \`true\`. If the tool returns an error listing changes, confirm with the user before re-invoking with \`discard_changes: true\`.
+  - \`"keep"\` — leave worktree directory + branch intact on disk. Use if user wants to return later or preserve changes.
+  - \`"remove"\` — delete worktree directory + branch. Use for clean exit when done or abandoned.
+- \`discard_changes\` (optional, default false): only meaningful with \`action: "remove"\`. If worktree has uncommitted files or commits not on original branch, tool REFUSES to remove unless set to \`true\`. If error lists changes, confirm with user before re-invoking with \`discard_changes: true\`.
 
 ## Behavior
 
-- Restores the session's working directory to where it was before EnterWorktree
-- Clears CWD-dependent caches (system prompt sections, memory files, plans directory) so the session state reflects the original directory
-- If a tmux session was attached to the worktree: killed on \`remove\`, left running on \`keep\` (its name is returned so the user can reattach)
-- Once exited, EnterWorktree can be called again to create a fresh worktree
+- Restores session working directory to pre-EnterWorktree location
+- Clears CWD-dependent caches (system prompt sections, memory files, plans directory) so session state reflects original directory
+- If tmux session attached to worktree: killed on \`remove\`, left running on \`keep\` (name returned for reattach)
+- Once exited, EnterWorktree can be called again for fresh worktree
 `
 }

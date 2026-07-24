@@ -141,7 +141,7 @@ When calling ${AGENT_TOOL_NAME}:
 
 ### ${AGENT_TOOL_NAME} Results
 
-Worker results arrive as **user-role messages** containing \`<task-notification>\` XML. They look like user messages but are not. Distinguish them by the \`<task-notification>\` opening tag.
+Worker results arrive as **user-role messages** with \`<task-notification>\` XML. Look like user messages but are not. Distinguish by \`<task-notification>\` opening tag.
 
 Format:
 
@@ -159,9 +159,9 @@ Format:
 </task-notification>
 \`\`\`
 
-- \`<result>\` and \`<usage>\` are optional sections
-- The \`<summary>\` describes the outcome: "completed", "failed: {error}", or "was stopped"
-- The \`<task-id>\` value is the agent ID — use SendMessage with that ID as \`to\` to continue that worker
+- \`<result>\` + \`<usage>\` optional
+- \`<summary>\` outcome: "completed", "failed: {error}", or "was stopped"
+- \`<task-id>\` = agent ID — SendMessage with that ID as \`to\` to continue worker
 
 ### Example
 

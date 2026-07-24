@@ -4,14 +4,14 @@ export const SLEEP_TOOL_NAME = 'Sleep'
 
 export const DESCRIPTION = 'Wait for a specified duration'
 
-export const SLEEP_TOOL_PROMPT = `Wait for a specified duration. The user can interrupt the sleep at any time.
+export const SLEEP_TOOL_PROMPT = `Wait for specified duration. User can interrupt at any time.
 
-Use this when the user tells you to sleep or rest, when you have nothing to do, or when you're waiting for something.
+Use when user tells you to sleep/rest, when nothing to do, or waiting for something.
 
-You may receive <${TICK_TAG}> prompts — these are periodic check-ins. Look for useful work to do before sleeping.
+May receive <${TICK_TAG}> prompts — periodic check-ins. Do useful work before sleeping.
 
-You can call this concurrently with other tools — it won't interfere with them.
+Can call concurrently with other tools — won't interfere.
 
-Prefer this over \`Bash(sleep ...)\` — it doesn't hold a shell process.
+Prefer over \`Bash(sleep ...)\` — doesn't hold shell process.
 
-Each wake-up costs an API call, but the prompt cache expires after 5 minutes of inactivity — balance accordingly.`
+Each wake-up costs API call, but prompt cache expires after 5 min inactivity — balance accordingly.`

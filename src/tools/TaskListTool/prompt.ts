@@ -25,25 +25,25 @@ When working as a teammate:
 `
     : ''
 
-  return `Use this tool to list all tasks in the task list.
+  return `List all tasks in task list.
 
-## When to Use This Tool
+## When to Use
 
-- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
-- To check overall progress on the project
-- To find tasks that are blocked and need dependencies resolved
-${teammateUseCase}- After completing a task, to check for newly unblocked work or claim the next available task
-- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+- See available tasks (status: 'pending', no owner, not blocked)
+- Check overall project progress
+- Find blocked tasks needing dependency resolution
+${teammateUseCase}- After completing task, check for newly unblocked work or claim next available task
+- **Prefer tasks in ID order** (lowest ID first) when multiple available — earlier tasks often set up context for later ones
 
 ## Output
 
-Returns a summary of each task:
+Summary of each task:
 ${idDescription}
-- **subject**: Brief description of the task
+- **subject**: Brief description
 - **status**: 'pending', 'in_progress', or 'completed'
 - **owner**: Agent ID if assigned, empty if available
-- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+- **blockedBy**: Open task IDs that must resolve first (tasks with blockedBy cannot be claimed until dependencies resolve)
 
-Use TaskGet with a specific task ID to view full details including description and comments.
+Use TaskGet with specific task ID for full details including description + comments.
 ${teammateWorkflow}`
 }

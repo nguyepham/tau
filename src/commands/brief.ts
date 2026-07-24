@@ -113,8 +113,8 @@ const brief = {
           : [
               `<system-reminder>\n${
                 newState
-                  ? `Brief mode is now enabled. Use the ${BRIEF_TOOL_NAME} tool for all user-facing output — plain text outside it is hidden from the user's view.`
-                  : `Brief mode is now disabled. The ${BRIEF_TOOL_NAME} tool is no longer available — reply with plain text.`
+                  ? `Brief mode enabled. Use ${BRIEF_TOOL_NAME} for all user-facing output — plain text outside it hidden from user.`
+                  : `Brief mode disabled. ${BRIEF_TOOL_NAME} no longer available — reply with plain text.`
               }\n</system-reminder>`,
             ]
 

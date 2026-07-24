@@ -30,22 +30,22 @@ export function renderPromptTemplate(
   maxSizeInstruction: string,
   offsetInstruction: string,
 ): string {
-  return `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool can read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+  return `Read a file from local filesystem. Access any file directly.
+Assume tool can read all files on machine. If user provides path, assume valid. Reading non-existent file returns error.
 
 Usage:
-- The file_path parameter must be an absolute path, not a relative path
-- By default, it reads up to ${MAX_LINES_TO_READ} lines starting from the beginning of the file${maxSizeInstruction}
+- file_path must be absolute path, not relative
+- By default reads up to ${MAX_LINES_TO_READ} lines from beginning${maxSizeInstruction}
 ${offsetInstruction}
 ${lineFormat}
-- This tool allows Tau to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Tau is a multimodal LLM.${
+- Can read images (PNG, JPG, etc). Image contents presented visually.${
     isPDFSupported()
-      ? '\n- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.'
+      ? '\n- Can read PDF files. For large PDFs (>10 pages), MUST provide pages parameter for specific ranges (e.g., pages: "1-5"). Max 20 pages per request.'
       : ''
   }
-- LARGE code files auto-skeleton: a whole-file Read (no offset/limit) of a supported code file (ts/js/py/go/rs/java/rb/cs/c/cpp/php and variants) above ~16KB returns the file's STRUCTURE — imports, signatures, and class shapes with long function bodies elided — instead of full content. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the file's real line numbers. Read specific ranges (offset/limit) for the bodies you need, pass skeleton: false to force full content, or skeleton: true to force a skeleton for any supported file. Unsupported files always return a normal read. Editing still requires a full-content Read of the relevant range first.
-- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
-- This tool can only read files, not directories. To read a directory, use an ls command via the ${BASH_TOOL_NAME} tool.
-- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.`
+- LARGE code files auto-skeleton: whole-file Read (no offset/limit) of supported code file (ts/js/py/go/rs/java/rb/cs/c/cpp/php and variants) above ~16KB returns STRUCTURE — imports, signatures, class shapes with long function bodies elided. Each elision marker shows offset/limit Read to expand body. Line numbers are real file line numbers. Read specific ranges for bodies, pass skeleton: false for full content, skeleton: true to force skeleton. Unsupported files always return normal read. Editing requires full-content Read of relevant range first.
+- Can read Jupyter notebooks (.ipynb) — returns all cells with outputs, combining code, text, visualizations.
+- Can only read files, not directories. Use ls via ${BASH_TOOL_NAME} for directories.
+- When user provides screenshot path, ALWAYS use this tool to view file.
+- If file exists but empty, receives system reminder warning instead of contents.`
 }

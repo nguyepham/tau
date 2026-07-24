@@ -1,7 +1,7 @@
 export const GLOB_TOOL_NAME = 'Glob'
 
-export const DESCRIPTION = `- Fast file pattern matching tool that works with any codebase size
+export const DESCRIPTION = `- Fast file pattern matching for any codebase size
 - Supports glob patterns like "**/*.js" or "src/**/*.ts"
 - Returns matching file paths sorted by modification time
-- Use this tool when you need to find files by name patterns
-- When doing an open-ended search that may need multiple rounds of globbing + grepping, use the Agent tool instead`
+- Use to find files by name patterns
+- For open-ended search needing multiple rounds of globbing + grepping, use Agent tool instead`

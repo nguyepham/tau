@@ -49,20 +49,18 @@ export function generatePrompt(): string {
 
   return `Get or set Zen configuration settings.
 
-  View or change Zen settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.
-
+  View or change settings. Use when user requests config changes, asks about current settings, or adjusting setting benefits them.
 
 ## Usage
-- **Get current value:** Omit the "value" parameter
-- **Set new value:** Include the "value" parameter
+- **Get current value:** Omit "value" parameter
+- **Set new value:** Include "value" parameter
 
-## Configurable settings list
-The following settings are available for you to change:
+## Configurable settings
 
-### Global Settings (stored in ~/.claude.json)
+### Global Settings (~/.claude.json)
 ${globalSettings.join("\n")}
 
-### Project Settings (stored in settings.json)
+### Project Settings (settings.json)
 ${projectSettings.join("\n")}
 
 ${modelSection}

@@ -2,7 +2,7 @@ import { isCompactLinePrefixEnabled } from '../../utils/file.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
 
 function getPreReadInstruction(): string {
-  return `\n- ALWAYS read the file with the \`${FILE_READ_TOOL_NAME}\` tool before editing it - read first, every time. Your \`old_string\` must match the file's exact current contents character-for-character, so an edit made without reading first will usually fail to match (and may be stale). Never edit a file you have not just read. Do the read quietly; do not send routine "let me read" narration to the user.`
+  return `\n- ALWAYS read file with \`${FILE_READ_TOOL_NAME}\` before editing — read first, every time. \`old_string\` must match file's exact current contents character-for-character; edit without reading usually fails (or stale). Never edit file not just read. Read quietly; do not send "let me read" narration.`
 }
 
 export function getEditToolDescription(): string {
@@ -15,16 +15,16 @@ function getDefaultEditDescription(): string {
     : 'spaces + line number + arrow'
   const minimalUniquenessHint =
     process.env.USER_TYPE === 'ant'
-      ? `\n- Use the smallest old_string that's clearly unique — usually 2-4 adjacent lines is sufficient. Avoid including 10+ lines of context when less uniquely identifies the target.`
+      ? `\n- Use smallest old_string that's clearly unique — 2-4 adjacent lines usually sufficient. Avoid 10+ lines of context when less uniquely identifies target.`
       : ''
   return `Performs exact string replacements in files.
 
 Usage:${getPreReadInstruction()}
-- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: ${prefixFormat}. Everything after that is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
-- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
-- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
-- The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`.${minimalUniquenessHint}
-- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
-- Every successful edit CHANGES the file: an old_string prepared from an earlier read goes stale the moment your own edit touches that region. The success result shows the updated region — treat those lines as the ONLY source of truth for any follow-up old_string in that file, and re-read the file whenever you are not certain what it now contains.
-- If an edit fails with "String to replace not found", do NOT retry with guessed variants of old_string. The error shows the file's current content or its closest-matching region — copy old_string exactly from there (or Read the file again). If it says the edit was already applied, move on; do not re-issue it.`
+- When editing from Read tool output, preserve exact indentation (tabs/spaces) as it appears AFTER line number prefix. Line number prefix format: ${prefixFormat}. Everything after that is actual file content to match. Never include line number prefix in old_string or new_string.
+- ALWAYS prefer editing existing files. NEVER write new files unless explicitly required.
+- Only use emojis if user explicitly requests.
+- Edit FAILS if \`old_string\` not unique. Provide larger string with more context or use \`replace_all\` to change every instance.${minimalUniquenessHint}
+- Use \`replace_all\` for replacing/renaming strings across file. Useful for variable renames.
+- Every edit CHANGES file: old_string from earlier read goes stale when edit touches that region. Success result shows updated region — treat those lines as ONLY source of truth for follow-up old_string. Re-read when uncertain.
+- If edit fails with "String to replace not found", do NOT retry guessed variants. Error shows file's current content or closest-matching region — copy old_string exactly from there (or Read again). If already applied, move on; do not re-issue.`
 }

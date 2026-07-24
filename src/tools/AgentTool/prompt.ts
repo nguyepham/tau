@@ -82,17 +82,17 @@ export async function getPrompt(
 
 ## When to fork
 
-Fork yourself (omit \`subagent_type\`) when the intermediate tool output isn't worth keeping in your context. The criterion is qualitative \u2014 "will I need this output again" \u2014 not task size.
-- **Research**: fork open-ended questions. If research can be broken into independent questions, launch parallel forks in one message. A fork beats a fresh subagent for this \u2014 it inherits context and shares your cache.
-- **Implementation**: prefer to fork implementation work that requires more than a couple of edits. Do research before jumping to implementation.
+Fork yourself (omit \`subagent_type\`) when intermediate tool output isn't worth keeping in context. Criterion qualitative — "will I need this output again" — not task size.
+- **Research**: fork open-ended questions. Break into independent questions, launch parallel forks in one message. Fork beats fresh subagent — inherits context + shares cache.
+- **Implementation**: prefer fork for work requiring more than a couple edits. Research before jumping to implementation.
 
-Forks are cheap because they share your prompt cache. Don't set \`model\` on a fork \u2014 a different model can't reuse the parent's cache. Pass a short \`name\` (one or two words, lowercase) so the user can see the fork in the teams panel and steer it mid-run.
+Forks cheap — share prompt cache. Don't set \`model\` on fork — different model can't reuse parent's cache. Pass short \`name\` (one/two words, lowercase) so user sees fork in teams panel + can steer mid-run.
 
-**Don't peek.** The tool result includes an \`output_file\` path — do not Read or tail it unless the user explicitly asks for a progress check. You get a completion notification; trust it. Reading the transcript mid-flight pulls the fork's tool noise into your context, which defeats the point of forking.
+**Don't peek.** Tool result includes \`output_file\` path — do not Read or tail unless user explicitly asks progress check. Completion notification arrives; trust it. Reading transcript mid-flight pulls fork's tool noise into context, defeating forking purpose.
 
-**Don't race.** After launching, you know nothing about what the fork found. Never fabricate or predict fork results in any format — not as prose, summary, or structured output. The notification arrives as a user-role message in a later turn; it is never something you write yourself. If the user asks a follow-up before the notification lands, tell them the fork is still running — give status, not a guess.
+**Don't race.** After launch, know nothing about fork findings. Never fabricate or predict fork results — not as prose, summary, or structured output. Notification arrives as user-role message in later turn; never something you write. If user asks follow-up before notification lands, tell them fork still running — give status, not guess.
 
-**Writing a fork prompt.** Since the fork inherits your context, the prompt is a *directive* — what to do, not what the situation is. Be specific about scope: what's in, what's out, what another agent is handling. Don't re-explain background.
+**Writing fork prompt.** Fork inherits context, so prompt is *directive* — what to do, not what situation is. Be specific about scope: what's in, what's out, what another agent handles. Don't re-explain background.
 `
     : ''
 
@@ -100,16 +100,16 @@ Forks are cheap because they share your prompt cache. Don't set \`model\` on a f
 
 ## Writing the prompt
 
-${forkEnabled ? 'When spawning a fresh agent (with a `subagent_type`), it starts with zero context. ' : ''}Brief the agent like a smart colleague who just walked into the room — it hasn't seen this conversation, doesn't know what you've tried, doesn't understand why this task matters.
-- Explain what you're trying to accomplish and why.
-- Describe what you've already learned or ruled out.
-- Give enough context about the surrounding problem that the agent can make judgment calls rather than just following a narrow instruction.
-- If you need a short response, say so ("report in under 200 words").
-- Lookups: hand over the exact command. Investigations: hand over the question — prescribed steps become dead weight when the premise is wrong.
+${forkEnabled ? 'Fresh agent (with `subagent_type`) starts with zero context. ' : ''}Brief agent like smart colleague who just walked in — hasn't seen conversation, doesn't know what you've tried, doesn't understand why task matters.
+- Explain what + why.
+- Describe what you've learned or ruled out.
+- Give enough surrounding problem context for judgment calls, not just narrow instruction.
+- If need short response, say so ("report in under 200 words").
+- Lookups: hand over exact command. Investigations: hand over question — prescribed steps become dead weight when premise wrong.
 
-${forkEnabled ? 'For fresh agents, terse' : 'Terse'} command-style prompts produce shallow, generic work.
+${forkEnabled ? 'Fresh agents: terse' : 'Terse'} command-style prompts produce shallow, generic work.
 
-**Never delegate understanding.** Don't write "based on your findings, fix the bug" or "based on the research, implement it." Those phrases push synthesis onto the agent instead of doing it yourself. Write prompts that prove you understood: include file paths, line numbers, what specifically to change.
+**Never delegate understanding.** Don't write "based on findings, fix bug" or "based on research, implement it." Those push synthesis onto agent instead of doing it. Write prompts proving you understood: include file paths, line numbers, what specifically to change.
 `
 
   const forkExamples = `Example usage:
@@ -194,21 +194,21 @@ assistant: "I'm going to use the ${AGENT_TOOL_NAME} tool to launch the greeting-
   const listViaAttachment = shouldInjectAgentListInMessages()
 
   const agentListSection = listViaAttachment
-    ? `Available agent types are listed in <system-reminder> messages in the conversation.`
+    ? `Available agent types listed in <system-reminder> messages in conversation.`
     : `Available agent types and the tools they have access to:
 ${effectiveAgents.map(agent => formatAgentLine(agent)).join('\n')}`
 
   // Shared core prompt used by both coordinator and non-coordinator modes
-  const shared = `Launch a new agent to handle complex, multi-step tasks autonomously.
+  const shared = `Launch new agent for complex, multi-step tasks autonomously.
 
-The ${AGENT_TOOL_NAME} tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
+${AGENT_TOOL_NAME} launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities + available tools.
 
 ${agentListSection}
 
 ${
   forkEnabled
-    ? `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type to use a specialized agent, or omit it to fork yourself — a fork inherits your full conversation context.`
-    : `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.`
+    ? `Specify subagent_type to use specialized agent, or omit to fork yourself — fork inherits full conversation context.`
+    : `Specify subagent_type to select agent type. If omitted, general-purpose agent used.`
 }`
 
   // Coordinator mode gets the slim prompt -- the coordinator system prompt
@@ -232,11 +232,11 @@ ${
   const whenNotToUseSection = forkEnabled
     ? ''
     : `
-When NOT to use the ${AGENT_TOOL_NAME} tool:
-- If you want to read a specific file path, use the ${FILE_READ_TOOL_NAME} tool or ${fileSearchHint} instead of the ${AGENT_TOOL_NAME} tool, to find the match more quickly
-- If you are searching for a specific class definition like "class Foo", use ${contentSearchHint} instead, to find the match more quickly
-- If you are searching for code within a specific file or set of 2-3 files, use the ${FILE_READ_TOOL_NAME} tool instead of the ${AGENT_TOOL_NAME} tool, to find the match more quickly
-- Other tasks that are not related to the agent descriptions above
+When NOT to use ${AGENT_TOOL_NAME}:
+- Reading specific file path: use ${FILE_READ_TOOL_NAME} or ${fileSearchHint} instead — faster
+- Searching class definition like "class Foo": use ${contentSearchHint} instead — faster
+- Searching code within specific file or 2-3 files: use ${FILE_READ_TOOL_NAME} instead — faster
+- Tasks unrelated to agent descriptions above
 `
 
   // When listing via attachment, the "launch multiple agents" note is in the
@@ -253,33 +253,33 @@ When NOT to use the ${AGENT_TOOL_NAME} tool:
 ${whenNotToUseSection}
 
 Usage notes:
-- Always include a short description (3-5 words) summarizing what the agent will do${concurrencyNote}
-- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.${
+- Always include short description (3-5 words) summarizing what agent will do${concurrencyNote}
+- Agent returns single message on completion. Result not visible to user. To show user result, send text message with concise summary.${
     // eslint-disable-next-line custom-rules/no-process-env-top-level
     !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS) &&
     !isInProcessTeammate() &&
     !forkEnabled
       ? `
-- You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
-- **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.`
+- Optionally run agents in background with run_in_background param. Auto-notified on completion — do NOT sleep, poll, or proactively check progress. Continue other work or respond to user.
+- **Foreground vs background**: Use foreground (default) when need agent's results before proceeding — e.g., research informing next steps. Use background when genuinely independent work to do in parallel.`
       : ''
   }
-- To continue a previously spawned agent, use ${SEND_MESSAGE_TOOL_NAME} with the agent's ID or name as the \`to\` field. The agent resumes with its full context preserved. ${forkEnabled ? 'Each fresh Agent invocation with a subagent_type starts without context — provide a complete task description.' : 'Each Agent invocation starts fresh — provide a complete task description.'}
-- The agent's outputs should generally be trusted
-- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.)${forkEnabled ? '' : ", since it is not aware of the user's intent"}
-- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
-- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple ${AGENT_TOOL_NAME} tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
-- You can optionally set \`isolation: "worktree"\` to run the agent in an isolated workspace. It uses Git/hooks when available and a filtered snapshot copy otherwise. The workspace is automatically cleaned up if the agent makes no changes; if changes are made, the workspace path is returned in the result.${
+- Continue previously spawned agent with ${SEND_MESSAGE_TOOL_NAME} using agent's ID or name as \`to\`. Agent resumes with full context preserved. ${forkEnabled ? 'Each fresh Agent with subagent_type starts without context — provide complete task description.' : 'Each Agent starts fresh — provide complete task description.'}
+- Agent outputs generally trusted
+- Clearly tell agent whether to write code or do research (search, file reads, web fetches, etc.)${forkEnabled ? '' : " — agent not aware of user's intent"}
+- If agent description says use proactively, use without user asking. Use judgement.
+- If user says run agents "in parallel", MUST send single message with multiple ${AGENT_TOOL_NAME} tool use content blocks.
+- Optionally set \`isolation: "worktree"\` to run agent in isolated workspace. Uses Git/hooks when available, filtered snapshot copy otherwise. Workspace auto-cleaned if agent makes no changes; if changes made, workspace path returned in result.${
     process.env.USER_TYPE === 'ant'
-      ? `\n- You can set \`isolation: "remote"\` to run the agent in a remote CCR environment. This is always a background task; you'll be notified when it completes. Use for long-running tasks that need a fresh sandbox.`
+      ? `\n- Set \`isolation: "remote"\` to run agent in remote CCR environment. Always background task; notified on completion. Use for long-running tasks needing fresh sandbox.`
       : ''
   }${
     isInProcessTeammate()
       ? `
-- The run_in_background, name, team_name, and mode parameters are not available in this context. Only synchronous subagents are supported.`
+- run_in_background, name, team_name, mode not available in this context. Only synchronous subagents supported.`
       : isTeammate()
         ? `
-- The name, team_name, and mode parameters are not available in this context — teammates cannot spawn other teammates. Omit them to spawn a subagent.`
+- name, team_name, mode not available — teammates cannot spawn other teammates. Omit to spawn subagent.`
         : ''
   }${whenToForkSection}${writingThePromptSection}
 
