@@ -223,6 +223,7 @@ function countMessages(messages) {
 
 function logDeepSeekUsage(usageData, temperature, lastMsg, msgCounts) {
   const hit = usageData.prompt_cache_hit_tokens || 0;
+  const miss = usageData.prompt_cache_miss_tokens || 0;
   const prompt = usageData.prompt_tokens || 0;
   const completion = usageData.completion_tokens || 0;
   const total = usageData.total_tokens || 0;
@@ -247,6 +248,7 @@ function logDeepSeekUsage(usageData, temperature, lastMsg, msgCounts) {
 
   log("[TOKEN COUNT]");
   log(`  request: ${requestTokens} (cached: ${cachedPct})`);
+  log(`  miss: ${miss}`);
   log(`  response: ${completion}`);
   log(`  session: ${total}`);
   log(`[USER]:\n${(lastMsg || "").slice(0, 500)}`);

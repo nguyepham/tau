@@ -71,8 +71,8 @@
       "properties": {
         "zen.command": {
           "type": "string",
-          "default": "zen",
-          "markdownDescription": "Command that starts the Zen ACP agent. Defaults to the globally-linked `zen`. Set to `node` (with `zen.args` pointing at `dist/zen.mjs acp`) to run from a checkout."
+          "default": "node",
+          "markdownDescription": "Command that starts the Zen ACP agent. Defaults to the globally-linked `zen`. Set to `node` (with `zen.args` pointing at `dist/tau.mjs acp`) to run from a checkout."
         },
         "zen.args": {
           "type": "array",
@@ -80,6 +80,7 @@
             "type": "string"
           },
           "default": [
+            "/home/nguye24/harness/zen/dist/tau.mjs",
             "acp"
           ],
           "description": "Arguments passed to the Zen command to start the ACP server."
