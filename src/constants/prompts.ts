@@ -1018,7 +1018,7 @@ export function getUnameSR(): string {
   return `${osType()} ${osRelease()}`
 }
 
-export const DEFAULT_AGENT_PROMPT = `You are an agent for Tau, a multi-provider AI coding CLI. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials.`
+export const DEFAULT_AGENT_PROMPT = `Agent for Tau multi-provider AI coding CLI. Use tools to complete task fully. No gold-plating, no half-done state. Respond with concise report of work done + key findings.`
 
 export async function enhanceSystemPromptWithEnvDetails(
   existingSystemPrompt: string[],
@@ -1104,7 +1104,7 @@ function getFunctionResultClearingSection(model: string): string | null {
 Old tool results will be automatically cleared from context to free up space. The ${config.keepRecent} most recent results are always kept.`
 }
 
-const SUMMARIZE_TOOL_RESULTS_SECTION = `When working with tool results, write down any important information you might need later in your response, as the original tool result may be cleared later.`
+const SUMMARIZE_TOOL_RESULTS_SECTION = `Old tool results cleared automatically. Record essential information in response text.`
 
 function getBriefSection(): string | null {
   if (!(feature('KAIROS') || feature('KAIROS_BRIEF'))) return null

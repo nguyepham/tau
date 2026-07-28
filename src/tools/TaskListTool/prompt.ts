@@ -4,46 +4,33 @@ export const DESCRIPTION = 'List all tasks in the task list'
 
 export function getPrompt(): string {
   const teammateUseCase = isAgentSwarmsEnabled()
-    ? `- Before assigning tasks to teammates, to see what's available
+    ? `- Check available tasks before teammate assignment
 `
     : ''
 
-  const idDescription = isAgentSwarmsEnabled()
-    ? '- **id**: Task identifier (use with TaskGet, TaskUpdate)'
-    : '- **id**: Task identifier (use with TaskGet, TaskUpdate)'
+  const idDescription = '- **id**: Task identifier'
 
   const teammateWorkflow = isAgentSwarmsEnabled()
-    ? `
-## Teammate Workflow
-
-When working as a teammate:
-1. After completing your current task, call TaskList to find available work
-2. Look for tasks with status 'pending', no owner, and empty blockedBy
-3. **Prefer tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
-4. Claim an available task using TaskUpdate (set \`owner\` to your name), or wait for leader assignment
-5. If blocked, focus on unblocking tasks or notify the team lead
-`
+    ? `\nTeammate Workflow:
+1. Complete current task => call TaskList for next task.
+2. Target: status 'pending', no owner, empty \`blockedBy\`.
+3. Prefer tasks in ID order (lowest ID first).
+4. Claim via TaskUpdate (\`owner: <name>\`).`
     : ''
 
-  return `Use this tool to list all tasks in the task list.
+  return `List all tasks in task list.
 
-## When to Use This Tool
+When to use:
+- Check available tasks ('pending', no owner, unblocked).
+- Track project progress.
+- Find blocked tasks.
+${teammateUseCase}- Prefer tasks in ID order (lowest ID first).
 
-- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
-- To check overall progress on the project
-- To find tasks that are blocked and need dependencies resolved
-${teammateUseCase}- After completing a task, to check for newly unblocked work or claim the next available task
-- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
-
-## Output
-
-Returns a summary of each task:
+Returns array of task summaries:
 ${idDescription}
-- **subject**: Brief description of the task
-- **status**: 'pending', 'in_progress', or 'completed'
-- **owner**: Agent ID if assigned, empty if available
-- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
-
-Use TaskGet with a specific task ID to view full details including description and comments.
+- \`subject\`: brief title
+- \`status\`: 'pending' | 'in_progress' | 'completed'
+- \`owner\`: agent ID or empty
+- \`blockedBy\`: blocking task IDs
 ${teammateWorkflow}`
 }

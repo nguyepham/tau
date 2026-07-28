@@ -1,30 +1,24 @@
 export function getEnterWorktreeToolPrompt(): string {
-  return `Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
+  return `Use ONLY when user explicitly asks for worktree. Creates isolated git worktree + switches session cwd into it.
 
-## When to Use
+When to use:
+- User explicitly says "worktree".
 
-- The user explicitly says "worktree" (e.g., "start a worktree", "work in a worktree", "create a worktree", "use a worktree")
+Omit when:
+- Creating/switching branches (use git commands).
+- Fixing bugs or implementing features without explicit worktree request.
 
-## When NOT to Use
+Requirements:
+- Git repo OR WorktreeCreate/WorktreeRemove hooks configured.
+- Not already in worktree.
 
-- The user asks to create a branch, switch branches, or work on a different branch — use git commands instead
-- The user asks to fix a bug or work on a feature — use normal git workflow unless they specifically mention worktrees
-- Never use this tool unless the user explicitly mentions "worktree"
+Behavior:
+- Git repo => create git worktree in \`.claude/worktrees/\` on new branch.
+- Outside git repo => delegate to WorktreeCreate hook.
+- Switch cwd to worktree.
+- Exit via ExitWorktree tool.
 
-## Requirements
-
-- Must be in a git repository, OR have WorktreeCreate/WorktreeRemove hooks configured in settings.json
-- Must not already be in a worktree
-
-## Behavior
-
-- In a git repository: creates a new git worktree inside \`.claude/worktrees/\` with a new branch based on HEAD
-- Outside a git repository: delegates to WorktreeCreate/WorktreeRemove hooks for VCS-agnostic isolation
-- Switches the session's working directory to the new worktree
-- Use ExitWorktree to leave the worktree mid-session (keep or remove). On session exit, if still in the worktree, the user will be prompted to keep or remove it
-
-## Parameters
-
-- \`name\` (optional): A name for the worktree. If not provided, a random name is generated.
+Parameters:
+- \`name\` (optional): worktree name.
 `
 }

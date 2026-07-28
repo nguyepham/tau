@@ -6,15 +6,15 @@ export { FILE_WRITE_TOOL_NAME } from './constants.js'
 export const DESCRIPTION = 'Write a file to the local filesystem.'
 
 function getPreReadInstruction(): string {
-  return `\n- ALWAYS read an existing file with the ${FILE_READ_TOOL_NAME} tool before overwriting it - read first, every time. \`Write\` replaces the ENTIRE file, so overwriting one you have not read risks destroying its contents, and this tool will refuse until you do. Do the read quietly; do not send routine "let me read" narration to the user. To change only part of a file, use the Edit tool instead (it reads + edits in place).`
+  return `\n- Read existing file with ${FILE_READ_TOOL_NAME} before overwriting. Quiet tool use (omit narration).`
 }
 
 export function getWriteToolDescription(): string {
-  return `Writes a file to the local filesystem.
+  return `Writes file to local filesystem.
 
 Usage:
-- This tool will overwrite the existing file if there is one at the provided path.${getPreReadInstruction()}
-- Prefer the Edit tool for modifying existing files \u2014 it only sends the diff. Only use this tool to create new files or for complete rewrites.
-- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
-- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`
+- Overwrites file at target path.${getPreReadInstruction()}
+- Prefer Edit tool for partial modifications. Use Write for new files or full rewrites.
+- Documentation/README files forbidden without explicit ask.
+- Omit emojis unless requested.`
 }

@@ -67,8 +67,8 @@ export const CRON_LIST_TOOL_NAME = 'CronList'
 
 export function buildCronCreateDescription(durableEnabled: boolean): string {
   return durableEnabled
-    ? 'Schedule a prompt to run at a future time — either recurring on a cron schedule, or once at a specific time. Pass durable: true to persist to .claude/scheduled_tasks.json; otherwise session-only.'
-    : 'Schedule a prompt to run at a future time within this Claude session — either recurring on a cron schedule, or once at a specific time.'
+    ? 'Schedule prompt at future time (cron recurring or one-shot). Set `durable: true` to persist in `.claude/scheduled_tasks.json`.'
+    : 'Schedule prompt at future time within current session (cron recurring or one-shot).'
 }
 
 export function buildCronCreatePrompt(durableEnabled: boolean): string {

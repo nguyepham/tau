@@ -25,68 +25,64 @@ export function isLearnedAction(s: string): s is LearnedAction {
 
 /** The bar every lesson must clear. Shared by the menu actions and the
  * end-of-task offer so "what counts as a lesson" is defined in one place. */
-export const LESSON_QUALITY_BAR = `## What counts as a lesson
-A lesson is a **single concentrated bullet** capturing something **critical and general** — a reusable principle you would want to carry into the NEXT project (same stack/template or a different one). It must be worth interrupting the user to save.
+export const LESSON_QUALITY_BAR = `## Lesson criteria
+Lesson = single concentrated portable bullet. Critical + general principle for future projects.
 
-Save things like:
-- **Framework / library judgement** — e.g. when to reach for plain HTML vs a React component, server- vs client-rendering, a hook/lifecycle pitfall, an idiom that should be the default.
-- **A whole class of bug and how to avoid it** — e.g. stale closures in effects, timezone/locale handling, off-by-one in pagination, unescaped braces in a config format.
-- **Hard-won constraints or gotchas** of a tool, API, runtime, or environment.
-- **Architecture / workflow principles** that clearly paid off.
-- **User preferences** — how this user likes things done (style, tooling, process, how they want you to communicate).
+Save:
+- Framework/library tradeoffs (React vs HTML, server vs client rendering, hook pitfalls).
+- Bug class prevention (stale closures, timezone issues, off-by-one errors).
+- Runtime/API gotchas or hard constraints.
+- Architecture principles + user preferences.
 
-Do NOT save: project-specific trivia, one-off fixes, routine implementation steps, anything obvious from reading the code, or a restatement of the task. When in doubt, save nothing — a junk lesson is worse than no lesson.
-
-A good lesson is **portable**: no file paths, symbol names, or line numbers — phrase it as a general rule. Pick \`type\`: \`user\`/\`feedback\` for preferences, \`project\`/\`reference\` for technical principles.`
+Omit:
+- Project trivia, one-off fixes, routine steps, code-obvious facts, specific file paths/line numbers/symbols.
+- No general lesson => save nothing.`
 
 /** Shared header with the live active-memory path. */
 function header(): string {
   const activeDir = getAutoMemPath()
   return `# Self-Learning
 
-Approved lessons live in the active memory dir: \`${activeDir}\` — as topic files marked \`origin: learned\` in their frontmatter, each with a one-line pointer in \`MEMORY.md\`. They are loaded and used from the NEXT session on (writing one mid-session never affects the current session's cache).
+Active memory dir: \`${activeDir}\`. Approved lessons live as topic files with \`origin: learned\` in frontmatter + \`MEMORY.md\` pointer. Active from next session.
 
-This command is **only** about managing learned lessons. Do NOT resume, continue, or offer to continue any other task from the conversation — even if one is pending. Do exactly the one action below, then stop.`
+Manage learned lessons only. Resume/continue other tasks forbidden. Do specified action then stop.`
 }
 
 const SHARED_RULES = `## Rules
-- Always confirm before deleting or overwriting.
-- An approved lesson = a topic file in the active memory dir carrying \`origin: learned\` + a one-line \`MEMORY.md\` pointer (\`- [Title](file.md) — short hook\`, under ~150 chars). That pointer is what makes it active next session — never skip it.
-- Only ever touch \`origin: learned\` files and their \`MEMORY.md\` pointer lines. Never modify the user's own (non-\`origin: learned\`) memories unless they explicitly ask.`
+- Confirm before deleting or overwriting.
+- Approved lesson = topic file with \`origin: learned\` + one-line \`MEMORY.md\` pointer (\`- [Title](file.md) - hook\`, <150 chars).
+- Touch \`origin: learned\` files only. User memory edits forbidden without explicit ask.`
 
 const PROMPTS: Record<LearnedAction, () => string> = {
   view: () => {
     const stagingDir = getAutoMemLearnedPath()
     return `${header()}
 
-## Task: show what I've learned
-List every active lesson — the \`origin: learned\` files in the active memory dir — as concise bullet points (one per lesson, its general takeaway). These are what Tau actually uses. If there are none, say so.
+## Task: list active lessons
+List active lessons (\`origin: learned\` files) as concise bullets (general takeaways).
 
-Then check \`${stagingDir}\` for any leftover staged proposals from the old two-step flow. If any exist, list them separately under **Leftover proposals** and offer to either **activate** them (move the file into the active dir + add a \`MEMORY.md\` pointer) or **delete** them. If the dir is empty or missing, ignore it. Otherwise change nothing.
+Check \`${stagingDir}\` for leftover staged proposals. Leftovers present => list under **Leftover proposals** + offer activate or delete. Empty/missing => ignore.
 
 ${SHARED_RULES}`
   },
 
   learn: () => `${header()}
 
-## Task: learn from this session
-Reflect on the CURRENT conversation and extract only lessons that clear the bar below. If nothing clears it, say so plainly — that is the correct outcome most of the time; never invent a lesson to have one.
+## Task: extract session lessons
+Extract lessons clearing criteria below. Nothing clears criteria => say so plainly + save nothing.
 
 ${LESSON_QUALITY_BAR}
 
-For EACH candidate lesson, present it as a single concentrated bullet (a general principle) and use the **AskUserQuestion** tool with exactly these options — never more than 4:
-- **Approve** — save it and use it from now on.
-- **Edit wording** — let me reword it before saving.
-- **Skip** — discard this one.
+Candidate lesson => present single bullet + call AskUserQuestion (max 4 options: Approve, Edit wording, Skip).
 
-Handle ONE lesson per AskUserQuestion call (so options never exceed 4). For each approved (or edited) lesson, save it as a topic file in the active memory dir with frontmatter \`name\`, \`description\`, \`type\` (user/feedback/project/reference), \`origin: learned\`, \`learnedAt: <today's date, YYYY-MM-DD>\`, then the general takeaway as the body — AND add its one-line \`MEMORY.md\` pointer. It is active from the next session.
+One lesson per AskUserQuestion call. Approved/edited lesson => save topic file in active memory dir (\`origin: learned\`, \`learnedAt: YYYY-MM-DD\`) + add one-line \`MEMORY.md\` pointer.
 
 ${SHARED_RULES}`,
 
   edit: () => `${header()}
 
-## Task: edit a lesson
-List the active lessons (\`origin: learned\` files) as a **numbered list**, one bullet each. Do NOT use the AskUserQuestion tool for this list — there may be more than 4 lessons, and AskUserQuestion is capped at 4 options. Ask the user to reply with the number (or name) of the lesson to edit. Then show its current content, apply the change they describe by rewriting that file, keep its \`MEMORY.md\` pointer in sync, and keep the result a concentrated, portable bullet that still clears the bar below.
+## Task: edit lesson
+List active lessons (\`origin: learned\` files) as numbered list. AskUserQuestion forbidden for this list. User picks number/name => show content, apply requested change, sync \`MEMORY.md\` pointer, maintain portable bullet format.
 
 ${LESSON_QUALITY_BAR}
 
@@ -94,8 +90,8 @@ ${SHARED_RULES}`,
 
   delete: () => `${header()}
 
-## Task: delete a lesson
-List the active lessons (\`origin: learned\` files) as a **numbered list**, one bullet each. Do NOT use the AskUserQuestion tool for this list — there may be more than 4 lessons, and AskUserQuestion is capped at 4 options. Ask the user which one(s) are not worth keeping. Confirm, then delete the file(s) AND remove their matching \`MEMORY.md\` pointer line(s).
+## Task: delete lesson
+List active lessons (\`origin: learned\` files) as numbered list. AskUserQuestion forbidden for this list. User picks targets => confirm, delete file(s), remove matching \`MEMORY.md\` pointer line(s).
 
 ${SHARED_RULES}`,
 }

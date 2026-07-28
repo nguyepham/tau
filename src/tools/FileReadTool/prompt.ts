@@ -31,17 +31,16 @@ export function renderPromptTemplate(
   maxSizeInstruction: string,
   offsetInstruction: string,
 ): string {
-  return `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+  return `Reads file from local filesystem.
 
 Usage:
-- The file_path parameter must be an absolute path, not a relative path
-- By default, it reads up to ${MAX_LINES_TO_READ} lines starting from the beginning of the file${maxSizeInstruction}
+- \`file_path\`: absolute path.
+- Default limit: up to ${MAX_LINES_TO_READ} lines from file start.${maxSizeInstruction}
 ${offsetInstruction}
 ${lineFormat}
-- This tool allows Tau to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Tau is a multimodal LLM.${
+- Multimodal: renders image files visually (PNG, JPG).${
     isPDFSupported()
-      ? '\n- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.'
+      ? '\n- PDF (.pdf): large PDFs (>10 pages) require `pages` parameter (max 20 pages).'
       : ''
   }
 - LARGE code files auto-skeleton: a whole-file Read (no offset/limit) of a supported code file (ts/js/py/go/rs/java/rb/cs/c/cpp/php and variants) above ~16KB returns the file's STRUCTURE — imports, signatures, and class shapes with long function bodies elided — instead of full content. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the file's real line numbers. Read specific ranges (offset/limit) for the bodies you need, pass skeleton: false to force full content, or skeleton: true to force a skeleton for any supported file. Unsupported files always return a normal read. Editing still requires a full-content Read of the relevant range first.
