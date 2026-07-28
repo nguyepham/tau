@@ -75,74 +75,28 @@ export async function getPrompt(): Promise<string> {
   const sleepGuidance = getSleepGuidance()
   const edition = await getPowerShellEdition()
 
-  return `Executes a given PowerShell command with optional timeout. Working directory persists between commands; shell state (variables, functions) does not.
+  return `Executes PowerShell command. Working directory persists; shell state does not.
 
-Directory awareness: whenever a command runs anywhere other than the session cwd — or the session cwd moves or drifts from the project root — the result includes a bracketed note stating the directory it actually ran in. ALWAYS trust these notes over your memory of earlier directory changes, especially in long sessions. To target another directory, encode that absolute path in the command itself or use the command's native location flag.
+Directory awareness: trust bracketed directory note in tool outputs over remembered state. Target other directories via absolute path or command location flags.
 
-IMPORTANT: This tool is for terminal operations via PowerShell: git, npm, docker, and PS cmdlets. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+Avoid using PowerShell for file operations (read, write, edit, search) - use dedicated tools.
 
 ${getEditionSection(edition)}
 
-Before executing the command, please follow these steps:
-
-1. Directory Verification:
-   - If the command will create new directories or files, first use \`Get-ChildItem\` (or \`ls\`) to verify the parent directory exists and is the correct location
-   - Before running build/test/package-manager commands for a subproject, verify the target directory and manifest exist in the active cwd. If unsure, run \`Get-Location\` plus a directory listing or manifest search first; do not assume folders like \`frontend\` exist under the current session cwd.
-
-2. Command Execution:
-   - Always quote file paths that contain spaces with double quotes
-   - Capture the output of the command.
-
-PowerShell Syntax Notes:
-   - Variables use $ prefix: $myVar = "value"
-   - Escape character is backtick (\`), not backslash
-   - Use Verb-Noun cmdlet naming: Get-ChildItem, Set-Location, New-Item, Remove-Item
-   - Common aliases: ls (Get-ChildItem), cd (Set-Location), cat (Get-Content), rm (Remove-Item)
-   - Pipe operator | works similarly to bash but passes objects, not text
-   - Use Select-Object, Where-Object, ForEach-Object for filtering and transformation
-   - String interpolation: "Hello $name" or "Hello $($obj.Property)"
-   - Registry access uses PSDrive prefixes: \`HKLM:\\SOFTWARE\\...\`, \`HKCU:\\...\` — NOT raw \`HKEY_LOCAL_MACHINE\\...\`
-   - Environment variables: read with \`$env:NAME\`, set with \`$env:NAME = "value"\` (NOT \`Set-Variable\` or bash \`export\`)
-   - Call native exe with spaces in path via call operator: \`& "C:\\Program Files\\App\\app.exe" arg1 arg2\`
-
-Interactive and blocking commands (will hang — this tool runs with -NonInteractive):
-   - NEVER use \`Read-Host\`, \`Get-Credential\`, \`Out-GridView\`, \`$Host.UI.PromptForChoice\`, or \`pause\`
-   - Destructive cmdlets (\`Remove-Item\`, \`Stop-Process\`, \`Clear-Content\`, etc.) may prompt for confirmation. Add \`-Confirm:$false\` when you intend the action to proceed. Use \`-Force\` for read-only/hidden items.
-   - Never use \`git rebase -i\`, \`git add -i\`, or other commands that open an interactive editor
-
-Passing multiline strings (commit messages, file content) to native executables:
-   - Use a single-quoted here-string so PowerShell does not expand \`$\` or backticks inside. The closing \`'@\` MUST be at column 0 (no leading whitespace) on its own line — indenting it is a parse error:
-<example>
-git commit -m @'
-Commit message here.
-Second line with $literal dollar signs.
-'@
-</example>
-   - Use \`@'...'@\` (single-quoted, literal) not \`@"..."@\` (double-quoted, interpolated) unless you need variable expansion
-   - For arguments containing \`-\`, \`@\`, or other characters PowerShell parses as operators, use the stop-parsing token: \`git log --% --format=%H\`
-
-Usage notes:
-  - The command argument is required.
-  - You can specify an optional timeout in milliseconds (up to ${getMaxTimeoutMs()}ms / ${getMaxTimeoutMs() / 60000} minutes). If not specified, commands will timeout after ${getDefaultTimeoutMs()}ms (${getDefaultTimeoutMs() / 60000} minutes).
-  - It is very helpful if you write a clear, concise description of what this command does.
-  - If the output exceeds ${getMaxOutputLength()} characters, output will be truncated before being returned to you.
+Usage:
+- Verify parent directory exists before creating files/directories.
+- Quote paths with spaces.
+- Non-interactive mode only: avoid Read-Host, Get-Credential, interactive editors.
+- Use \`-Confirm:$false\` for destructive cmdlets.
+- Herestring for multiline: @'...'@ with closing '@ at column 0.
+- Optional timeout: up to ${getMaxTimeoutMs()}ms (default ${getDefaultTimeoutMs()}ms).
 ${backgroundNote ? backgroundNote + '\n' : ''}\
-  - Avoid using PowerShell to run commands that have dedicated tools, unless explicitly instructed:
-    - File search: Use ${GLOB_TOOL_NAME} (NOT Get-ChildItem -Recurse)
-    - Content search: Use ${GREP_TOOL_NAME} (NOT Select-String)
-    - Read files: Use ${FILE_READ_TOOL_NAME} (NOT Get-Content)
-    - Edit files: Use ${FILE_EDIT_TOOL_NAME}
-    - Write files: Use ${FILE_WRITE_TOOL_NAME} (NOT Set-Content/Out-File)
-    - Communication: Output text directly (NOT Write-Output/Write-Host)
-  - When issuing multiple commands:
-    - If the commands are independent and can run in parallel, make multiple ${POWERSHELL_TOOL_NAME} tool calls in a single message.
-    - If the commands depend on each other and must run sequentially, chain them in a single ${POWERSHELL_TOOL_NAME} call (see edition-specific chaining syntax above).
-    - Use \`;\` only when you need to run commands sequentially but don't care if earlier commands fail.
-    - DO NOT use newlines to separate commands (newlines are ok in quoted strings and here-strings)
-  - To target a different directory, put its absolute path directly in the command or use the command's native location flag (for example \`git -C <absolute-dir>\`, \`npm --prefix <absolute-dir>\`, \`docker compose -f <absolute-compose-file>\`, \`terraform -chdir=<absolute-dir>\`). Do not repeat a bare command from the wrong directory.
+- Dedicated tools:
+  - File search: ${GLOB_TOOL_NAME}
+  - Content search: ${GREP_TOOL_NAME}
+  - Read files: ${FILE_READ_TOOL_NAME}
+  - Edit files: ${FILE_EDIT_TOOL_NAME}
+  - Write files: ${FILE_WRITE_TOOL_NAME}
 ${sleepGuidance ? sleepGuidance + '\n' : ''}\
-  - For git commands:
-    - Prefer to create a new commit rather than amending an existing commit.
-    - Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative that achieves the same goal. Only use destructive operations when they are truly the best approach.
-    - Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue.`
+- Git: create NEW commits instead of amending. Confirm before destructive git ops. Never skip hooks.`
 }

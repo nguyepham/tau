@@ -1,30 +1,25 @@
 export const SNAPSHOT_TOOL_NAME = 'Snapshot'
 
 export const DESCRIPTION =
-  'Save, list, diff, or restore working-tree snapshots stored in a shadow git repo. Independent of the project .git.'
+  'Save, list, diff, or restore working-tree snapshots in shadow git repo. Independent of project .git.'
 
-export const SNAPSHOT_TOOL_PROMPT = `Manage working-tree snapshots stored in a shadow git repository under the user's data directory. Snapshots never touch the project's real .git — they are a safe undo layer.
+export const SNAPSHOT_TOOL_PROMPT = `Manage working-tree snapshots in shadow git repo. Undo layer independent of project .git.
 
 When to use:
-- Before a risky edit or multi-step refactor, take a "save" snapshot so you can revert if it goes wrong.
-- If edits broke something, call "list", pick the last good hash, then "restore".
-- Use "diff" to inspect what would change before calling "restore".
+- Save snapshot before risky edit or multi-step refactor.
+- Restore from list hash if edits break build.
+- Diff before restore.
 
 Actions:
-- "save": Stage every modified/untracked file (files >2 MB are auto-excluded) and commit. Returns a snapshot hash. Optional \`label\` for a human-readable note (e.g., "before adding auth"). Always succeeds with a hash even if nothing changed.
-- "list": Return the most recent snapshots with hash, ISO timestamp, and label.
-- "diff": Return per-file differences between the CURRENT working tree and the snapshot. The result is an array of {file, status, binary, additions, deletions, patch}. A "+"-line in the patch is content currently in the working tree that the snapshot does NOT have — restoring would remove it. A "-"-line is content the snapshot has that the working tree lacks — restoring would bring it back. Use this to preview what "restore" would do. Optionally pass \`compareHash\` to diff snapshot \`hash\` (base) against ANOTHER snapshot (target) instead of the working tree — e.g. to compare two saved snapshots without restoring either.
-- "restore": Atomically load the snapshot's tree into the working tree (via read-tree + checkout-index). Does NOT delete files that exist now but are absent from the snapshot — only overwrites files the snapshot contains.
+- \`save\`: stage files + commit. Optional \`label\`.
+- \`list\`: return recent snapshots (hash, ISO timestamp, label).
+- \`diff\`: per-file differences between working tree and snapshot (or base vs target hash).
+- \`restore\`: load snapshot tree into working tree.
 
-Inputs:
-- \`action\` (required): one of "save", "list", "diff", "restore".
-- \`hash\` (required for "diff" and "restore"): full or unambiguous prefix.
-- \`compareHash\` (optional, "diff" only): a second snapshot hash. Diffs \`hash\` (base) → \`compareHash\` (target) instead of comparing against the working tree.
-- \`label\` (optional, "save" only): short human-readable description.
-- \`limit\` (optional, "list" only): max entries (default 20, max 500).
-
-Notes:
-- Restoring overwrites the working tree for files in the snapshot. Confirm with the user before "restore" unless they explicitly asked to revert.
-- Snapshots are per-project; switching projects gets a different shadow repo.
-- Old snapshot objects are pruned weekly by an internal gc loop.
-- The shadow repo is isolated — your project's pre-commit hooks never fire.`
+Parameters:
+- \`action\`: "save" | "list" | "diff" | "restore".
+- \`hash\`: required for diff/restore.
+- \`compareHash\`: optional second snapshot hash for diff.
+- \`label\`: optional description for save.
+- \`limit\`: max entries for list.
+`

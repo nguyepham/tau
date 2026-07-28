@@ -57,12 +57,12 @@ export const ALLOWED_TOOLS = [
 
 const SAFETY_RULES = `## GitHub Safety Protocol
 
-- NEVER edit git config or rewrite history (no rebase -i, no force-push to main/master).
-- NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly asked.
-- NEVER commit secret-bearing files (.env, *.pem, credentials.json) — warn the user instead.
-- ALWAYS create NEW commits, never amend, unless the user explicitly asked.
-- If you are about to take a write action that crosses the network (push, gh pr create, gh release create, gh workflow run, closing/labelling an issue), confirm the plan with the user FIRST unless they have already authorized it in this turn.
-- Use HEREDOC for multi-line commit/PR/release bodies so quoting stays clean.`
+- Git config edit + history rewrite forbidden (no \`rebase -i\`, no force-push to main/master).
+- Hook bypass forbidden (\`--no-verify\`, \`--no-gpg-sign\`) without explicit ask.
+- Secret file commits forbidden (\`.env\`, \`*.pem\`, \`credentials.json\`). Warn user.
+- Create new commits only. Amend forbidden without explicit ask.
+- Network write operations (\`push\`, \`gh pr create\`, \`gh release create\`, \`gh workflow run\`, closing/labeling issues) => confirm plan first unless pre-authorized.
+- Multi-line commit/PR/release bodies => use HEREDOC format.`
 
 export const HELP_TEXT = `# /github — full repo manager
 

@@ -30,18 +30,18 @@ import { GREP_TOOL_NAME } from '../../tools/GrepTool/prompt.js'
 function opener(newMessageCount: number, existingMemories: string): string {
   const manifest =
     existingMemories.length > 0
-      ? `\n\n## Existing memory files\n\n${existingMemories}\n\nCheck this list before writing — update an existing file rather than creating a duplicate.`
+      ? `\n\n## Existing memory files\n\n${existingMemories}\n\nCheck list before writing. Update existing file rather than duplicate.`
       : ''
   return [
-    `You are now acting as the memory extraction subagent. Analyze the most recent ~${newMessageCount} messages above and use them to update your persistent memory systems.`,
+    `Memory extraction subagent. Analyze last ~${newMessageCount} messages => update persistent memory systems.`,
     '',
-    `Available tools: ${FILE_READ_TOOL_NAME}, ${GREP_TOOL_NAME}, ${GLOB_TOOL_NAME}, read-only ${BASH_TOOL_NAME} (ls/find/cat/stat/wc/head/tail and similar), and ${FILE_EDIT_TOOL_NAME}/${FILE_WRITE_TOOL_NAME} for paths inside the memory directory only. ${BASH_TOOL_NAME} rm is not permitted. All other tools — MCP, Agent, write-capable ${BASH_TOOL_NAME}, etc — will be denied.`,
+    `Allowed tools: ${FILE_READ_TOOL_NAME}, ${GREP_TOOL_NAME}, ${GLOB_TOOL_NAME}, read-only ${BASH_TOOL_NAME} (ls/find/cat/stat/wc/head/tail), ${FILE_EDIT_TOOL_NAME}/${FILE_WRITE_TOOL_NAME} for memory dir paths. ${BASH_TOOL_NAME} rm forbidden. Other tools denied.`,
     '',
-    `You have a limited turn budget. ${FILE_EDIT_TOOL_NAME} requires a prior ${FILE_READ_TOOL_NAME} of the same file, so the efficient strategy is: turn 1 — issue all ${FILE_READ_TOOL_NAME} calls in parallel for every file you might update; turn 2 — issue all ${FILE_WRITE_TOOL_NAME}/${FILE_EDIT_TOOL_NAME} calls in parallel. Do not interleave reads and writes across multiple turns.`,
+    `Turn budget: turn 1 => parallel ${FILE_READ_TOOL_NAME} calls; turn 2 => parallel ${FILE_WRITE_TOOL_NAME}/${FILE_EDIT_TOOL_NAME} calls. Do not interleave across turns.`,
     '',
-    `You MUST only use content from the last ~${newMessageCount} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further — no grepping source files, no reading code to confirm a pattern exists, no git commands.`,
+    `Use content from last ~${newMessageCount} messages only. Source verification, code grepping, git commands forbidden.`,
     '',
-    'Capture ONLY critical, GENERAL lessons — reusable principles that will help in future, unrelated sessions: how to avoid a whole class of bug, a non-obvious approach that worked, a hard-won architectural constraint or gotcha, a durable user preference. State each one generally and concisely, as a short takeaway — NOT as specific code, file paths, line numbers, routine implementation, or one-off fixes. Skip anything ordinary, transient, obvious, or derivable from the code. Most work yields no such lesson: if this session produced nothing critical and general, save NOTHING. A few sharp, general takeaways are worth far more than a complete log.' +
+    'Capture critical, general lessons only (reusable principles for future sessions). Omit code, file paths, line numbers, routine fixes, code-derivable facts. No critical general lesson => save nothing.' +
       manifest,
   ].join('\n')
 }
@@ -62,26 +62,26 @@ export function buildExtractAutoOnlyPrompt(
   const howToSave = [
     '## How to save proposals',
     '',
-    'What you save here are PROPOSALS for the user to review — they are staged and will NOT affect Tau until the user approves them. Write each proposed memory to its own file inside the `learned/` subdirectory of the memory directory (e.g., `learned/user_prefers_terse.md`). You may ONLY write inside `learned/`.',
+    'Save PROPOSALS for user review. Write proposed memory files inside `learned/` subdir (e.g. `learned/user_prefers_terse.md`). Writes outside `learned/` forbidden.',
     '',
-    'Use this frontmatter format:',
+    'Frontmatter format:',
     '',
     '```markdown',
     '---',
     'name: {{short-name}}',
-    'description: {{one-line description — used later to judge relevance}}',
+    'description: {{one-line description}}',
     `type: {{${MEMORY_TYPES.join(', ')}}}`,
     'origin: learned',
     "learnedAt: {{today's date, YYYY-MM-DD}}",
     '---',
     '',
-    '{{the lesson — for feedback/invariant/decision/project types, add **Why:** and **How to apply:** lines}}',
+    '{{lesson content: rule/fact + **Why:** + **How to apply:**}}',
     '```',
     '',
-    '- The `origin: learned` marker is REQUIRED on every file you write — it keeps the proposal auditable and the user’s own memories protected.',
-    '- Do NOT create or edit `MEMORY.md`, and do NOT write anywhere outside `learned/`. A separate human-review step (the /learned command) promotes approved proposals into active memory.',
-    '- One file per distinct lesson; organize by topic, not chronologically.',
-    '- The existing-memories list above already includes pending proposals — do not propose anything already captured there.',
+    '- Frontmatter marker `origin: learned` mandatory on every file.',
+    '- Editing `MEMORY.md` or writing outside `learned/` forbidden.',
+    '- One file per distinct lesson. Organize by topic.',
+    '- Skip items already in existing-memories list.',
   ]
 
   return [
