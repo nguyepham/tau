@@ -46,6 +46,7 @@ export type Theme = {
   orange_FOR_SUBAGENTS_ONLY: string
   pink_FOR_SUBAGENTS_ONLY: string
   cyan_FOR_SUBAGENTS_ONLY: string
+  zen_FOR_SUBAGENTS_ONLY: string
   // Grove colors
   professionalBlue: string
   // Chrome colors
@@ -146,7 +147,7 @@ const lightTheme: Theme = {
   permissionShimmer: 'rgb(160,195,235)', // Lighter beanie blue shimmer
   planMode: 'rgb(0,102,102)', // Muted teal
   ide: 'rgb(130,165,210)', // Beanie blue
-  promptBorder: 'rgb(153,153,153)', // Medium gray
+  promptBorder: 'rgb(148,148,156)', // Medium gray / default zen prompt bar color
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer effect
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
@@ -176,6 +177,7 @@ const lightTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(234,88,12)', // Orange 600
   pink_FOR_SUBAGENTS_ONLY: 'rgb(219,39,119)', // Pink 600
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(8,145,178)', // Cyan 600
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -244,7 +246,7 @@ const lightAnsiTheme: Theme = {
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyan',
   ide: 'ansi:blueBright',
-  promptBorder: 'ansi:white',
+  promptBorder: 'rgb(148,148,156)',
   promptBorderShimmer: 'ansi:whiteBright',
   text: 'ansi:black',
   inverseText: 'ansi:white',
@@ -274,6 +276,7 @@ const lightAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyan',
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'ansi:blueBright',
   // Chrome colors
@@ -341,7 +344,7 @@ const darkAnsiTheme: Theme = {
   permissionShimmer: 'ansi:blueBright',
   planMode: 'ansi:cyanBright',
   ide: 'ansi:blue',
-  promptBorder: 'ansi:white',
+  promptBorder: 'rgb(148,148,156)',
   promptBorderShimmer: 'ansi:whiteBright',
   text: 'ansi:whiteBright',
   inverseText: 'ansi:black',
@@ -371,6 +374,7 @@ const darkAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyanBright',
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -438,7 +442,7 @@ const lightDaltonizedTheme: Theme = {
   permissionShimmer: 'rgb(101,152,255)', // Lighter bright blue shimmer
   planMode: 'rgb(51,102,102)', // Muted blue-gray
   ide: 'rgb(130,165,210)', // Beanie blue
-  promptBorder: 'rgb(153,153,153)', // Medium gray
+  promptBorder: 'rgb(148,148,156)', // Medium gray
   promptBorderShimmer: 'rgb(183,183,183)', // Lighter gray for shimmer
   text: 'rgb(0,0,0)', // Black
   inverseText: 'rgb(255,255,255)', // White
@@ -468,6 +472,7 @@ const lightDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,128,0)', // True orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,102,178)', // Adjusted pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(0,178,178)', // Adjusted cyan
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -535,7 +540,7 @@ const darkTheme: Theme = {
   permissionShimmer: 'rgb(220,180,255)', // Bright violet shimmer
   planMode: 'rgb(100,220,215)', // Electric teal
   ide: 'rgb(130,200,255)', // Bright electric blue
-  promptBorder: 'rgb(120,130,180)', // Cool blue-gray
+  promptBorder: 'rgb(148,148,156)', // Cool blue-gray / default zen prompt bar color
   promptBorderShimmer: 'rgb(170,180,230)', // Lighter cool blue
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
@@ -565,6 +570,7 @@ const darkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,140,50)', // Neon orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,90,190)', // Neon pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(50,220,230)', // Neon cyan
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(120,170,230)',
   // Chrome colors
@@ -635,7 +641,7 @@ const tauDarkTheme: Theme = {
   permissionShimmer: 'rgb(208,208,213)',
   planMode: 'rgb(146,146,154)',
   ide: 'rgb(180,180,186)',
-  promptBorder: 'rgb(78,80,88)',
+  promptBorder: 'rgb(148,148,156)',
   promptBorderShimmer: 'rgb(116,118,126)',
   text: 'rgb(206,206,210)',
   inverseText: 'rgb(12,12,14)',
@@ -664,6 +670,7 @@ const tauDarkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(220,104,58)',
   pink_FOR_SUBAGENTS_ONLY: 'rgb(228,96,116)',
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(155,132,110)',
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   professionalBlue: 'rgb(148,116,108)',
   chromeYellow: 'rgb(232,174,82)',
   clawd_body: 'rgb(210,210,216)',
@@ -723,7 +730,7 @@ const darkDaltonizedTheme: Theme = {
   permissionShimmer: 'rgb(183,224,255)', // Lighter blue shimmer
   planMode: 'rgb(102,153,153)', // Muted gray-teal
   ide: 'rgb(150,185,230)', // Beanie blue
-  promptBorder: 'rgb(136,136,136)', // Medium gray
+  promptBorder: 'rgb(148,148,156)', // Medium gray
   promptBorderShimmer: 'rgb(166,166,166)', // Lighter gray for shimmer
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
@@ -753,6 +760,7 @@ const darkDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,178,102)', // Bright orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,153,204)', // Bright pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(102,204,204)', // Bright cyan
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
@@ -823,7 +831,7 @@ const studioTheme: Theme = {
   permissionShimmer: 'rgb(140,184,250)',
   planMode: 'rgb(86,182,194)', // info cyan
   ide: 'rgb(92,156,245)',
-  promptBorder: 'rgb(72,72,72)',
+  promptBorder: 'rgb(148,148,156)',
   promptBorderShimmer: 'rgb(96,96,96)',
   text: 'rgb(238,238,238)',
   inverseText: 'rgb(10,10,10)',
@@ -855,6 +863,7 @@ const studioTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(245,167,66)',
   pink_FOR_SUBAGENTS_ONLY: 'rgb(224,108,117)',
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(86,182,194)',
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Misc
   professionalBlue: 'rgb(92,156,245)',
   chromeYellow: 'rgb(229,192,123)',
