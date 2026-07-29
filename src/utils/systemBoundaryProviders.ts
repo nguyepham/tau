@@ -13,15 +13,13 @@
  * (The legacy gemini/openrouter providers strip it too, so this holds whether
  * CLAUDEX_NATIVE_LANES is on or off.)
  *
- * Only providers that STRIP the marker belong here — any other provider would
+ * Only providers that STRIP the marker belong here: any other provider would
  * forward the literal marker text to the model.
  */
-export const SYSTEM_BOUNDARY_SPLITTING_PROVIDERS: ReadonlySet<string> = new Set([
-  'gemini',
-  'antigravity',
-  'openrouter',
-])
+export const SYSTEM_BOUNDARY_SPLITTING_PROVIDERS: ReadonlySet<string> = new Set(
+  ["gemini", "antigravity", "openrouter"],
+);
 
 export function providerSplitsSystemBoundary(provider: string): boolean {
-  return SYSTEM_BOUNDARY_SPLITTING_PROVIDERS.has(provider)
+  return SYSTEM_BOUNDARY_SPLITTING_PROVIDERS.has(provider);
 }

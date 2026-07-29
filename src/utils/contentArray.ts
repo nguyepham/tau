@@ -23,29 +23,29 @@ export function insertBlockAfterToolResults(
   block: unknown,
 ): void {
   // Find position after the last tool_result block
-  let lastToolResultIndex = -1
+  let lastToolResultIndex = -1;
   for (let i = 0; i < content.length; i++) {
-    const item = content[i]
+    const item = content[i];
     if (
       item &&
-      typeof item === 'object' &&
-      'type' in item &&
-      (item as { type: string }).type === 'tool_result'
+      typeof item === "object" &&
+      "type" in item &&
+      (item as { type: string }).type === "tool_result"
     ) {
-      lastToolResultIndex = i
+      lastToolResultIndex = i;
     }
   }
 
   if (lastToolResultIndex >= 0) {
-    const insertPos = lastToolResultIndex + 1
-    content.splice(insertPos, 0, block)
+    const insertPos = lastToolResultIndex + 1;
+    content.splice(insertPos, 0, block);
     // Append a text continuation if the inserted block is now last
     if (insertPos === content.length - 1) {
-      content.push({ type: 'text', text: '.' })
+      content.push({ type: "text", text: "." });
     }
   } else {
-    // No tool_result blocks — insert before the last block
-    const insertIndex = Math.max(0, content.length - 1)
-    content.splice(insertIndex, 0, block)
+    // No tool_result blocks: insert before the last block
+    const insertIndex = Math.max(0, content.length - 1);
+    content.splice(insertIndex, 0, block);
   }
 }

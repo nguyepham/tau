@@ -44,7 +44,7 @@ const SEARCH_TOOLS = new Set([
   'find_projects',
   'find_releases',
   'find_dsns',
-  // Notion (mcp.notion.com — kebab-case, normalized)
+  // Notion (mcp.notion.com: kebab-case, normalized)
   'search',
   // Gmail (claude.ai hosted)
   'gmail_search_messages',
@@ -54,7 +54,7 @@ const SEARCH_TOOLS = new Set([
   'gcal_find_my_free_time',
   'gcal_find_meeting_times',
   'gcal_find_user_emails',
-  // Atlassian/Jira (mcp.atlassian.com — camelCase, normalized)
+  // Atlassian/Jira (mcp.atlassian.com: camelCase, normalized)
   'search_jira_issues_using_jql',
   'search_confluence_using_cql',
   'lookup_jira_account_id',
@@ -118,7 +118,7 @@ const SEARCH_TOOLS = new Set([
   'find_memories_by_name',
   // Airtable
   'search_records',
-  // Todoist (Doist — kebab-case, normalized)
+  // Todoist (Doist: kebab-case, normalized)
   'find_tasks',
   'find_tasks_by_date',
   'find_completed_tasks',
@@ -251,7 +251,7 @@ const READ_TOOLS = new Set([
   'list_events',
   'list_issue_events',
   'get_sentry_issue',
-  // Notion (mcp.notion.com — kebab-case, normalized)
+  // Notion (mcp.notion.com: kebab-case, normalized)
   'fetch',
   'get_comments',
   'get_users',
@@ -269,7 +269,7 @@ const READ_TOOLS = new Set([
   'gcal_list_calendars',
   'gcal_list_events',
   'gcal_get_event',
-  // Atlassian/Jira (mcp.atlassian.com — camelCase, normalized)
+  // Atlassian/Jira (mcp.atlassian.com: camelCase, normalized)
   'atlassian_user_info',
   'get_accessible_atlassian_resources',
   'get_visible_jira_projects',
@@ -547,7 +547,7 @@ const READ_TOOLS = new Set([
   'list_records',
   'list_bases',
   'get_record',
-  // Todoist (Doist — kebab-case, normalized)
+  // Todoist (Doist: kebab-case, normalized)
   'get_productivity_stats',
   'get_overview',
   'fetch_object',
@@ -587,18 +587,18 @@ const READ_TOOLS = new Set([
 
 function normalize(name: string): string {
   return name
-    .replace(/([a-z])([A-Z])/g, '$1_$2')
-    .replace(/-/g, '_')
-    .toLowerCase()
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .replace(/-/g, "_")
+    .toLowerCase();
 }
 
 export function classifyMcpToolForCollapse(
   _serverName: string,
   toolName: string,
 ): { isSearch: boolean; isRead: boolean } {
-  const normalized = normalize(toolName)
+  const normalized = normalize(toolName);
   return {
     isSearch: SEARCH_TOOLS.has(normalized),
     isRead: READ_TOOLS.has(normalized),
-  }
+  };
 }

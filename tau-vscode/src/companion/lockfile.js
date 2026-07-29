@@ -1,14 +1,14 @@
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 /**
  * Path the Tau/Tau CLI scans for IDE lockfiles.
- * Format: ~/.claude/ide/<port>.lock — JSON describing how to reach this VS Code window.
+ * Format: ~/.claude/ide/<port>.lock: JSON describing how to reach this VS Code window.
  * The CLI's lookup logic lives in src/utils/ide.ts (getIdeLockfilesPaths).
  */
 function getLockfileDir() {
-  return path.join(os.homedir(), '.claude', 'ide');
+  return path.join(os.homedir(), ".claude", "ide");
 }
 
 function getLockfilePath(port) {
@@ -16,7 +16,7 @@ function getLockfilePath(port) {
 }
 
 function isWindows() {
-  return process.platform === 'win32';
+  return process.platform === "win32";
 }
 
 /**
@@ -27,7 +27,7 @@ function ensureDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true });
   } catch (_) {
-    // Ignore — write step will surface real failures.
+    // Ignore: write step will surface real failures.
   }
 }
 
@@ -35,8 +35,8 @@ function buildLockfileContent({ workspaceFolders, pid, ideName, authToken }) {
   return {
     pid,
     workspaceFolders: Array.isArray(workspaceFolders) ? workspaceFolders : [],
-    ideName: ideName || 'VS Code',
-    transport: 'ws',
+    ideName: ideName || "VS Code",
+    transport: "ws",
     runningInWindows: isWindows(),
     authToken,
   };
@@ -44,7 +44,7 @@ function buildLockfileContent({ workspaceFolders, pid, ideName, authToken }) {
 
 /**
  * Write the lockfile. Returns the path on success, or null on failure.
- * Caller should not throw on failure — extension activation must continue
+ * Caller should not throw on failure: extension activation must continue
  * even if the home directory is read-only (sandboxed surfaces, CI, etc.).
  */
 function writeLockfile({ port, workspaceFolders, pid, ideName, authToken }) {
@@ -58,7 +58,7 @@ function writeLockfile({ port, workspaceFolders, pid, ideName, authToken }) {
     authToken,
   });
   try {
-    fs.writeFileSync(filePath, JSON.stringify(payload), { encoding: 'utf8' });
+    fs.writeFileSync(filePath, JSON.stringify(payload), { encoding: "utf8" });
     return filePath;
   } catch (_) {
     return null;

@@ -1,11 +1,11 @@
 import { c as _c } from "react/compiler-runtime";
-import { extname } from 'path';
-import React, { Suspense, use, useMemo } from 'react';
-import { Ansi, Text } from '../../ink.js';
-import { getCliHighlightPromise } from '../../utils/cliHighlight.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { convertLeadingTabsToSpaces } from '../../utils/file.js';
-import { hashPair } from '../../utils/hash.js';
+import { extname } from "path";
+import React, { Suspense, use, useMemo } from "react";
+import { Ansi, Text } from "../../ink.js";
+import { getCliHighlightPromise } from "../../utils/cliHighlight.js";
+import { logForDebugging } from "../../utils/debug.js";
+import { convertLeadingTabsToSpaces } from "../../utils/file.js";
+import { hashPair } from "../../utils/hash.js";
 type Props = {
   code: string;
   filePath: string;
@@ -13,12 +13,16 @@ type Props = {
   skipColoring?: boolean;
 };
 
-// Module-level highlight cache — hl.highlight() is the hot cost on virtual-
+// Module-level highlight cache: hl.highlight() is the hot cost on virtual-
 // scroll remounts. useMemo doesn't survive unmount→remount. Keyed by hash
 // of code+language to avoid retaining full source strings (#24180 RSS fix).
 const HL_CACHE_MAX = 500;
 const hlCache = new Map<string, string>();
-function cachedHighlight(hl: NonNullable<Awaited<ReturnType<typeof getCliHighlightPromise>>>, code: string, language: string): string {
+function cachedHighlight(
+  hl: NonNullable<Awaited<ReturnType<typeof getCliHighlightPromise>>>,
+  code: string,
+  language: string,
+): string {
   const key = hashPair(language, code);
   const hit = hlCache.get(key);
   if (hit !== undefined) {
@@ -27,7 +31,7 @@ function cachedHighlight(hl: NonNullable<Awaited<ReturnType<typeof getCliHighlig
     return hit;
   }
   const out = hl.highlight(code, {
-    language
+    language,
   });
   if (hlCache.size >= HL_CACHE_MAX) {
     const first = hlCache.keys().next().value;
@@ -38,12 +42,7 @@ function cachedHighlight(hl: NonNullable<Awaited<ReturnType<typeof getCliHighlig
 }
 export function HighlightedCodeFallback(t0) {
   const $ = _c(20);
-  const {
-    code,
-    filePath,
-    dim: t1,
-    skipColoring: t2
-  } = t0;
+  const { code, filePath, dim: t1, skipColoring: t2 } = t0;
   const dim = t1 === undefined ? false : t1;
   const skipColoring = t2 === undefined ? false : t2;
   let t3;
@@ -123,10 +122,7 @@ export function HighlightedCodeFallback(t0) {
 }
 function Highlighted(t0) {
   const $ = _c(10);
-  const {
-    codeWithSpaces,
-    language
-  } = t0;
+  const { codeWithSpaces, language } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getCliHighlightPromise();
@@ -147,16 +143,19 @@ function Highlighted(t0) {
         if (hl.supportsLanguage(language)) {
           highlightLang = language;
         } else {
-          logForDebugging(`Language not supported while highlighting code, falling back to markdown: ${language}`);
+          logForDebugging(
+            `Language not supported while highlighting code, falling back to markdown: ${language}`,
+          );
         }
       }
-      ;
       try {
         t2 = cachedHighlight(hl, codeWithSpaces, highlightLang);
       } catch (t3) {
         const e = t3;
         if (e instanceof Error && e.message.includes("Unknown language")) {
-          logForDebugging(`Language not supported while highlighting code, falling back to markdown: ${e}`);
+          logForDebugging(
+            `Language not supported while highlighting code, falling back to markdown: ${e}`,
+          );
           let t4;
           if ($[5] !== codeWithSpaces || $[6] !== hl) {
             t4 = cachedHighlight(hl, codeWithSpaces, "markdown");

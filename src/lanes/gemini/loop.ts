@@ -1,14 +1,14 @@
 /**
- * Gemini Lane — Native Agent Loop + Provider-Shim Entry
+ * Gemini Lane: Native Agent Loop + Provider-Shim Entry
  *
  * Two entry points:
  *
- *   1. streamAsProvider(params) — single-turn, provider-shim-compatible.
+ *   1. streamAsProvider(params): single-turn, provider-shim-compatible.
  *      Used by src/lanes/provider-bridge.ts. claude.ts owns the outer
  *      turn-orchestration loop; the lane handles one native API call
  *      per invocation.
  *
- *   2. run(context) — future lane-owns-loop mode. Not currently wired;
+ *   2. run(context): future lane-owns-loop mode. Not currently wired;
  *      scaffold preserved for the Phase-2 migration where each lane owns
  *      its full agent loop (per the architecture plan).
  *
@@ -35,19 +35,19 @@ import type {
   LaneRunResult,
   LaneProviderCallParams,
   NormalizedUsage,
-} from '../types.js'
-import type { ModelInfo } from '../../services/api/providers/base_provider.js'
+} from "../types.js";
+import type { ModelInfo } from "../../services/api/providers/base_provider.js";
 import {
   getRegistrationByNativeName,
   buildGeminiFunctionDeclarations,
   GEMINI_TOOL_REGISTRY,
-} from './tools.js'
+} from "./tools.js";
 import {
   applyAntigravityPrefixPad,
   guardAntigravityCommitWindow,
   recordAntigravityCacheRead,
   writeAntigravityCacheDebugEntry,
-} from './antigravity_cache.js'
+} from "./antigravity_cache.js";
 import {
   freezeSessionVolatileText,
   volatileFreezeKey,
@@ -62,51 +62,67 @@ import {
   ANTIGRAVITY_MODEL_IDS,
   isAntigravityGeminiModel,
   resolveAntigravityWireModel,
-} from '../../services/api/providers/gemini_code_assist.js'
+} from "../../services/api/providers/gemini_code_assist.js";
 import {
   sanitizeSchemaForLane,
   appendStrictParamsHint,
   GEMINI_TOOL_USAGE_RULES,
-} from '../shared/mcp_bridge.js'
-import { selectGeminiToolsForRequest } from './lazy_tools.js'
+} from "../shared/mcp_bridge.js";
+import { selectGeminiToolsForRequest } from "./lazy_tools.js";
 import {
   resolveThinkingBudget as resolveGeminiThinkingBudget,
   resolveThinkingConfig as resolveGeminiThinkingConfig,
-} from './thinking.js'
+} from "./thinking.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
-const MAX_TURNS = 100
+const MAX_TURNS = 100;
 
-function uncachedInputTokens(promptTokens: number, cacheReadTokens: number): number {
-  return Math.max(0, promptTokens - cacheReadTokens)
+function uncachedInputTokens(
+  promptTokens: number,
+  cacheReadTokens: number,
+): number {
+  return Math.max(0, promptTokens - cacheReadTokens);
 }
 
 // ─── Gemini Native Message Types ─────────────────────────────────
 
 interface GeminiContent {
-  role: 'user' | 'model'
-  parts: GeminiPart[]
+  role: "user" | "model";
+  parts: GeminiPart[];
 }
 
 type GeminiPart =
   | { text: string }
-  | { functionCall: { id?: string; name: string; args: Record<string, unknown> }; thoughtSignature?: string }
-  | { functionResponse: { id?: string; name: string; response: { content: string } } }
+  | {
+      functionCall: {
+        id?: string;
+        name: string;
+        args: Record<string, unknown>;
+      };
+      thoughtSignature?: string;
+    }
+  | {
+      functionResponse: {
+        id?: string;
+        name: string;
+        response: { content: string };
+      };
+    }
   | { thought: boolean; text: string }
-  | { inlineData: { mimeType: string; data: string } }
+  | { inlineData: { mimeType: string; data: string } };
 
 // ─── The Lane Implementation ─────────────────────────────────────
 
 export class GeminiLane implements Lane {
-  readonly name = 'gemini'
-  readonly displayName = 'Google Gemini (Native)'
+  readonly name = "gemini";
+  readonly displayName = "Google Gemini (Native)";
 
-  private _healthy = true
+  private _healthy = true;
 
   supportsModel(model: string): boolean {
-    const m = model.toLowerCase()
-    return m.startsWith('gemini-') || m.startsWith('gemma-')
+    const m = model.toLowerCase();
+    return m.startsWith("gemini-") || m.startsWith("gemma-");
   }
 
   // ── Provider-shim-compatible single-turn entry ──────────────────
@@ -114,28 +130,38 @@ export class GeminiLane implements Lane {
   async *streamAsProvider(
     params: LaneProviderCallParams,
   ): AsyncGenerator<AnthropicStreamEvent, NormalizedUsage> {
-    const { model, messages, system, tools, max_tokens, thinking, signal, sessionId, providerHint } = params
+    const {
+      model,
+      messages,
+      system,
+      tools,
+      max_tokens,
+      thinking,
+      signal,
+      sessionId,
+      providerHint,
+    } = params;
 
     // Normalize system → plain string.
     const systemText =
-      typeof system === 'string'
+      typeof system === "string"
         ? system
-        : (system ?? []).map(b => b.text).join('\n\n')
+        : (system ?? []).map((b) => b.text).join("\n\n");
 
     // Cache discipline: split stable (cache-eligible) from volatile
     // (per-turn) sections at the Tau `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__`
     // marker. Everything before the marker is stable prefix (tools list,
     // agent persona, instructions); everything after is volatile
     // (git status, env, memory) and must live INSIDE the conversation
-    // as a leading user message — not in systemInstruction when we're
-    // using cachedContents — so the cache key stays byte-identical
+    // as a leading user message: not in systemInstruction when we're
+    // using cachedContents: so the cache key stays byte-identical
     // across turns. If the caller passed flat text without the marker,
     // we fall back to treating the whole thing as stable (no regression).
     const split = splitSystemAtBoundary(systemText)
     const isAntigravityModel = ANTIGRAVITY_MODEL_IDS.has(model.toLowerCase())
     const isAntigravityRequest = providerHint === 'antigravity' || isAntigravityModel
     const isAntigravityGemini =
-      isAntigravityModel && isAntigravityGeminiModel(model)
+      isAntigravityModel && isAntigravityGeminiModel(model);
     // Snapshot semantics for EVERY request on this lane, not just Antigravity
     // Gemini: the API-key and Code Assist paths run Gemini's implicit cache,
     // which hashes contents[] just like Antigravity's, and Claude resold
@@ -154,24 +180,29 @@ export class GeminiLane implements Lane {
     // Lineage keying hands every clone the main conversation's exact frozen
     // bytes; standalone agents hash their own first message as before.
     const volatileText = freezeSessionVolatileText(
-      volatileFreezeKey('gemini', model, isAntigravityGemini ? undefined : sessionId, messages),
+      volatileFreezeKey(
+        "gemini",
+        model,
+        isAntigravityGemini ? undefined : sessionId,
+        messages,
+      ),
       split.volatileText,
-    )
+    );
 
     // Build id→native-name map across the whole conversation so
     // tool_result blocks can find their original Gemini function name.
-    const toolUseIdToNative = buildToolUseIdToNativeMap(messages)
+    const toolUseIdToNative = buildToolUseIdToNativeMap(messages);
 
     // Convert Anthropic-format messages → Gemini native contents.
-    // If we have volatile content, inject it as a leading user message —
+    // If we have volatile content, inject it as a leading user message:
     // FIXED position with frozen bytes (see above), so every implicit cache
     // reads it as part of the stable prefix instead of a per-turn rewrite.
-    const contents = convertHistoryToGemini(messages, toolUseIdToNative)
+    const contents = convertHistoryToGemini(messages, toolUseIdToNative);
     if (volatileText) {
       contents.unshift({
-        role: 'user',
+        role: "user",
         parts: [{ text: volatileText }],
-      })
+      });
     }
 
     // Build function declarations: prefer the native schema from our
@@ -181,50 +212,53 @@ export class GeminiLane implements Lane {
       model,
       providerHint,
       sessionId,
-    })
-    const functionDeclarations = buildLaneFunctionDeclarations(requestTools)
+    });
+    const functionDeclarations = buildLaneFunctionDeclarations(requestTools);
 
     // Antigravity's implicit cache content-addresses the whole prompt prefix
     // (systemInstruction → tools → contents), so a real session warms it
     // NATURALLY once its growing conversation crosses the ~16,384-token
-    // minimum — no padding needed, and short prompts stay fast. The optional
+    // minimum: no padding needed, and short prompts stay fast. The optional
     // prefix pad below force-warms small prompts too, but at ~17.4k tokens
     // every turn; it (and pacing) are OFF unless TAU_ANTIGRAVITY_MAX_CACHE=1.
     // See antigravity_cache.ts for the measured cache semantics.
     // The implicit-cache discipline (prefix pad + commit-window pacing)
     // targets ONLY the single-slot Gemini cache. Claude resold through
     // Antigravity uses a multi-entry, low-minimum cache where padding and
-    // pacing would only add latency and tokens — so it stays exempt.
+    // pacing would only add latency and tokens: so it stays exempt.
     const stableText = isAntigravityGemini
       ? applyAntigravityPrefixPad(
-        split.stableText,
-        JSON.stringify(functionDeclarations).length,
-      )
-      : split.stableText
+          split.stableText,
+          JSON.stringify(functionDeclarations).length,
+        )
+      : split.stableText;
 
     if (process.env.TAU_CACHE_DEBUG && isAntigravityGemini) {
-      console.error(`[tau-prompt] systemChars=${split.stableText.length} volatileChars=${(split.volatileText ?? '').length} toolsChars=${JSON.stringify(functionDeclarations).length} nTools=${functionDeclarations.length}`)
+      console.error(
+        `[tau-prompt] systemChars=${split.stableText.length} volatileChars=${(split.volatileText ?? "").length} toolsChars=${JSON.stringify(functionDeclarations).length} nTools=${functionDeclarations.length}`,
+      );
     }
 
     // Map thinkingBudget from Anthropic-format thinking param.
-    const thinkingBudget = resolveGeminiThinkingBudget(thinking)
+    const thinkingBudget = resolveGeminiThinkingBudget(thinking);
 
     // Try to place the stable portion of the request (system + tools) into
     // Google's cachedContents API. On a hit, the model sees cache_read
-    // input tokens at ~25% of the normal rate — meaningful win when the
+    // input tokens at ~25% of the normal rate: meaningful win when the
     // same system+tools are re-used across turns of a session.
     //
     // Cache is API-key-path only today (OAuth proxy doesn't expose it).
-    // Use ONLY the stable slot for the cache body — volatile content
+    // Use ONLY the stable slot for the cache body: volatile content
     // rides the leading user message (see contents.unshift above) so the
     // cache-key hash stays identical across turns.
-    const cacheSystemInstruction = { parts: [{ text: stableText }] }
-    const cacheTools = functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined
+    const cacheSystemInstruction = { parts: [{ text: stableText }] };
+    const cacheTools =
+      functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined;
 
-    let cacheName: string | null = null
-    let cacheWriteTokens = 0
+    let cacheName: string | null = null;
+    let cacheWriteTokens = 0;
     if (geminiApi.supportsServerCache(model)) {
-      const apiKey = geminiApi.getApiKey()
+      const apiKey = geminiApi.getApiKey();
       if (apiKey) {
         try {
           const cache = await getOrCreateCacheWithUsage({
@@ -233,18 +267,18 @@ export class GeminiLane implements Lane {
             apiKey,
             systemInstruction: cacheSystemInstruction,
             tools: cacheTools,
-          })
-          cacheName = cache?.cacheName ?? null
-          cacheWriteTokens = cache?.createdTokens ?? 0
+          });
+          cacheName = cache?.cacheName ?? null;
+          cacheWriteTokens = cache?.createdTokens ?? 0;
         } catch {
-          cacheName = null
-          cacheWriteTokens = 0
+          cacheName = null;
+          cacheWriteTokens = 0;
         }
       }
     }
 
     // When we ARE using a cache, the systemInstruction is already inside
-    // the cache body — don't duplicate it inline. When we're NOT caching,
+    // the cache body: don't duplicate it inline. When we're NOT caching,
     // send the stable slot inline as systemInstruction; the volatile
     // slot is already in the leading user message above.
     const request = buildGeminiRequest({
@@ -263,13 +297,13 @@ export class GeminiLane implements Lane {
       // apply to every Antigravity request — Gemini and Claude alike.
       request[TAU_STABLE_SESSION_ID_FIELD] = stableAntigravitySessionId(sessionId, messages)
       if (process.env.TAU_CACHE_DEBUG) {
-        writeAntigravityCacheDebugEntry(model, request, sessionId)
+        writeAntigravityCacheDebugEntry(model, request, sessionId);
       }
     }
     if (isAntigravityGemini) {
       // Session-start commit-window guard: the 2nd/3rd requests of a session
       // go FULL COLD when they fire before the first write commits (~8-22s
-      // async) — live-measured, each miss re-pays the whole ~20-30k prompt.
+      // async): live-measured, each miss re-pays the whole ~20-30k prompt.
       // Holds only over-minimum prompts, at most twice per session, and
       // latches off on the first observed hit, so steady-state turns are
       // never delayed. Subsumes the opt-in maxCache agent pacing (padded
@@ -279,31 +313,31 @@ export class GeminiLane implements Lane {
         sessionId,
         signal,
         JSON.stringify(request).length,
-      )
+      );
     }
 
     // Track usage across the stream.
-    let promptTokens = 0
-    let inputTokens = 0
-    let outputTokens = 0
-    let thinkingTokens = 0
-    let cacheReadTokens = 0
+    let promptTokens = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let thinkingTokens = 0;
+    let cacheReadTokens = 0;
 
     // Stream state per turn.
-    const messageId = `gemini-${Date.now()}`
-    let thinkingText = ''
-    let responseText = ''
-    let blockIndex = 0
-    let inBlock: 'thinking' | 'text' | null = null
-    let messageStartEmitted = false
+    const messageId = `gemini-${Date.now()}`;
+    let thinkingText = "";
+    let responseText = "";
+    let blockIndex = 0;
+    let inBlock: "thinking" | "text" | null = null;
+    let messageStartEmitted = false;
     const toolCalls: Array<{
-      implId: string
-      nativeName: string
-      input: Record<string, unknown>
-      anthropicToolUseId: string
-      nativeArgs: Record<string, unknown>
-      thoughtSignature?: string
-    }> = []
+      implId: string;
+      nativeName: string;
+      input: Record<string, unknown>;
+      anthropicToolUseId: string;
+      nativeArgs: Record<string, unknown>;
+      thoughtSignature?: string;
+    }> = [];
 
     // Accumulator for a streaming function call. Gemini splits function
     // calls across SSE chunks: the first chunk carries the name with
@@ -311,8 +345,8 @@ export class GeminiLane implements Lane {
     // name as continuation deltas. Emitting a tool_use per chunk produces
     // the `{}` → "Received input: {}" tool-integrity bug that bit us when
     // the server decided to split. We accumulate until the call is known
-    // complete — when a new named call starts, text/thinking resumes, or
-    // the stream ends — then emit one atomic tool_use block.
+    // complete: when a new named call starts, text/thinking resumes, or
+    // the stream ends: then emit one atomic tool_use block.
     //
     // args can come through as either an object (proto-json Struct) or a
     // JSON string (some serialization paths), so we buffer both: object
@@ -320,42 +354,42 @@ export class GeminiLane implements Lane {
     // at commit time. This mirrors the string/object fork in gemini-cli's
     // parseToolArguments().
     let currentCall: {
-      nativeName: string
-      args: Record<string, unknown>
-      argsString: string
-      thoughtSignature?: string
-      blockIndex: number
-      anthropicToolUseId: string
-      anthropicToolUseIdFromServer: boolean
-    } | null = null
+      nativeName: string;
+      args: Record<string, unknown>;
+      argsString: string;
+      thoughtSignature?: string;
+      blockIndex: number;
+      anthropicToolUseId: string;
+      anthropicToolUseIdFromServer: boolean;
+    } | null = null;
 
     function mergeArgsIntoCurrent(raw: unknown): void {
-      if (!currentCall) return
-      if (typeof raw === 'string') {
-        currentCall.argsString += raw
-        return
+      if (!currentCall) return;
+      if (typeof raw === "string") {
+        currentCall.argsString += raw;
+        return;
       }
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        Object.assign(currentCall.args, raw as Record<string, unknown>)
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        Object.assign(currentCall.args, raw as Record<string, unknown>);
       }
     }
 
     function finalizeCurrentArgs(): Record<string, unknown> {
-      if (!currentCall) return {}
-      let merged: Record<string, unknown> = { ...currentCall.args }
+      if (!currentCall) return {};
+      let merged: Record<string, unknown> = { ...currentCall.args };
       if (currentCall.argsString.length > 0) {
         try {
-          const parsed = JSON.parse(currentCall.argsString)
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            merged = { ...merged, ...(parsed as Record<string, unknown>) }
+          const parsed = JSON.parse(currentCall.argsString);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            merged = { ...merged, ...(parsed as Record<string, unknown>) };
           }
         } catch {
-          // Malformed concatenation — drop silently; downstream validation
+          // Malformed concatenation: drop silently; downstream validation
           // surfaces the missing-field error with the object we did
           // manage to assemble.
         }
       }
-      return merged
+      return merged;
     }
 
     // Emit the accumulated tool call as the THREE-event sequence the
@@ -368,16 +402,16 @@ export class GeminiLane implements Lane {
     // The downstream consumer (claude.ts / query.ts) accumulates the
     // partial_json string across deltas and JSON.parse()s it at stop.
     // If we emit content_block_start with input pre-filled (and no
-    // input_json_delta), the accumulator stays empty — the final input
+    // input_json_delta), the accumulator stays empty: the final input
     // the shared tool layer sees is `{}` and EVERY tool call reports
     // its required params missing. That is exactly the regression the
     // legacy gemini_to_anthropic adapter's structure avoided.
     function* commitCurrentCall(): Generator<AnthropicStreamEvent, void> {
-      if (!currentCall) return
-      const nativeArgs = finalizeCurrentArgs()
-      const reg = getRegistrationByNativeName(currentCall.nativeName)
-      const implId = reg?.implId ?? currentCall.nativeName
-      const adaptedInput = reg ? reg.adaptInput(nativeArgs) : nativeArgs
+      if (!currentCall) return;
+      const nativeArgs = finalizeCurrentArgs();
+      const reg = getRegistrationByNativeName(currentCall.nativeName);
+      const implId = reg?.implId ?? currentCall.nativeName;
+      const adaptedInput = reg ? reg.adaptInput(nativeArgs) : nativeArgs;
 
       toolCalls.push({
         implId,
@@ -386,16 +420,16 @@ export class GeminiLane implements Lane {
         anthropicToolUseId: currentCall.anthropicToolUseId,
         nativeArgs,
         thoughtSignature: currentCall.thoughtSignature,
-      })
+      });
 
       yield {
-        type: 'content_block_start',
+        type: "content_block_start",
         index: currentCall.blockIndex,
         content_block: {
-          type: 'tool_use',
+          type: "tool_use",
           id: currentCall.anthropicToolUseId,
           name: implId,
-          input: {}, // placeholder — real args arrive via input_json_delta
+          input: {}, // placeholder: real args arrive via input_json_delta
           // Stash the thought signature so we can thread it back on the
           // next turn (Antigravity + thinking-enabled models need this
           // for multi-turn reasoning coherence).
@@ -403,27 +437,27 @@ export class GeminiLane implements Lane {
             _gemini_thought_signature: currentCall.thoughtSignature,
           }),
         },
-      }
+      };
       yield {
-        type: 'content_block_delta',
+        type: "content_block_delta",
         index: currentCall.blockIndex,
         delta: {
-          type: 'input_json_delta',
+          type: "input_json_delta",
           partial_json: JSON.stringify(adaptedInput ?? {}),
         },
-      }
-      yield { type: 'content_block_stop', index: currentCall.blockIndex }
-      currentCall = null
+      };
+      yield { type: "content_block_stop", index: currentCall.blockIndex };
+      currentCall = null;
     }
 
     // Defer message_start until the first chunk arrives so we can fold
-    // cache-hit and input-token numbers into the initial usage block —
+    // cache-hit and input-token numbers into the initial usage block:
     // Anthropic's AnthropicMessage.usage carries cache_read_input_tokens
     // only on the initial message_start, so emitting it blank first loses
     // the data. Mirrors the gemini_to_anthropic legacy adapter pattern.
     const emitMessageStart = () => {
-      if (messageStartEmitted) return
-      messageStartEmitted = true
+      if (messageStartEmitted) return;
+      messageStartEmitted = true;
       const cacheUsage = {
         ...(cacheReadTokens > 0 && {
           cache_read_input_tokens: cacheReadTokens,
@@ -431,13 +465,13 @@ export class GeminiLane implements Lane {
         ...(cacheWriteTokens > 0 && {
           cache_creation_input_tokens: cacheWriteTokens,
         }),
-      }
+      };
       return {
-        type: 'message_start' as const,
+        type: "message_start" as const,
         message: {
           id: messageId,
-          type: 'message' as const,
-          role: 'assistant' as const,
+          type: "message" as const,
+          role: "assistant" as const,
           content: [],
           model,
           stop_reason: null,
@@ -448,91 +482,95 @@ export class GeminiLane implements Lane {
             ...cacheUsage,
           },
         },
-      }
-    }
+      };
+    };
 
     try {
-      const stream = geminiApi.streamGenerateContent(request, signal)
+      const stream = geminiApi.streamGenerateContent(request, signal);
 
       for await (const chunk of stream) {
-        if (signal.aborted) break
+        if (signal.aborted) break;
 
         // Fold usage FIRST so message_start (emitted on first chunk) sees
         // the correct cache-hit numbers before any blocks flow.
         if (chunk.usageMetadata) {
-          const u = chunk.usageMetadata
-          promptTokens = u.promptTokenCount ?? promptTokens
-          outputTokens = u.candidatesTokenCount ?? outputTokens
-          thinkingTokens = u.thoughtsTokenCount ?? thinkingTokens
-          cacheReadTokens = u.cachedContentTokenCount ?? cacheReadTokens
-          inputTokens = uncachedInputTokens(promptTokens, cacheReadTokens)
+          const u = chunk.usageMetadata;
+          promptTokens = u.promptTokenCount ?? promptTokens;
+          outputTokens = u.candidatesTokenCount ?? outputTokens;
+          thinkingTokens = u.thoughtsTokenCount ?? thinkingTokens;
+          cacheReadTokens = u.cachedContentTokenCount ?? cacheReadTokens;
+          inputTokens = uncachedInputTokens(promptTokens, cacheReadTokens);
           if (isAntigravityGemini) {
-            recordAntigravityCacheRead(sessionId, cacheReadTokens, promptTokens)
+            recordAntigravityCacheRead(
+              sessionId,
+              cacheReadTokens,
+              promptTokens,
+            );
           }
         }
 
         if (!messageStartEmitted) {
-          const ev = emitMessageStart()
-          if (ev) yield ev
+          const ev = emitMessageStart();
+          if (ev) yield ev;
         }
 
         for (const candidate of chunk.candidates ?? []) {
           for (const part of (candidate.content?.parts ?? []) as any[]) {
             // ── Thinking part ──
-            if (part.thought === true && typeof part.text === 'string') {
+            if (part.thought === true && typeof part.text === "string") {
               // A text/thinking part ends any tool-call accumulation.
               if (currentCall) {
-                yield* commitCurrentCall()
+                yield* commitCurrentCall();
               }
-              if (inBlock === 'text') {
-                yield { type: 'content_block_stop', index: blockIndex }
-                blockIndex++
-                inBlock = null
-                responseText = ''
+              if (inBlock === "text") {
+                yield { type: "content_block_stop", index: blockIndex };
+                blockIndex++;
+                inBlock = null;
+                responseText = "";
               }
-              if (inBlock !== 'thinking') {
+              if (inBlock !== "thinking") {
                 yield {
-                  type: 'content_block_start',
+                  type: "content_block_start",
                   index: blockIndex,
-                  content_block: { type: 'thinking', thinking: '' },
-                }
-                inBlock = 'thinking'
+                  content_block: { type: "thinking", thinking: "" },
+                };
+                inBlock = "thinking";
               }
-              thinkingText += part.text
+              thinkingText += part.text;
               yield {
-                type: 'content_block_delta',
+                type: "content_block_delta",
                 index: blockIndex,
-                delta: { type: 'thinking_delta', thinking: part.text },
-              }
-              continue
+                delta: { type: "thinking_delta", thinking: part.text },
+              };
+              continue;
             }
 
             // ── Text part ──
-            if (typeof part.text === 'string' && part.thought !== true) {
+            if (typeof part.text === "string" && part.thought !== true) {
               if (currentCall) {
-                yield* commitCurrentCall()
+                yield* commitCurrentCall();
               }
-              if (inBlock === 'thinking') {
-                yield { type: 'content_block_stop', index: blockIndex }
-                blockIndex++
-                inBlock = null
-                thinkingText = ''
+              if (inBlock === "thinking") {
+                yield { type: "content_block_stop", index: blockIndex };
+                blockIndex++;
+                inBlock = null;
+                thinkingText = "";
               }
-              if (inBlock !== 'text') {
+              if (inBlock !== "text") {
                 yield {
-                  type: 'content_block_start',
+                  type: "content_block_start",
                   index: blockIndex,
-                  content_block: { type: 'text', text: '' },
-                }
-                inBlock = 'text'
+                  content_block: { type: "text", text: "" },
+                };
+                inBlock = "text";
               }
-              responseText += part.text
+              responseText += part.text;
               yield {
-                type: 'content_block_delta',
+                type: "content_block_delta",
                 index: blockIndex,
-                delta: { type: 'text_delta', text: part.text },
-              }
-              continue
+                delta: { type: "text_delta", text: part.text },
+              };
+              continue;
             }
 
             // ── Function call part ──
@@ -548,67 +586,78 @@ export class GeminiLane implements Lane {
             // the complete input.
             if (part.functionCall) {
               const fc = part.functionCall as {
-                id?: string
-                name?: string
-                args?: unknown
-              }
+                id?: string;
+                name?: string;
+                args?: unknown;
+              };
               // thoughtSignature lives at Part level (sibling of functionCall),
               // not inside functionCall. Server emits camelCase on the
               // generativelanguage response; Code Assist emits snake_case.
               const thoughtSignature =
-                (part as { thoughtSignature?: string; thought_signature?: string }).thoughtSignature
-                ?? (part as { thought_signature?: string }).thought_signature
+                (
+                  part as {
+                    thoughtSignature?: string;
+                    thought_signature?: string;
+                  }
+                ).thoughtSignature ??
+                (part as { thought_signature?: string }).thought_signature;
 
-              const name = typeof fc.name === 'string' ? fc.name : ''
+              const name = typeof fc.name === "string" ? fc.name : "";
 
-              if (name === '' && currentCall) {
-                // Continuation of the in-progress call — merge more args.
-                mergeArgsIntoCurrent(fc.args)
+              if (name === "" && currentCall) {
+                // Continuation of the in-progress call: merge more args.
+                mergeArgsIntoCurrent(fc.args);
                 if (thoughtSignature && !currentCall.thoughtSignature) {
-                  currentCall.thoughtSignature = thoughtSignature
+                  currentCall.thoughtSignature = thoughtSignature;
                 }
                 // Late-arriving id (Antigravity → Claude occasionally splits
-                // the id across chunks) — backfill onto the in-progress call.
-                if (typeof fc.id === 'string' && fc.id && !currentCall.anthropicToolUseIdFromServer) {
-                  currentCall.anthropicToolUseId = fc.id
-                  currentCall.anthropicToolUseIdFromServer = true
+                // the id across chunks): backfill onto the in-progress call.
+                if (
+                  typeof fc.id === "string" &&
+                  fc.id &&
+                  !currentCall.anthropicToolUseIdFromServer
+                ) {
+                  currentCall.anthropicToolUseId = fc.id;
+                  currentCall.anthropicToolUseIdFromServer = true;
                 }
-                continue
+                continue;
               }
 
-              // New named call — commit any pending, close open text/
+              // New named call: commit any pending, close open text/
               // thinking block, and start fresh.
               if (currentCall) {
-                yield* commitCurrentCall()
+                yield* commitCurrentCall();
               }
               if (inBlock !== null) {
-                yield { type: 'content_block_stop', index: blockIndex }
-                blockIndex++
-                inBlock = null
-                responseText = ''
-                thinkingText = ''
+                yield { type: "content_block_stop", index: blockIndex };
+                blockIndex++;
+                inBlock = null;
+                responseText = "";
+                thinkingText = "";
               }
 
               // Prefer the server-supplied id (Antigravity/Claude emits
-              // `functionCall.id` carrying Claude's original tool_use.id —
+              // `functionCall.id` carrying Claude's original tool_use.id:
               // preserving it keeps the id round-trip intact so the next
               // turn's tool_result references an id Claude actually issued).
-              // Fall back to a synthetic toolu_gem_<uuid> when absent — that
+              // Fall back to a synthetic toolu_gem_<uuid> when absent: that
               // covers pure Gemini, which never emits ids.
-              const serverId = typeof fc.id === 'string' && fc.id ? fc.id : null
-              const anthropicToolUseId = serverId ?? `toolu_gem_${randomUUID()}`
+              const serverId =
+                typeof fc.id === "string" && fc.id ? fc.id : null;
+              const anthropicToolUseId =
+                serverId ?? `toolu_gem_${randomUUID()}`;
               currentCall = {
                 nativeName: name,
                 args: {},
-                argsString: '',
+                argsString: "",
                 thoughtSignature,
                 blockIndex,
                 anthropicToolUseId,
                 anthropicToolUseIdFromServer: serverId !== null,
-              }
-              blockIndex++
-              mergeArgsIntoCurrent(fc.args)
-              continue
+              };
+              blockIndex++;
+              mergeArgsIntoCurrent(fc.args);
+              continue;
             }
           }
         }
@@ -617,12 +666,12 @@ export class GeminiLane implements Lane {
       // If the server says the cached content doesn't exist (404 or
       // specific string), invalidate so the next call builds fresh.
       if (
-        cacheName
-        && err
-        && typeof err.body === 'string'
-        && (err.status === 404 || /cachedContent/i.test(err.body))
+        cacheName &&
+        err &&
+        typeof err.body === "string" &&
+        (err.status === 404 || /cachedContent/i.test(err.body))
       ) {
-        invalidateCache(cacheName)
+        invalidateCache(cacheName);
       }
       if (
         isAntigravityRequest
@@ -642,21 +691,21 @@ export class GeminiLane implements Lane {
       }
       // Make sure message_start is emitted so downstream assembly works.
       if (!messageStartEmitted) {
-        const ev = emitMessageStart()
-        if (ev) yield ev
+        const ev = emitMessageStart();
+        if (ev) yield ev;
       }
-      if (err?.name === 'AbortError' || signal.aborted) {
-        // Drop any in-flight tool call accumulator — its args are
+      if (err?.name === "AbortError" || signal.aborted) {
+        // Drop any in-flight tool call accumulator: its args are
         // incomplete, so emitting it would give the model a garbage
         // tool_use block on the next turn. The turn ends here.
-        currentCall = null
+        currentCall = null;
         // Close any open block and signal abort.
         if (inBlock !== null) {
-          yield { type: 'content_block_stop', index: blockIndex }
+          yield { type: "content_block_stop", index: blockIndex };
         }
         yield {
-          type: 'message_delta',
-          delta: { stop_reason: 'end_turn' },
+          type: "message_delta",
+          delta: { stop_reason: "end_turn" },
           usage: {
             output_tokens: outputTokens,
             input_tokens: inputTokens,
@@ -667,64 +716,68 @@ export class GeminiLane implements Lane {
               cache_creation_input_tokens: cacheWriteTokens,
             }),
           },
-        }
-        yield { type: 'message_stop' }
+        };
+        yield { type: "message_stop" };
         return {
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           cache_read_tokens: cacheReadTokens,
           cache_write_tokens: cacheWriteTokens,
           thinking_tokens: thinkingTokens,
-        }
+        };
       }
-      // Non-abort errors: same rationale as abort — an incomplete tool
+      // Non-abort errors: same rationale as abort: an incomplete tool
       // call shouldn't surface. Drop the accumulator before surfacing
       // the error text block.
-      currentCall = null
+      currentCall = null;
       // Surface other errors as a text block + end.
       if (inBlock !== null) {
-        yield { type: 'content_block_stop', index: blockIndex }
-        blockIndex++
+        yield { type: "content_block_stop", index: blockIndex };
+        blockIndex++;
       }
       yield {
-        type: 'content_block_start',
+        type: "content_block_start",
         index: blockIndex,
-        content_block: { type: 'text', text: '' },
-      }
+        content_block: { type: "text", text: "" },
+      };
       // Prompt-too-long errors must surface with the Claude-Code signal
       // prefix un-wrapped so query.ts reactive compact recognizes them
       // via isPromptTooLongMessage(msg). GeminiApiError.message already
       // starts with "Prompt is too long (Gemini N)" in that case.
-      const isPTL = (err as { isPromptTooLong?: boolean } | null)?.isPromptTooLong === true
+      const isPTL =
+        (err as { isPromptTooLong?: boolean } | null)?.isPromptTooLong === true;
 
       // Auth-stale 403 that survived the one-shot re-onboard retry means
       // the token itself is bad (account lost Antigravity access, scopes
       // were revoked, or refresh expired). A raw "Gemini API error 403:
-      // The caller does not have permission" isn't actionable — replace
+      // The caller does not have permission" isn't actionable: replace
       // with a concrete next-step message so the user knows to run /provider.
-      const errKind = (err as { kind?: string } | null)?.kind
-      const isTerminalAuth = errKind === 'auth-stale'
-        || errKind === 'non-retryable'
-        || (err?.status === 401 || err?.status === 403)
-      const isQuotaOrCapacity = errKind === 'retryable-quota'
-        || errKind === 'terminal-quota'
-        || err?.status === 429
+      const errKind = (err as { kind?: string } | null)?.kind;
+      const isTerminalAuth =
+        errKind === "auth-stale" ||
+        errKind === "non-retryable" ||
+        err?.status === 401 ||
+        err?.status === 403;
+      const isQuotaOrCapacity =
+        errKind === "retryable-quota" ||
+        errKind === "terminal-quota" ||
+        err?.status === 429;
       const errText = isPTL
         ? (err?.message ?? String(err))
         : isTerminalAuth
           ? buildAuthErrorMessage(err, model)
           : isQuotaOrCapacity
             ? buildQuotaErrorMessage(err, model)
-            : `\n\nGemini API error (model: ${model}): ${err?.message ?? String(err)}`
+            : `\n\nGemini API error (model: ${model}): ${err?.message ?? String(err)}`;
       yield {
-        type: 'content_block_delta',
+        type: "content_block_delta",
         index: blockIndex,
-        delta: { type: 'text_delta', text: errText },
-      }
-      yield { type: 'content_block_stop', index: blockIndex }
+        delta: { type: "text_delta", text: errText },
+      };
+      yield { type: "content_block_stop", index: blockIndex };
       yield {
-        type: 'message_delta',
-        delta: { stop_reason: 'end_turn' },
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
         usage: {
           output_tokens: outputTokens,
           input_tokens: inputTokens,
@@ -735,48 +788,48 @@ export class GeminiLane implements Lane {
             cache_creation_input_tokens: cacheWriteTokens,
           }),
         },
-      }
-      yield { type: 'message_stop' }
+      };
+      yield { type: "message_stop" };
       return {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         cache_read_tokens: cacheReadTokens,
         cache_write_tokens: cacheWriteTokens,
         thinking_tokens: thinkingTokens,
-      }
+      };
     }
 
     // Make sure message_start was emitted (edge case: empty response).
     if (!messageStartEmitted) {
-      const ev = emitMessageStart()
-      if (ev) yield ev
+      const ev = emitMessageStart();
+      if (ev) yield ev;
     }
 
-    // Commit any pending tool call — the stream ended without a state
+    // Commit any pending tool call: the stream ended without a state
     // transition to force emission. This is the common case when a
     // response is just one tool call: all the chunks are functionCall
     // parts and the only trigger to commit is end-of-stream.
     if (currentCall) {
-      yield* commitCurrentCall()
+      yield* commitCurrentCall();
     }
 
     // Close final open block.
     if (inBlock !== null) {
-      yield { type: 'content_block_stop', index: blockIndex }
+      yield { type: "content_block_stop", index: blockIndex };
     }
 
     // Decide stop reason: if we emitted tool_use blocks, the model wants to
     // run tools; otherwise it finished its turn.
-    const stopReason: 'tool_use' | 'end_turn' =
-      toolCalls.length > 0 ? 'tool_use' : 'end_turn'
+    const stopReason: "tool_use" | "end_turn" =
+      toolCalls.length > 0 ? "tool_use" : "end_turn";
 
     yield {
-      type: 'message_delta',
+      type: "message_delta",
       delta: { stop_reason: stopReason },
       // Fold end-of-stream usage into message_delta. Gemini delivers
       // usageMetadata only in the final chunk, so message_start was emitted
       // with zeros. updateUsage (claude.ts) picks these up via its > 0 guard
-      // — without this, cache_read_input_tokens always displays as 0 on the
+      //: without this, cache_read_input_tokens always displays as 0 on the
       // CLI / Google-account path even when Gemini reports a cache hit.
       usage: {
         output_tokens: outputTokens,
@@ -788,8 +841,8 @@ export class GeminiLane implements Lane {
           cache_creation_input_tokens: cacheWriteTokens,
         }),
       },
-    }
-    yield { type: 'message_stop' }
+    };
+    yield { type: "message_stop" };
 
     return {
       input_tokens: inputTokens,
@@ -797,28 +850,31 @@ export class GeminiLane implements Lane {
       cache_read_tokens: cacheReadTokens,
       cache_write_tokens: cacheWriteTokens,
       thinking_tokens: thinkingTokens,
-    }
+    };
   }
 
   // ── Lane-owns-loop mode (future Phase-2 migration) ─────────────
 
-  async *run(context: LaneRunContext): AsyncGenerator<AnthropicStreamEvent, LaneRunResult> {
+  async *run(
+    context: LaneRunContext,
+  ): AsyncGenerator<AnthropicStreamEvent, LaneRunResult> {
     // Lane-owns-loop isn't wired into the query pipeline yet. For now this
     // delegates to streamAsProvider so the interface stays usable if called.
-    const { model, messages, systemParts, mcpTools, signal, maxTokens } = context
+    const { model, messages, systemParts, mcpTools, signal, maxTokens } =
+      context;
 
     // Synthesize a system string from SystemPromptParts.
-    const systemText = assembleSystemFromParts(systemParts)
+    const systemText = assembleSystemFromParts(systemParts);
 
     // Aggregate lane-native tool defs + MCP tools in provider-tool shape.
     const allTools = [
-      ...GEMINI_TOOL_REGISTRY.map(r => ({
+      ...GEMINI_TOOL_REGISTRY.map((r) => ({
         name: r.implId,
         description: r.nativeDescription,
         input_schema: r.nativeSchema,
       })),
       ...mcpTools,
-    ]
+    ];
 
     const totalUsage: NormalizedUsage = {
       input_tokens: 0,
@@ -826,16 +882,20 @@ export class GeminiLane implements Lane {
       cache_read_tokens: 0,
       cache_write_tokens: 0,
       thinking_tokens: 0,
-    }
+    };
 
-    let currentMessages = messages
-    let turnCount = 0
+    let currentMessages = messages;
+    let turnCount = 0;
 
     while (turnCount < MAX_TURNS) {
-      if (signal.aborted) return { stopReason: 'aborted', usage: totalUsage }
-      turnCount++
+      if (signal.aborted) return { stopReason: "aborted", usage: totalUsage };
+      turnCount++;
 
-      const collectedToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
+      const collectedToolUses: Array<{
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }> = [];
 
       const gen = this.streamAsProvider({
         model,
@@ -844,109 +904,113 @@ export class GeminiLane implements Lane {
         tools: allTools,
         max_tokens: maxTokens,
         signal,
-      })
+      });
 
       // Forward events while collecting tool_use blocks for execution.
-      let done = false
-      let stopReason: 'end_turn' | 'tool_use' = 'end_turn'
+      let done = false;
+      let stopReason: "end_turn" | "tool_use" = "end_turn";
       while (!done) {
-        const next = await gen.next()
+        const next = await gen.next();
         if (next.done) {
-          const u = next.value
-          totalUsage.input_tokens += u.input_tokens
-          totalUsage.output_tokens += u.output_tokens
-          totalUsage.cache_read_tokens += u.cache_read_tokens
-          totalUsage.cache_write_tokens += u.cache_write_tokens
-          totalUsage.thinking_tokens += u.thinking_tokens
-          done = true
-          break
+          const u = next.value;
+          totalUsage.input_tokens += u.input_tokens;
+          totalUsage.output_tokens += u.output_tokens;
+          totalUsage.cache_read_tokens += u.cache_read_tokens;
+          totalUsage.cache_write_tokens += u.cache_write_tokens;
+          totalUsage.thinking_tokens += u.thinking_tokens;
+          done = true;
+          break;
         }
-        const ev = next.value
-        yield ev
+        const ev = next.value;
+        yield ev;
         if (
-          ev.type === 'content_block_start'
-          && ev.content_block?.type === 'tool_use'
-          && ev.content_block.id
-          && ev.content_block.name
+          ev.type === "content_block_start" &&
+          ev.content_block?.type === "tool_use" &&
+          ev.content_block.id &&
+          ev.content_block.name
         ) {
           collectedToolUses.push({
             id: ev.content_block.id,
             name: ev.content_block.name,
             input: (ev.content_block.input ?? {}) as Record<string, unknown>,
-          })
+          });
         }
-        if (ev.type === 'message_delta' && ev.delta?.stop_reason === 'tool_use') {
-          stopReason = 'tool_use'
+        if (
+          ev.type === "message_delta" &&
+          ev.delta?.stop_reason === "tool_use"
+        ) {
+          stopReason = "tool_use";
         }
       }
 
-      if (stopReason !== 'tool_use' || collectedToolUses.length === 0) {
-        return { stopReason: 'end_turn', usage: totalUsage }
+      if (stopReason !== "tool_use" || collectedToolUses.length === 0) {
+        return { stopReason: "end_turn", usage: totalUsage };
       }
 
       // Execute tools via the shared layer and feed results back.
       const toolResultBlocks = await Promise.all(
-        collectedToolUses.map(async tu => {
+        collectedToolUses.map(async (tu) => {
           try {
-            const result = await context.executeTool(tu.name, tu.input)
+            const result = await context.executeTool(tu.name, tu.input);
             return {
-              type: 'tool_result' as const,
+              type: "tool_result" as const,
               tool_use_id: tu.id,
-              content: typeof result.content === 'string'
-                ? result.content
-                : JSON.stringify(result.content),
+              content:
+                typeof result.content === "string"
+                  ? result.content
+                  : JSON.stringify(result.content),
               is_error: result.isError,
-            }
+            };
           } catch (e: any) {
             return {
-              type: 'tool_result' as const,
+              type: "tool_result" as const,
               tool_use_id: tu.id,
               content: `Error: ${e?.message ?? String(e)}`,
               is_error: true,
-            }
+            };
           }
         }),
-      )
+      );
 
       currentMessages = [
         ...currentMessages,
         {
-          role: 'assistant',
-          content: collectedToolUses.map(tu => ({
-            type: 'tool_use',
+          role: "assistant",
+          content: collectedToolUses.map((tu) => ({
+            type: "tool_use",
             id: tu.id,
             name: tu.name,
             input: tu.input,
           })),
         },
-        { role: 'user', content: toolResultBlocks },
-      ]
+        { role: "user", content: toolResultBlocks },
+      ];
     }
 
-    return { stopReason: 'max_turns', usage: totalUsage }
+    return { stopReason: "max_turns", usage: totalUsage };
   }
 
   async listModels(providerFilter?: string): Promise<ModelInfo[]> {
-    return geminiApi.listModels(providerFilter)
+    return geminiApi.listModels(providerFilter);
   }
 
   resolveModel(model: string): string {
-    return model
+    return model;
   }
 
   smallFastModel(): string {
     // CLI-OAuth flash-lite is the cheapest Gemini model we can reach
     // on any auth path. API-key users could pay for the same via the
     // Studio endpoint; OAuth users get it free on the Code Assist pool.
-    return 'gemini-2.5-flash-lite'
+    return "gemini-2.5-flash-lite";
   }
 
   isHealthy(): boolean {
-    return this._healthy
+    return this._healthy;
   }
 
   setHealthy(healthy: boolean): void {
-    this._healthy = healthy
+    this._healthy = healthy;
   }
 
   dispose(): void {
@@ -968,44 +1032,44 @@ export class GeminiLane implements Lane {
  * leading user message.
  */
 function assembleSystemFromParts(parts: {
-  memory?: string
-  environment?: string
-  gitStatus?: string
-  toolsAddendum?: string
-  mcpIntro?: string
-  skillsContext?: string
-  customInstructions?: string
+  memory?: string;
+  environment?: string;
+  gitStatus?: string;
+  toolsAddendum?: string;
+  mcpIntro?: string;
+  skillsContext?: string;
+  customInstructions?: string;
 }): string {
-  const sections: string[] = []
-  if (parts.customInstructions) sections.push(parts.customInstructions)
-  if (parts.toolsAddendum) sections.push(parts.toolsAddendum)
-  if (parts.mcpIntro) sections.push(parts.mcpIntro)
-  if (parts.skillsContext) sections.push(`Skills:\n${parts.skillsContext}`)
-  if (parts.memory) sections.push(`Context:\n${parts.memory}`)
-  if (parts.environment) sections.push(parts.environment)
-  if (parts.gitStatus) sections.push(`Git status:\n${parts.gitStatus}`)
-  return sections.join('\n\n')
+  const sections: string[] = [];
+  if (parts.customInstructions) sections.push(parts.customInstructions);
+  if (parts.toolsAddendum) sections.push(parts.toolsAddendum);
+  if (parts.mcpIntro) sections.push(parts.mcpIntro);
+  if (parts.skillsContext) sections.push(`Skills:\n${parts.skillsContext}`);
+  if (parts.memory) sections.push(`Context:\n${parts.memory}`);
+  if (parts.environment) sections.push(parts.environment);
+  if (parts.gitStatus) sections.push(`Git status:\n${parts.gitStatus}`);
+  return sections.join("\n\n");
 }
 
 // Build a map of tool_use_id → native tool name by scanning the history
 // for tool_use blocks. Some blocks emit an implId as their name, others may
 // already carry the native name. We record both candidates keyed by id.
 function buildToolUseIdToNativeMap(
-  messages: import('../../services/api/providers/base_provider.js').ProviderMessage[],
+  messages: import("../../services/api/providers/base_provider.js").ProviderMessage[],
 ): Map<string, string> {
-  const map = new Map<string, string>()
+  const map = new Map<string, string>();
   for (const msg of messages) {
-    if (typeof msg.content === 'string') continue
+    if (typeof msg.content === "string") continue;
     for (const block of msg.content) {
-      if (block.type === 'tool_use' && block.id && block.name) {
+      if (block.type === "tool_use" && block.id && block.name) {
         // Resolve the block's name → native name. If name is an implId, look
         // up the first native registration; otherwise treat it as already-native.
-        const native = implIdToNative(block.name) ?? block.name
-        map.set(block.id, native)
+        const native = implIdToNative(block.name) ?? block.name;
+        map.set(block.id, native);
       }
     }
   }
-  return map
+  return map;
 }
 
 // ─── History Conversion ──────────────────────────────────────────
@@ -1014,32 +1078,35 @@ function buildToolUseIdToNativeMap(
 // Handles the shared-impl-name ↔ native-name mapping transparently.
 
 function convertHistoryToGemini(
-  messages: import('../../services/api/providers/base_provider.js').ProviderMessage[],
+  messages: import("../../services/api/providers/base_provider.js").ProviderMessage[],
   toolUseIdToNative: Map<string, string>,
 ): GeminiContent[] {
-  const contents: GeminiContent[] = []
+  const contents: GeminiContent[] = [];
 
   for (const msg of messages) {
-    const role: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user'
-    const parts: GeminiPart[] = []
+    const role: "user" | "model" = msg.role === "assistant" ? "model" : "user";
+    const parts: GeminiPart[] = [];
 
-    if (typeof msg.content === 'string') {
-      if (msg.content.length > 0) parts.push({ text: msg.content })
+    if (typeof msg.content === "string") {
+      if (msg.content.length > 0) parts.push({ text: msg.content });
     } else {
       for (const block of msg.content) {
         switch (block.type) {
-          case 'text':
-            if (block.text) parts.push({ text: block.text })
-            break
-          case 'tool_use':
+          case "text":
+            if (block.text) parts.push({ text: block.text });
+            break;
+          case "tool_use":
             if (block.name) {
-              const nativeName = implIdToNative(block.name) ?? block.name
-              const nativeInput = implToNativeInput(block.name, block.input ?? {})
+              const nativeName = implIdToNative(block.name) ?? block.name;
+              const nativeInput = implToNativeInput(
+                block.name,
+                block.input ?? {},
+              );
               // thoughtSignature lives on the Part (sibling of functionCall),
-              // NOT inside functionCall — the proto has it at Part level.
+              // NOT inside functionCall: the proto has it at Part level.
               // Only emit when we captured a real one from the prior turn;
               // the server rejects placeholder/synthetic values.
-              // Carry block.id on functionCall.id — Antigravity's Gemini→
+              // Carry block.id on functionCall.id: Antigravity's Gemini→
               // Anthropic bridge uses it to populate tool_use.id on the
               // request it forwards to Claude. Without it Claude rejects
               // with "messages.N.content.M.tool_use.id: Field required".
@@ -1052,19 +1119,19 @@ function convertHistoryToGemini(
                 ...(block._gemini_thought_signature && {
                   thoughtSignature: block._gemini_thought_signature,
                 }),
-              }
-              parts.push(fc)
+              };
+              parts.push(fc);
             }
-            break
-          case 'tool_result': {
-            const id = block.tool_use_id ?? ''
-            const nativeName = (id && toolUseIdToNative.get(id)) ?? 'unknown'
+            break;
+          case "tool_result": {
+            const id = block.tool_use_id ?? "";
+            const nativeName = (id && toolUseIdToNative.get(id)) ?? "unknown";
             // Split content into text (→ functionResponse.content) and
             // image parts (→ sibling inlineData Parts). Gemini natively
             // handles multimodal function responses via adjacent
-            // inlineData parts — stringifying base64 images into a text
+            // inlineData parts: stringifying base64 images into a text
             // JSON blob would dump raw bytes into the model's context.
-            const { text, images } = splitToolResultContent(block.content)
+            const { text, images } = splitToolResultContent(block.content);
             // Carry tool_use_id on functionResponse.id so Antigravity can
             // round-trip Claude's tool_use_id → tool_result matching.
             parts.push({
@@ -1073,87 +1140,96 @@ function convertHistoryToGemini(
                 name: nativeName,
                 response: { content: text },
               },
-            })
+            });
             for (const img of images) {
-              parts.push({ inlineData: img })
+              parts.push({ inlineData: img });
             }
-            break
+            break;
           }
-          case 'thinking':
-            if (block.thinking) parts.push({ thought: true, text: block.thinking })
-            break
-          case 'image': {
+          case "thinking":
+            if (block.thinking)
+              parts.push({ thought: true, text: block.thinking });
+            break;
+          case "image": {
             // Pasted screenshots arrive as an Anthropic image block on the
             // user message. The tool-result path already maps these to
             // inlineData; without this case they were dropped, leaving the
             // `[Image #N]` marker in the text with nothing behind it.
-            const inline = imageBlockToInlineData(block)
-            if (inline) parts.push({ inlineData: inline })
-            else parts.push({ text: '[image not sent: unsupported image source]' })
-            break
+            const inline = imageBlockToInlineData(block);
+            if (inline) parts.push({ inlineData: inline });
+            else
+              parts.push({
+                text: "[image not sent: unsupported image source]",
+              });
+            break;
           }
           default: {
             // Anthropic `document` blocks (PDF attachments) aren't in
             // ProviderContentBlock's union but do reach the lane. Gemini can
             // take PDFs as inlineData, but only under a request-size budget
-            // this converter doesn't own — say so rather than drop silently.
-            if ((block as { type: string }).type === 'document') {
+            // this converter doesn't own: say so rather than drop silently.
+            if ((block as { type: string }).type === "document") {
               // Gemini can take PDFs as inlineData, but only under a
               // request-size budget this converter does not own. Say so
               // rather than dropping it silently. No OCR on this lane.
-              const mime = (block as { source?: { media_type?: string } }).source?.media_type
-                ?? 'application/pdf'
-              parts.push({ text: `[document not sent (${mime}): this lane forwards images only]` })
+              const mime =
+                (block as { source?: { media_type?: string } }).source
+                  ?.media_type ?? "application/pdf";
+              parts.push({
+                text: `[document not sent (${mime}): this lane forwards images only]`,
+              });
             }
-            break
+            break;
           }
         }
       }
     }
 
-    if (parts.length > 0) contents.push({ role, parts })
+    if (parts.length > 0) contents.push({ role, parts });
   }
 
-  return contents
+  return contents;
 }
 
 /** Test-only handle on the Anthropic-IR → Gemini `contents` conversion. */
 export function _convertHistoryToGeminiForTest(
-  messages: import('../../services/api/providers/base_provider.js').ProviderMessage[],
+  messages: import("../../services/api/providers/base_provider.js").ProviderMessage[],
   toolUseIdToNative: Map<string, string> = new Map(),
 ): GeminiContent[] {
-  return convertHistoryToGemini(messages, toolUseIdToNative)
+  return convertHistoryToGemini(messages, toolUseIdToNative);
 }
 
 function stableAntigravitySessionId(
   sessionId: string | undefined,
-  messages: import('../../services/api/providers/base_provider.js').ProviderMessage[],
+  messages: import("../../services/api/providers/base_provider.js").ProviderMessage[],
 ): string {
-  const source = sessionId?.trim() || firstUserTextFromMessages(messages)
-  return stableNegativeHash(source || JSON.stringify(messages.map(msg => msg.role)))
+  const source = sessionId?.trim() || firstUserTextFromMessages(messages);
+  return stableNegativeHash(
+    source || JSON.stringify(messages.map((msg) => msg.role)),
+  );
 }
 
 function firstUserTextFromMessages(
-  messages: import('../../services/api/providers/base_provider.js').ProviderMessage[],
+  messages: import("../../services/api/providers/base_provider.js").ProviderMessage[],
 ): string {
   for (const msg of messages) {
-    if (msg.role !== 'user') continue
-    if (typeof msg.content === 'string') return msg.content
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") return msg.content;
     const text = msg.content
-      .map(block => block.type === 'text' ? block.text ?? '' : '')
+      .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
       .filter(Boolean)
-      .join('\n')
-    if (text) return text
+      .join("\n");
+    if (text) return text;
   }
-  return ''
+  return "";
 }
 
 function stableNegativeHash(text: string): string {
-  let hash = 0
+  let hash = 0;
   for (const ch of text) {
-    hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
+    hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
   }
-  return `-${Math.abs(hash).toString()}`
+  return `-${Math.abs(hash).toString()}`;
 }
 
 /**
@@ -1161,20 +1237,23 @@ function stableNegativeHash(text: string): string {
  *
  * Mirrors the mapping inside splitToolResultContent (the tool-result path,
  * which already worked); kept as a separate helper so that path stays
- * byte-for-byte untouched. Returns null for URL-only sources — Gemini does
+ * byte-for-byte untouched. Returns null for URL-only sources: Gemini does
  * not fetch remote images, so the caller emits a marker instead.
  */
 function imageBlockToInlineData(
   block: unknown,
 ): { mimeType: string; data: string } | null {
   const src = (
-    block as { source?: { data?: string; media_type?: string; mediaType?: string } } | null
-  )?.source
-  if (!src || typeof src.data !== 'string' || src.data.length === 0) return null
+    block as {
+      source?: { data?: string; media_type?: string; mediaType?: string };
+    } | null
+  )?.source;
+  if (!src || typeof src.data !== "string" || src.data.length === 0)
+    return null;
   return {
-    mimeType: src.media_type ?? src.mediaType ?? 'image/png',
+    mimeType: src.media_type ?? src.mediaType ?? "image/png",
     data: src.data,
-  }
+  };
 }
 
 /**
@@ -1191,75 +1270,75 @@ function imageBlockToInlineData(
  *   - Array of bare `{text}` blocks (legacy)
  */
 function splitToolResultContent(content: unknown): {
-  text: string
-  images: Array<{ mimeType: string; data: string }>
+  text: string;
+  images: Array<{ mimeType: string; data: string }>;
 } {
-  if (typeof content === 'string') {
-    return { text: content, images: [] }
+  if (typeof content === "string") {
+    return { text: content, images: [] };
   }
   if (!Array.isArray(content)) {
-    return { text: JSON.stringify(content ?? ''), images: [] }
+    return { text: JSON.stringify(content ?? ""), images: [] };
   }
-  const texts: string[] = []
-  const images: Array<{ mimeType: string; data: string }> = []
+  const texts: string[] = [];
+  const images: Array<{ mimeType: string; data: string }> = [];
   for (const b of content as any[]) {
-    if (!b || typeof b !== 'object') continue
-    if (b.type === 'text' && typeof b.text === 'string') {
-      texts.push(b.text)
-      continue
+    if (!b || typeof b !== "object") continue;
+    if (b.type === "text" && typeof b.text === "string") {
+      texts.push(b.text);
+      continue;
     }
-    if (b.type === 'image' && b.source && typeof b.source === 'object') {
+    if (b.type === "image" && b.source && typeof b.source === "object") {
       // Anthropic image source shape: { type: 'base64', media_type, data }
       // Map into Gemini inlineData: { mimeType, data }. Bail on URL-only
       // sources (Gemini doesn't fetch); stringify so the user sees something.
       const src = b.source as {
-        type?: string
-        media_type?: string
-        mediaType?: string
-        data?: string
-        url?: string
-      }
-      const mimeType = src.media_type ?? src.mediaType ?? 'image/png'
-      if (typeof src.data === 'string' && src.data.length > 0) {
-        images.push({ mimeType, data: src.data })
-        continue
+        type?: string;
+        media_type?: string;
+        mediaType?: string;
+        data?: string;
+        url?: string;
+      };
+      const mimeType = src.media_type ?? src.mediaType ?? "image/png";
+      if (typeof src.data === "string" && src.data.length > 0) {
+        images.push({ mimeType, data: src.data });
+        continue;
       }
       if (src.url) {
-        texts.push(`[image url: ${src.url}]`)
-        continue
+        texts.push(`[image url: ${src.url}]`);
+        continue;
       }
-      texts.push(`[image attached: ${mimeType}]`)
-      continue
+      texts.push(`[image attached: ${mimeType}]`);
+      continue;
     }
     // Bare {text} legacy block or unknown shape.
-    if (typeof b.text === 'string') {
-      texts.push(b.text)
-      continue
+    if (typeof b.text === "string") {
+      texts.push(b.text);
+      continue;
     }
-    texts.push(JSON.stringify(b))
+    texts.push(JSON.stringify(b));
   }
-  return { text: texts.join('\n'), images }
+  return { text: texts.join("\n"), images };
 }
 
 // Map a shared impl id → native Gemini tool name (first match wins).
-// Returns undefined for unknown impls (MCP tools etc — caller treats the
+// Returns undefined for unknown impls (MCP tools etc: caller treats the
 // name as already-native).
-const _implToNative = new Map<string, string>()
+const _implToNative = new Map<string, string>();
 function _ensureImplMap(): void {
-  if (_implToNative.size > 0) return
+  if (_implToNative.size > 0) return;
   for (const reg of GEMINI_TOOL_REGISTRY) {
     if (!_implToNative.has(reg.implId)) {
-      _implToNative.set(reg.implId, reg.nativeName)
+      _implToNative.set(reg.implId, reg.nativeName);
     }
   }
 }
 function implIdToNative(implOrNative: string): string | undefined {
-  _ensureImplMap()
-  if (_implToNative.has(implOrNative)) return _implToNative.get(implOrNative)
+  _ensureImplMap();
+  if (_implToNative.has(implOrNative)) return _implToNative.get(implOrNative);
   // If it's already a native name, return as-is.
-  const reg = getRegistrationByNativeName(implOrNative)
-  if (reg) return reg.nativeName
-  return undefined
+  const reg = getRegistrationByNativeName(implOrNative);
+  if (reg) return reg.nativeName;
+  return undefined;
 }
 
 // Translate shared-impl input → native Gemini input shape, running it
@@ -1271,43 +1350,43 @@ function implToNativeInput(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
   // If the caller already sent native-name input, pass through.
-  const byNative = getRegistrationByNativeName(implOrNative)
-  if (byNative) return input
+  const byNative = getRegistrationByNativeName(implOrNative);
+  if (byNative) return input;
 
   // Find by impl id.
-  const reg = GEMINI_TOOL_REGISTRY.find(r => r.implId === implOrNative)
-  if (!reg) return input
+  const reg = GEMINI_TOOL_REGISTRY.find((r) => r.implId === implOrNative);
+  if (!reg) return input;
 
   // Specific inverse adapters for divergent shapes.
   switch (reg.nativeName) {
-    case 'read_file': {
-      const offset = input.offset as number | undefined
-      const limit = input.limit as number | undefined
-      const out: Record<string, unknown> = { file_path: input.file_path }
+    case "read_file": {
+      const offset = input.offset as number | undefined;
+      const limit = input.limit as number | undefined;
+      const out: Record<string, unknown> = { file_path: input.file_path };
       if (offset != null) {
-        out.start_line = offset + 1
-        if (limit != null) out.end_line = offset + limit
+        out.start_line = offset + 1;
+        if (limit != null) out.end_line = offset + limit;
       }
-      return out
+      return out;
     }
-    case 'replace': {
+    case "replace": {
       return {
         file_path: input.file_path,
         old_string: input.old_string,
         new_string: input.new_string,
         ...(input.replace_all != null && { allow_multiple: input.replace_all }),
-      }
+      };
     }
-    case 'grep_search': {
-      const out: Record<string, unknown> = { pattern: input.pattern }
-      if (input.path != null) out.dir_path = input.path
-      if (input.glob != null) out.include_pattern = input.glob
-      if (input.head_limit != null) out.total_max_matches = input.head_limit
-      if (input.output_mode === 'files_with_matches') out.names_only = true
-      return out
+    case "grep_search": {
+      const out: Record<string, unknown> = { pattern: input.pattern };
+      if (input.path != null) out.dir_path = input.path;
+      if (input.glob != null) out.include_pattern = input.glob;
+      if (input.head_limit != null) out.total_max_matches = input.head_limit;
+      if (input.output_mode === "files_with_matches") out.names_only = true;
+      return out;
     }
     default:
-      return input
+      return input;
   }
 }
 
@@ -1316,67 +1395,87 @@ function implToNativeInput(
 // model was trained on; unknown tools (MCP, custom) pass through with
 // their provider-shaped schema, after light sanitization for Gemini.
 function buildLaneFunctionDeclarations(
-  tools: import('../../services/api/providers/base_provider.js').ProviderTool[],
-): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
-  const decls: Array<{ name: string; description: string; parameters: Record<string, unknown> }> = []
+  tools: import("../../services/api/providers/base_provider.js").ProviderTool[],
+): Array<{
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}> {
+  const decls: Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  }> = [];
 
   for (const tool of tools) {
     // Try to match by impl id first (how claude.ts names tools).
-    const byImpl = GEMINI_TOOL_REGISTRY.find(r => r.implId === tool.name)
+    const byImpl = GEMINI_TOOL_REGISTRY.find((r) => r.implId === tool.name);
     if (byImpl) {
       decls.push({
         name: byImpl.nativeName,
-        description: appendStrictParamsHint(byImpl.nativeDescription, byImpl.nativeSchema),
+        description: appendStrictParamsHint(
+          byImpl.nativeDescription,
+          byImpl.nativeSchema,
+        ),
         parameters: byImpl.nativeSchema,
-      })
-      continue
+      });
+      continue;
     }
 
     // Maybe the caller already gave us a native name.
-    const byNative = getRegistrationByNativeName(tool.name)
+    const byNative = getRegistrationByNativeName(tool.name);
     if (byNative) {
       decls.push({
         name: byNative.nativeName,
-        description: appendStrictParamsHint(byNative.nativeDescription, byNative.nativeSchema),
+        description: appendStrictParamsHint(
+          byNative.nativeDescription,
+          byNative.nativeSchema,
+        ),
         parameters: byNative.nativeSchema,
-      })
-      continue
+      });
+      continue;
     }
 
-    // Unknown tool — forward with its provider-shaped schema, routed
+    // Unknown tool: forward with its provider-shaped schema, routed
     // through the shared MCP bridge sanitizer for the 'gemini' profile.
     // Also append the STRICT PARAMETERS hint so Flash models see the
-    // field-level requirement plainly in the description — Flash is
+    // field-level requirement plainly in the description: Flash is
     // prone to emitting empty-args tool calls when the hint is absent.
     const parameters = sanitizeSchemaForLane(
-      tool.input_schema ?? { type: 'object', properties: {} },
-      'gemini',
-    )
+      tool.input_schema ?? { type: "object", properties: {} },
+      "gemini",
+    );
     decls.push({
       name: tool.name,
-      description: appendStrictParamsHint(tool.description ?? '', parameters),
+      description: appendStrictParamsHint(tool.description ?? "", parameters),
       parameters,
-    })
+    });
   }
 
-  return decls
+  return decls;
 }
 
 // ─── Request Builder ─────────────────────────────────────────────
 
 interface GeminiRequestConfig {
-  model: string
-  contents: GeminiContent[]
-  systemText: string
-  functionDeclarations: Array<{ name: string; description: string; parameters: Record<string, unknown> }>
-  maxOutputTokens: number
-  thinkingBudget: number
-  thinking?: LaneProviderCallParams['thinking']
+  model: string;
+  contents: GeminiContent[];
+  systemText: string;
+  functionDeclarations: Array<{
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  }>;
+  maxOutputTokens: number;
+  thinkingBudget: number;
+  thinking?: LaneProviderCallParams["thinking"];
   /** Server-side cache name from cachedContents API (if hit). */
-  cacheName?: string | null
+  cacheName?: string | null;
 }
 
-function buildGeminiRequest(config: GeminiRequestConfig): Record<string, unknown> {
+function buildGeminiRequest(
+  config: GeminiRequestConfig,
+): Record<string, unknown> {
   const {
     model,
     contents,
@@ -1386,21 +1485,21 @@ function buildGeminiRequest(config: GeminiRequestConfig): Record<string, unknown
     thinkingBudget,
     thinking,
     cacheName,
-  } = config
+  } = config;
 
-  const hasTools = functionDeclarations.length > 0
+  const hasTools = functionDeclarations.length > 0;
   // When tools are present, prepend the TOOL_USAGE_RULES preamble to the
   // system instruction so the model treats the schema as authoritative
   // and stops emitting empty-args tool calls. Byte cost is ~400; big
   // quality win on Flash-class models that ignore the schema otherwise.
   const systemTextWithRules = hasTools
     ? `${GEMINI_TOOL_USAGE_RULES}\n${systemText}`
-    : systemText
+    : systemText;
 
   // Antigravity pro/flash models (gemini-3.x family) expose a LEVEL-based
   // thinking API (low/medium/high) rather than the legacy budget-int API.
   // If we send `thinkingBudget: -1` (dynamic) on these, the server defaults
-  // to "high" thinking — which is why `-pro-low` was previously taking
+  // to "high" thinking: which is why `-pro-low` was previously taking
   // just as long as `-pro-high`. Translate model name suffix → thinking
   // level to honor the user's choice.
   //
@@ -1408,7 +1507,11 @@ function buildGeminiRequest(config: GeminiRequestConfig): Record<string, unknown
   //   gemini-3.1-pro-low  → thinkingLevel: "low"
   //   gemini-3-flash      → thinkingLevel: "low"   (flash default)
   //   (other -flash, -lite preview, 2.5 family)   → thinkingBudget (legacy)
-  const thinkingConfig = resolveGeminiThinkingConfig(model, thinkingBudget, thinking)
+  const thinkingConfig = resolveGeminiThinkingConfig(
+    model,
+    thinkingBudget,
+    thinking,
+  );
 
   const request: Record<string, unknown> = {
     model,
@@ -1419,38 +1522,38 @@ function buildGeminiRequest(config: GeminiRequestConfig): Record<string, unknown
       topK: 64,
       thinkingConfig,
     },
-    // Safety categories OFF — matches gemini-cli and CLIProxyAPI defaults so
+    // Safety categories OFF: matches gemini-cli and CLIProxyAPI defaults so
     // the model behaves the same way it does in its home environment.
     safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'OFF' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'OFF' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'OFF' },
-      { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
+      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" },
     ],
-  }
+  };
 
-  // Cache is mutually exclusive with inline system + tools — when the
+  // Cache is mutually exclusive with inline system + tools: when the
   // cachedContents API holds the stable portion, reference it and omit
   // the duplicated fields. Otherwise send them inline every turn.
   if (cacheName) {
-    request.cachedContent = cacheName
+    request.cachedContent = cacheName;
   } else {
-    request.systemInstruction = { parts: [{ text: systemTextWithRules }] }
+    request.systemInstruction = { parts: [{ text: systemTextWithRules }] };
     if (hasTools) {
-      request.tools = [{ functionDeclarations }]
-      // Server-side schema enforcement — Gemini rejects calls that don't
+      request.tools = [{ functionDeclarations }];
+      // Server-side schema enforcement: Gemini rejects calls that don't
       // match the declared schema BEFORE streaming them back, so empty-
       // args hallucinations don't reach us (and don't burn tool-result
       // retry cycles). This is the single most effective knob against
       // the Flash empty-args problem the legacy adapter fought.
       request.toolConfig = {
-        functionCallingConfig: { mode: 'VALIDATED' },
-      }
+        functionCallingConfig: { mode: "VALIDATED" },
+      };
     }
   }
 
-  return request
+  return request;
 }
 
 // ─── Auth-error message formatting ───────────────────────────────
@@ -1458,26 +1561,32 @@ function buildGeminiRequest(config: GeminiRequestConfig): Record<string, unknown
 // A raw "Gemini API error 403: The caller does not have permission"
 // isn't actionable for the user. When the error is classified as
 // auth-stale / non-retryable / 401 / 403 we rewrite it into a message
-// that tells the user exactly what to do — and points at the right
+// that tells the user exactly what to do: and points at the right
 // remediation surface (Antigravity account page for Antigravity
 // models, /provider for OAuth refresh, /login for a fresh auth).
 
-// Antigravity-only model ids — these route through the Antigravity
+// Antigravity-only model ids: these route through the Antigravity
 // quota pool and 403 if the user only has the Gemini-CLI OAuth token.
 // Kept in sync with the routing catalog in gemini_code_assist.ts.
-const ANTIGRAVITY_ONLY_MODEL_IDS = ANTIGRAVITY_MODEL_IDS
+const ANTIGRAVITY_ONLY_MODEL_IDS = ANTIGRAVITY_MODEL_IDS;
 
 function buildAuthErrorMessage(err: any, model?: string): string {
-  const status = err?.status
-  const statusPrefix = status ? `Gemini ${status} ` : 'Gemini '
-  const detail = (err?.body && typeof err.body === 'string')
-    ? err.body.slice(0, 180).replace(/\s+/g, ' ').trim()
-    : (err?.message ?? String(err))
-  const normalizedModel = model?.toLowerCase()
-  const isAntigravityOnly = !!normalizedModel && ANTIGRAVITY_ONLY_MODEL_IDS.has(normalizedModel)
-  const wireModel = isAntigravityOnly && model ? resolveAntigravityWireModel(model) : null
-  const modelLine = model ? `Model attempted: ${model}` : null
-  const wireModelLine = wireModel && wireModel !== model ? `Antigravity wire model: ${wireModel}` : null
+  const status = err?.status;
+  const statusPrefix = status ? `Gemini ${status} ` : "Gemini ";
+  const detail =
+    err?.body && typeof err.body === "string"
+      ? err.body.slice(0, 180).replace(/\s+/g, " ").trim()
+      : (err?.message ?? String(err));
+  const normalizedModel = model?.toLowerCase();
+  const isAntigravityOnly =
+    !!normalizedModel && ANTIGRAVITY_ONLY_MODEL_IDS.has(normalizedModel);
+  const wireModel =
+    isAntigravityOnly && model ? resolveAntigravityWireModel(model) : null;
+  const modelLine = model ? `Model attempted: ${model}` : null;
+  const wireModelLine =
+    wireModel && wireModel !== model
+      ? `Antigravity wire model: ${wireModel}`
+      : null;
 
   // Antigravity-only models must stay on the Antigravity executor. Status
   // determines whether the likely problem is OAuth/account access or an
@@ -1490,127 +1599,133 @@ function buildAuthErrorMessage(err: any, model?: string): string {
   // reliable client-side mitigation is a manual project override via
   // GOOGLE_CLOUD_PROJECT.
   const looksLikeGhostProject =
-    status === 403
-    && /cloudaicompanion|caller does not have permission|PERMISSION_DENIED/i.test(
-      typeof err?.body === 'string' ? err.body : String(err?.message ?? ''),
-    )
+    status === 403 &&
+    /cloudaicompanion|caller does not have permission|PERMISSION_DENIED/i.test(
+      typeof err?.body === "string" ? err.body : String(err?.message ?? ""),
+    );
 
   const lines = [
-    '',
-    '',
+    "",
+    "",
     `${statusPrefix}request failed before it reached the model.`,
-    '',
-    ...(modelLine ? [modelLine, ''] : []),
-    ...(wireModelLine ? [wireModelLine, ''] : []),
+    "",
+    ...(modelLine ? [modelLine, ""] : []),
+    ...(wireModelLine ? [wireModelLine, ""] : []),
     `Server said: ${detail}`,
-    '',
-  ]
+    "",
+  ];
 
   if (isAntigravityOnly) {
     if (status === 404) {
       lines.push(
-        'This model only routes through the Antigravity quota pool.',
-        'A 404 here means the Antigravity backend rejected the endpoint or wire model before generation started.',
-        'Tau sends Gemini 3.5 Flash through the model keys returned by Antigravity quota discovery and keeps the selected thinking level.',
-        'If this continues, run `/login antigravity` to refresh the Antigravity account or pick another model temporarily.',
-      )
+        "This model only routes through the Antigravity quota pool.",
+        "A 404 here means the Antigravity backend rejected the endpoint or wire model before generation started.",
+        "Tau sends Gemini 3.5 Flash through the model keys returned by Antigravity quota discovery and keeps the selected thinking level.",
+        "If this continues, run `/login antigravity` to refresh the Antigravity account or pick another model temporarily.",
+      );
     } else {
       lines.push(
-        'This model only routes through the Antigravity quota pool.',
-        'Make sure the Antigravity account is connected and has access:',
-        '  1. Run `/login antigravity` to refresh the Antigravity flow, or',
-        '  2. Pick a different Pro model (gemini-3.1-pro-preview,',
-        '     gemini-3-pro-preview, gemini-2.5-pro) which routes through',
-        '     the Gemini CLI executor.',
-      )
+        "This model only routes through the Antigravity quota pool.",
+        "Make sure the Antigravity account is connected and has access:",
+        "  1. Run `/login antigravity` to refresh the Antigravity flow, or",
+        "  2. Pick a different Pro model (gemini-3.1-pro-preview,",
+        "     gemini-3-pro-preview, gemini-2.5-pro) which routes through",
+        "     the Gemini CLI executor.",
+      );
     }
   } else if (looksLikeGhostProject) {
     lines.push(
       'This is the known "ghost cloudaicompanionProject" 403 that hits',
-      'Google AI Pro/Ultra subscribers (gemini-cli issues #24747, #25189,',
-      '#25609). Google\'s backend auto-binds an inaccessible project ID',
-      'to the account. The only reliable client-side fixes:',
-      '  1. Set `GOOGLE_CLOUD_PROJECT=<your-project-id>` (or',
-      '     `GEMINI_CLOUD_PROJECT`) and restart Tau — Tau will',
-      '     skip the auto-discovered project and use yours instead.',
-      '     (Grab a project id from console.cloud.google.com on the same',
-      '     Google account you logged in with.)',
-      '  2. If `/models` is also missing your Pro models, set',
-      '     `GEMINI_SHOW_PRO_MODELS=true` to force-show them — Google\'s',
-      '     entitlement endpoints don\'t always reflect AI Pro subscriptions.',
-      '  3. Run `/provider` and reconnect — sometimes the next loadCodeAssist',
-      '     returns a working project on retry.',
-      '  4. As a last resort, switch to API key (set GEMINI_API_KEY and',
-      '     GEMINI_SHOW_API_KEY_LOGIN=true), which uses a different endpoint.',
-    )
+      "Google AI Pro/Ultra subscribers (gemini-cli issues #24747, #25189,",
+      "#25609). Google's backend auto-binds an inaccessible project ID",
+      "to the account. The only reliable client-side fixes:",
+      "  1. Set `GOOGLE_CLOUD_PROJECT=<your-project-id>` (or",
+      "     `GEMINI_CLOUD_PROJECT`) and restart Tau: Tau will",
+      "     skip the auto-discovered project and use yours instead.",
+      "     (Grab a project id from console.cloud.google.com on the same",
+      "     Google account you logged in with.)",
+      "  2. If `/models` is also missing your Pro models, set",
+      "     `GEMINI_SHOW_PRO_MODELS=true` to force-show them: Google's",
+      "     entitlement endpoints don't always reflect AI Pro subscriptions.",
+      "  3. Run `/provider` and reconnect: sometimes the next loadCodeAssist",
+      "     returns a working project on retry.",
+      "  4. As a last resort, switch to API key (set GEMINI_API_KEY and",
+      "     GEMINI_SHOW_API_KEY_LOGIN=true), which uses a different endpoint.",
+    );
   } else {
     lines.push(
-      'What to do:',
-      '  1. Run `/provider` to refresh your Gemini OAuth token, or',
-      '  2. Run `/login` and re-authorize the Google account, or',
-      '  3. Open https://antigravity.google.com/ to confirm the account still has access.',
-      '',
-      'If you have multiple Google accounts enrolled, the lane will',
-      'automatically rotate to the next healthy account on the next request.',
-    )
+      "What to do:",
+      "  1. Run `/provider` to refresh your Gemini OAuth token, or",
+      "  2. Run `/login` and re-authorize the Google account, or",
+      "  3. Open https://antigravity.google.com/ to confirm the account still has access.",
+      "",
+      "If you have multiple Google accounts enrolled, the lane will",
+      "automatically rotate to the next healthy account on the next request.",
+    );
   }
 
-  return lines.join('\n')
+  return lines.join("\n");
 }
 
 function buildQuotaErrorMessage(err: any, model?: string): string {
-  const status = err?.status
-  const details = err?.classification?.details
-  const serverMessage = typeof details?.message === 'string'
-    ? details.message
-    : extractGoogleErrorMessage(err?.body)
-      ?? (err?.message ?? String(err))
-  const retryAfterMs = typeof err?.retryAfterMs === 'number' ? err.retryAfterMs : undefined
-  const retryLine = retryAfterMs && retryAfterMs > 0
-    ? `Retry after: about ${Math.ceil(retryAfterMs / 1000)} seconds`
-    : null
-  const modelLine = model ? `Model attempted: ${model}` : null
-  const isAntigravityModel = !!model && ANTIGRAVITY_ONLY_MODEL_IDS.has(model.toLowerCase())
+  const status = err?.status;
+  const details = err?.classification?.details;
+  const serverMessage =
+    typeof details?.message === "string"
+      ? details.message
+      : (extractGoogleErrorMessage(err?.body) ?? err?.message ?? String(err));
+  const retryAfterMs =
+    typeof err?.retryAfterMs === "number" ? err.retryAfterMs : undefined;
+  const retryLine =
+    retryAfterMs && retryAfterMs > 0
+      ? `Retry after: about ${Math.ceil(retryAfterMs / 1000)} seconds`
+      : null;
+  const modelLine = model ? `Model attempted: ${model}` : null;
+  const isAntigravityModel =
+    !!model && ANTIGRAVITY_ONLY_MODEL_IDS.has(model.toLowerCase());
 
   const lines = [
-    '',
-    '',
-    `${isAntigravityModel ? 'Antigravity' : 'Gemini'} request was throttled or capacity-limited${status ? ` (HTTP ${status})` : ''}.`,
-    '',
-    ...(modelLine ? [modelLine, ''] : []),
+    "",
+    "",
+    `${isAntigravityModel ? "Antigravity" : "Gemini"} request was throttled or capacity-limited${status ? ` (HTTP ${status})` : ""}.`,
+    "",
+    ...(modelLine ? [modelLine, ""] : []),
     `Server said: ${serverMessage}`,
-    ...(retryLine ? ['', retryLine] : []),
-    '',
-  ]
+    ...(retryLine ? ["", retryLine] : []),
+    "",
+  ];
 
   if (isAntigravityModel) {
     lines.push(
-      'Tau retried this request and, when possible, marked the selected account/model family for rotation.',
-      'This can happen even when the usage page shows remaining quota, because the backend can throttle an endpoint or request window separately.',
-      'What to do:',
-      '  1. Wait for the Antigravity request window or backend capacity to recover, or',
-      '  2. Add/switch another Antigravity account with `/login antigravity`, or',
-      '  3. Pick a non-Antigravity model for now, such as gemini-3.1-pro-preview, gemini-3-pro-preview, or gemini-2.5-pro.',
-    )
+      "Tau retried this request and, when possible, marked the selected account/model family for rotation.",
+      "This can happen even when the usage page shows remaining quota, because the backend can throttle an endpoint or request window separately.",
+      "What to do:",
+      "  1. Wait for the Antigravity request window or backend capacity to recover, or",
+      "  2. Add/switch another Antigravity account with `/login antigravity`, or",
+      "  3. Pick a non-Antigravity model for now, such as gemini-3.1-pro-preview, gemini-3-pro-preview, or gemini-2.5-pro.",
+    );
   } else {
     lines.push(
-      'What to do:',
-      '  1. Wait for quota/capacity to recover, or',
-      '  2. Switch model/account/provider and retry.',
-    )
+      "What to do:",
+      "  1. Wait for quota/capacity to recover, or",
+      "  2. Switch model/account/provider and retry.",
+    );
   }
 
-  return lines.join('\n')
+  return lines.join("\n");
 }
 
 function extractGoogleErrorMessage(body: unknown): string | null {
-  if (typeof body !== 'string' || !body) return null
+  if (typeof body !== "string" || !body) return null;
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: unknown }; message?: unknown }
-    const message = parsed.error?.message ?? parsed.message
-    return typeof message === 'string' ? message : null
+    const parsed = JSON.parse(body) as {
+      error?: { message?: unknown };
+      message?: unknown;
+    };
+    const message = parsed.error?.message ?? parsed.message;
+    return typeof message === "string" ? message : null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -1621,24 +1736,24 @@ function extractGoogleErrorMessage(body: unknown): string | null {
 // caller forwards a flat system string to the lane, we split on that
 // marker so our `cachedContents` body sees only stable bytes and the
 // cache key survives turn-to-turn. Falling back: if no marker found,
-// treat the whole thing as stable — matches previous behavior, no
+// treat the whole thing as stable: matches previous behavior, no
 // regression for callers that haven't adopted the marker.
 
-const DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
+const DYNAMIC_BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
 
 function splitSystemAtBoundary(text: string): {
-  stableText: string
-  volatileText: string
+  stableText: string;
+  volatileText: string;
 } {
-  if (!text) return { stableText: '', volatileText: '' }
-  const idx = text.indexOf(DYNAMIC_BOUNDARY)
-  if (idx < 0) return { stableText: text, volatileText: '' }
+  if (!text) return { stableText: "", volatileText: "" };
+  const idx = text.indexOf(DYNAMIC_BOUNDARY);
+  if (idx < 0) return { stableText: text, volatileText: "" };
   return {
-    stableText: text.slice(0, idx).replace(/\s+$/, ''),
-    volatileText: text.slice(idx + DYNAMIC_BOUNDARY.length).replace(/^\s+/, ''),
-  }
+    stableText: text.slice(0, idx).replace(/\s+$/, ""),
+    volatileText: text.slice(idx + DYNAMIC_BOUNDARY.length).replace(/^\s+/, ""),
+  };
 }
 
 // ─── Singleton Export ────────────────────────────────────────────
 
-export const geminiLane = new GeminiLane()
+export const geminiLane = new GeminiLane();

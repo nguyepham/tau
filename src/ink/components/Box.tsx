@@ -1,14 +1,14 @@
 import { c as _c } from "react/compiler-runtime";
-import '../global.d.ts';
-import React, { type PropsWithChildren, type Ref } from 'react';
-import type { Except } from 'type-fest';
-import type { DOMElement } from '../dom.js';
-import type { ClickEvent } from '../events/click-event.js';
-import type { FocusEvent } from '../events/focus-event.js';
-import type { KeyboardEvent } from '../events/keyboard-event.js';
-import type { Styles } from '../styles.js';
-import * as warn from '../warn.js';
-export type Props = Except<Styles, 'textWrap'> & {
+import "../global.d.ts";
+import React, { type PropsWithChildren, type Ref } from "react";
+import type { Except } from "type-fest";
+import type { DOMElement } from "../dom.js";
+import type { ClickEvent } from "../events/click-event.js";
+import type { FocusEvent } from "../events/focus-event.js";
+import type { KeyboardEvent } from "../events/keyboard-event.js";
+import type { Styles } from "../styles.js";
+import * as warn from "../warn.js";
+export type Props = Except<Styles, "textWrap"> & {
   ref?: Ref<DOMElement>;
   /**
    * Tab order index. Nodes with `tabIndex >= 0` participate in
@@ -17,13 +17,13 @@ export type Props = Except<Styles, 'textWrap'> & {
   tabIndex?: number;
   /**
    * Focus this element when it mounts. Like the HTML `autofocus`
-   * attribute — the FocusManager calls `focus(node)` during the
+   * attribute: the FocusManager calls `focus(node)` during the
    * reconciler's `commitMount` phase.
    */
   autoFocus?: boolean;
   /**
    * Fired on left-button click (press + release without drag). Only works
-   * inside `<AlternateScreen>` where mouse tracking is enabled — no-op
+   * inside `<AlternateScreen>` where mouse tracking is enabled: no-op
    * otherwise. The event bubbles from the deepest hit Box up through
    * ancestors; call `event.stopImmediatePropagation()` to stop bubbling.
    */
@@ -36,7 +36,7 @@ export type Props = Except<Styles, 'textWrap'> & {
   onKeyDownCapture?: (event: KeyboardEvent) => void;
   /**
    * Fired when the mouse moves into this Box's rendered rect. Like DOM
-   * `mouseenter`, does NOT bubble — moving between children does not
+   * `mouseenter`, does NOT bubble: moving between children does not
    * re-fire on the parent. Only works inside `<AlternateScreen>` where
    * mode-1003 mouse tracking is enabled.
    */
@@ -166,7 +166,15 @@ function Box(t0) {
   const t1 = style.overflowX ?? style.overflow ?? "visible";
   const t2 = style.overflowY ?? style.overflow ?? "visible";
   let t3;
-  if ($[19] !== flexDirection || $[20] !== flexGrow || $[21] !== flexShrink || $[22] !== flexWrap || $[23] !== style || $[24] !== t1 || $[25] !== t2) {
+  if (
+    $[19] !== flexDirection ||
+    $[20] !== flexGrow ||
+    $[21] !== flexShrink ||
+    $[22] !== flexWrap ||
+    $[23] !== style ||
+    $[24] !== t1 ||
+    $[25] !== t2
+  ) {
     t3 = {
       flexWrap,
       flexDirection,
@@ -174,7 +182,7 @@ function Box(t0) {
       flexShrink,
       ...style,
       overflowX: t1,
-      overflowY: t2
+      overflowY: t2,
     };
     $[19] = flexDirection;
     $[20] = flexGrow;
@@ -188,8 +196,41 @@ function Box(t0) {
     t3 = $[26];
   }
   let t4;
-  if ($[27] !== autoFocus || $[28] !== children || $[29] !== onBlur || $[30] !== onBlurCapture || $[31] !== onClick || $[32] !== onFocus || $[33] !== onFocusCapture || $[34] !== onKeyDown || $[35] !== onKeyDownCapture || $[36] !== onMouseEnter || $[37] !== onMouseLeave || $[38] !== ref || $[39] !== t3 || $[40] !== tabIndex) {
-    t4 = <ink-box ref={ref} tabIndex={tabIndex} autoFocus={autoFocus} onClick={onClick} onFocus={onFocus} onFocusCapture={onFocusCapture} onBlur={onBlur} onBlurCapture={onBlurCapture} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} onKeyDown={onKeyDown} onKeyDownCapture={onKeyDownCapture} style={t3}>{children}</ink-box>;
+  if (
+    $[27] !== autoFocus ||
+    $[28] !== children ||
+    $[29] !== onBlur ||
+    $[30] !== onBlurCapture ||
+    $[31] !== onClick ||
+    $[32] !== onFocus ||
+    $[33] !== onFocusCapture ||
+    $[34] !== onKeyDown ||
+    $[35] !== onKeyDownCapture ||
+    $[36] !== onMouseEnter ||
+    $[37] !== onMouseLeave ||
+    $[38] !== ref ||
+    $[39] !== t3 ||
+    $[40] !== tabIndex
+  ) {
+    t4 = (
+      <ink-box
+        ref={ref}
+        tabIndex={tabIndex}
+        autoFocus={autoFocus}
+        onClick={onClick}
+        onFocus={onFocus}
+        onFocusCapture={onFocusCapture}
+        onBlur={onBlur}
+        onBlurCapture={onBlurCapture}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        onKeyDown={onKeyDown}
+        onKeyDownCapture={onKeyDownCapture}
+        style={t3}
+      >
+        {children}
+      </ink-box>
+    );
     $[27] = autoFocus;
     $[28] = children;
     $[29] = onBlur;

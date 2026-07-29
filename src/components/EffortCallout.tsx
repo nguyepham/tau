@@ -1,17 +1,26 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Box, Text } from '../ink.js';
-import { isMaxSubscriber, isProSubscriber, isTeamSubscriber } from '../utils/auth.js';
-import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
-import type { EffortLevel } from '../utils/effort.js';
-import { convertEffortValueToLevel, getDefaultEffortForModel, getOpusDefaultEffortConfig, toPersistableEffort } from '../utils/effort.js';
-import { parseUserSpecifiedModel } from '../utils/model/model.js';
-import { updateSettingsForSource } from '../utils/settings/settings.js';
-import type { OptionWithDescription } from './CustomSelect/select.js';
-import { Select } from './CustomSelect/select.js';
-import { effortLevelToSymbol } from './EffortIndicator.js';
-import { PermissionDialog } from './permissions/PermissionDialog.js';
-type EffortCalloutSelection = EffortLevel | undefined | 'dismiss';
+import React, { useCallback, useEffect, useRef } from "react";
+import { Box, Text } from "../ink.js";
+import {
+  isMaxSubscriber,
+  isProSubscriber,
+  isTeamSubscriber,
+} from "../utils/auth.js";
+import { getGlobalConfig, saveGlobalConfig } from "../utils/config.js";
+import type { EffortLevel } from "../utils/effort.js";
+import {
+  convertEffortValueToLevel,
+  getDefaultEffortForModel,
+  getOpusDefaultEffortConfig,
+  toPersistableEffort,
+} from "../utils/effort.js";
+import { parseUserSpecifiedModel } from "../utils/model/model.js";
+import { updateSettingsForSource } from "../utils/settings/settings.js";
+import type { OptionWithDescription } from "./CustomSelect/select.js";
+import { Select } from "./CustomSelect/select.js";
+import { effortLevelToSymbol } from "./EffortIndicator.js";
+import { PermissionDialog } from "./permissions/PermissionDialog.js";
+type EffortCalloutSelection = EffortLevel | undefined | "dismiss";
 type Props = {
   model: string;
   onDone: (selection: EffortCalloutSelection) => void;
@@ -19,10 +28,7 @@ type Props = {
 const AUTO_DISMISS_MS = 30_000;
 export function EffortCallout(t0) {
   const $ = _c(18);
-  const {
-    model,
-    onDone
-  } = t0;
+  const { model, onDone } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getOpusDefaultEffortConfig();
@@ -88,10 +94,10 @@ export function EffortCallout(t0) {
   const defaultLevel = t7;
   let t8;
   if ($[9] !== defaultLevel) {
-    t8 = value => {
+    t8 = (value) => {
       const effortLevel = value === defaultLevel ? undefined : value;
       updateSettingsForSource("userSettings", {
-        effortLevel: toPersistableEffort(effortLevel)
+        effortLevel: toPersistableEffort(effortLevel),
       });
       onDoneRef.current(value);
     };
@@ -103,16 +109,20 @@ export function EffortCallout(t0) {
   const handleSelect = t8;
   let t9;
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
-    t9 = [{
-      label: <EffortOptionLabel level="medium" text="Medium (recommended)" />,
-      value: "medium"
-    }, {
-      label: <EffortOptionLabel level="high" text="High" />,
-      value: "high"
-    }, {
-      label: <EffortOptionLabel level="low" text="Low" />,
-      value: "low"
-    }];
+    t9 = [
+      {
+        label: <EffortOptionLabel level="medium" text="Medium (recommended)" />,
+        value: "medium",
+      },
+      {
+        label: <EffortOptionLabel level="high" text="High" />,
+        value: "high",
+      },
+      {
+        label: <EffortOptionLabel level="low" text="Low" />,
+        value: "low",
+      },
+    ];
     $[11] = t9;
   } else {
     t9 = $[11];
@@ -120,7 +130,11 @@ export function EffortCallout(t0) {
   const options = t9;
   let t10;
   if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = <Box marginBottom={1} flexDirection="column"><Text>{defaultEffortConfig.dialogDescription}</Text></Box>;
+    t10 = (
+      <Box marginBottom={1} flexDirection="column">
+        <Text>{defaultEffortConfig.dialogDescription}</Text>
+      </Box>
+    );
     $[12] = t10;
   } else {
     t10 = $[12];
@@ -141,14 +155,33 @@ export function EffortCallout(t0) {
   }
   let t13;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = <Box marginBottom={1}><Text dimColor={true}>{t11} low {"\xB7"}{" "}{t12} medium {"\xB7"}{" "}<EffortIndicatorSymbol level="high" /> high</Text></Box>;
+    t13 = (
+      <Box marginBottom={1}>
+        <Text dimColor={true}>
+          {t11} low {"\xB7"} {t12} medium {"\xB7"}{" "}
+          <EffortIndicatorSymbol level="high" /> high
+        </Text>
+      </Box>
+    );
     $[15] = t13;
   } else {
     t13 = $[15];
   }
   let t14;
   if ($[16] !== handleSelect) {
-    t14 = <PermissionDialog title={defaultEffortConfig.dialogTitle}><Box flexDirection="column" paddingX={2} paddingY={1}>{t10}{t13}<Select options={options} onChange={handleSelect} onCancel={handleCancel} /></Box></PermissionDialog>;
+    t14 = (
+      <PermissionDialog title={defaultEffortConfig.dialogTitle}>
+        <Box flexDirection="column" paddingX={2} paddingY={1}>
+          {t10}
+          {t13}
+          <Select
+            options={options}
+            onChange={handleSelect}
+            onCancel={handleCancel}
+          />
+        </Box>
+      </PermissionDialog>
+    );
     $[16] = handleSelect;
     $[17] = t14;
   } else {
@@ -161,9 +194,7 @@ function _temp() {
 }
 function EffortIndicatorSymbol(t0) {
   const $ = _c(4);
-  const {
-    level
-  } = t0;
+  const { level } = t0;
   let t1;
   if ($[0] !== level) {
     t1 = effortLevelToSymbol(level);
@@ -184,10 +215,7 @@ function EffortIndicatorSymbol(t0) {
 }
 function EffortOptionLabel(t0) {
   const $ = _c(5);
-  const {
-    level,
-    text
-  } = t0;
+  const { level, text } = t0;
   let t1;
   if ($[0] !== level) {
     t1 = <EffortIndicatorSymbol level={level} />;
@@ -198,7 +226,11 @@ function EffortOptionLabel(t0) {
   }
   let t2;
   if ($[2] !== t1 || $[3] !== text) {
-    t2 = <>{t1} {text}</>;
+    t2 = (
+      <>
+        {t1} {text}
+      </>
+    );
     $[2] = t1;
     $[3] = text;
     $[4] = t2;
@@ -221,16 +253,16 @@ export function shouldShowEffortCallout(model: string): boolean {
   const parsed = parseUserSpecifiedModel(model);
   const normalized = parsed.toLowerCase();
   if (
-    !normalized.includes('opus-4-8') &&
-    !normalized.includes('opus-4-7') &&
-    !normalized.includes('opus-4-6')
+    !normalized.includes("opus-4-8") &&
+    !normalized.includes("opus-4-7") &&
+    !normalized.includes("opus-4-6")
   ) {
     return false;
   }
   const config = getGlobalConfig();
   if (config.effortCalloutV2Dismissed) return false;
 
-  // Don't show to brand-new users — they never knew the old default, so this
+  // Don't show to brand-new users: they never knew the old default, so this
   // isn't a change for them. Mark as dismissed so it stays suppressed.
   if (config.numStartups <= 1) {
     markV2Dismissed();
@@ -238,7 +270,7 @@ export function shouldShowEffortCallout(model: string): boolean {
   }
 
   // Pro users already had medium default before this PR. Show the new copy,
-  // but skip if they already saw the v1 dialog — no point nagging twice.
+  // but skip if they already saw the v1 dialog: no point nagging twice.
   if (isProSubscriber()) {
     if (config.effortCalloutDismissed) {
       markV2Dismissed();
@@ -248,7 +280,7 @@ export function shouldShowEffortCallout(model: string): boolean {
   }
 
   // Max/Team are the target of the tengu_grey_step2 config.
-  // Don't mark dismissed when config is disabled — they should see the dialog
+  // Don't mark dismissed when config is disabled: they should see the dialog
   // once it's enabled for them.
   if (isMaxSubscriber() || isTeamSubscriber()) {
     return getOpusDefaultEffortConfig().enabled;
@@ -259,11 +291,11 @@ export function shouldShowEffortCallout(model: string): boolean {
   return false;
 }
 function markV2Dismissed(): void {
-  saveGlobalConfig(current => {
+  saveGlobalConfig((current) => {
     if (current.effortCalloutV2Dismissed) return current;
     return {
       ...current,
-      effortCalloutV2Dismissed: true
+      effortCalloutV2Dismissed: true,
     };
   });
 }

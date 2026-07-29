@@ -1,21 +1,21 @@
-import { spawn } from 'child_process'
+import { spawn } from "child_process";
 
-import type { GoalCheckResult } from './types.js'
+import type { GoalCheckResult } from "./types.js";
 
 // Cap on captured output. The failing tail (errors, failed assertions) is the
 // useful part and also what we feed back into the model nudge, so we keep the
-// TAIL, not the head. 4k chars ≈ 1k tokens — enough signal, bounded context.
-const MAX_OUTPUT_CHARS = 4_000
+// TAIL, not the head. 4k chars ≈ 1k tokens: enough signal, bounded context.
+const MAX_OUTPUT_CHARS = 4_000;
 
 // Hard ceiling so a hanging check (watch mode, prompt, infinite loop) can never
 // stall the query loop. A timed-out check is treated as inconclusive and pauses
 // the goal rather than looping.
-export const DEFAULT_CHECK_TIMEOUT_MS = 120_000
+export const DEFAULT_CHECK_TIMEOUT_MS = 120_000;
 
 function tail(buffers: string[], max: number): string {
-  const joined = buffers.join('')
-  if (joined.length <= max) return joined
-  return '…[truncated]\n' + joined.slice(joined.length - max)
+  const joined = buffers.join("");
+  if (joined.length <= max) return joined;
+  return "…[truncated]\n" + joined.slice(joined.length - max);
 }
 
 /**
@@ -29,10 +29,10 @@ export function runGoalCheck(
   cwd: string,
   timeoutMs: number = DEFAULT_CHECK_TIMEOUT_MS,
 ): Promise<GoalCheckResult> {
-  return new Promise<GoalCheckResult>(resolve => {
-    const chunks: string[] = []
-    let settled = false
-    let timedOut = false
+  return new Promise<GoalCheckResult>((resolve) => {
+    const chunks: string[] = [];
+    let settled = false;
+    let timedOut = false;
 
     const child = spawn(command, {
       cwd,
@@ -40,36 +40,36 @@ export function runGoalCheck(
       windowsHide: true,
       // Detach so we can kill the whole shell + children on timeout.
       env: process.env,
-    })
+    });
 
     const timer = setTimeout(() => {
-      timedOut = true
-      child.kill('SIGTERM')
+      timedOut = true;
+      child.kill("SIGTERM");
       // Escalate if it ignores SIGTERM.
-      setTimeout(() => child.kill('SIGKILL'), 2_000).unref()
-    }, timeoutMs)
-    timer.unref()
+      setTimeout(() => child.kill("SIGKILL"), 2_000).unref();
+    }, timeoutMs);
+    timer.unref();
 
     const onData = (data: Buffer) => {
-      chunks.push(data.toString())
+      chunks.push(data.toString());
       // Bound memory: keep only what we'll surface.
       if (chunks.length > 64) {
-        const merged = tail(chunks, MAX_OUTPUT_CHARS)
-        chunks.length = 0
-        chunks.push(merged)
+        const merged = tail(chunks, MAX_OUTPUT_CHARS);
+        chunks.length = 0;
+        chunks.push(merged);
       }
-    }
-    child.stdout?.on('data', onData)
-    child.stderr?.on('data', onData)
+    };
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
 
     const finish = (result: GoalCheckResult) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
 
-    child.on('error', err => {
+    child.on("error", (err) => {
       finish({
         passed: false,
         exitCode: null,
@@ -77,16 +77,16 @@ export function runGoalCheck(
           err instanceof Error ? err.message : String(err)
         }`,
         timedOut: false,
-      })
-    })
+      });
+    });
 
-    child.on('close', code => {
+    child.on("close", (code) => {
       finish({
         passed: !timedOut && code === 0,
         exitCode: code,
         output: tail(chunks, MAX_OUTPUT_CHARS).trim(),
         timedOut,
-      })
-    })
-  })
+      });
+    });
+  });
 }

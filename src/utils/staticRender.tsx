@@ -1,9 +1,9 @@
 import { c as _c } from "react/compiler-runtime";
-import * as React from 'react';
-import { useLayoutEffect } from 'react';
-import { PassThrough } from 'stream';
-import stripAnsi from 'strip-ansi';
-import { render, useApp } from '../ink.js';
+import * as React from "react";
+import { useLayoutEffect } from "react";
+import { PassThrough } from "stream";
+import stripAnsi from "strip-ansi";
+import { render, useApp } from "../ink.js";
 
 // This is a workaround for the fact that Ink doesn't support multiple <Static>
 // components in the same render tree. Instead of using a <Static> we just render
@@ -17,12 +17,8 @@ import { render, useApp } from '../ink.js';
  */
 function RenderOnceAndExit(t0) {
   const $ = _c(5);
-  const {
-    children
-  } = t0;
-  const {
-    exit
-  } = useApp();
+  const { children } = t0;
+  const { exit } = useApp();
   let t1;
   let t2;
   if ($[0] !== exit) {
@@ -51,8 +47,8 @@ function RenderOnceAndExit(t0) {
 }
 
 // DEC synchronized update markers used by terminals
-const SYNC_START = '\x1B[?2026h';
-const SYNC_END = '\x1B[?2026l';
+const SYNC_START = "\x1B[?2026h";
+const SYNC_END = "\x1B[?2026l";
 
 /**
  * Extracts content from the first complete frame in Ink's output.
@@ -71,31 +67,38 @@ function extractFirstFrame(output: string): string {
 /**
  * Renders a React node to a string with ANSI escape codes (for terminal output).
  */
-export function renderToAnsiString(node: React.ReactNode, columns?: number): Promise<string> {
-  return new Promise(async resolve => {
-    let output = '';
+export function renderToAnsiString(
+  node: React.ReactNode,
+  columns?: number,
+): Promise<string> {
+  return new Promise(async (resolve) => {
+    let output = "";
 
     // Capture all writes. Set .columns so Ink (ink.tsx:~165) picks up a
-    // chosen width instead of PassThrough's undefined → 80 fallback —
+    // chosen width instead of PassThrough's undefined → 80 fallback:
     // useful for rendering at terminal width for file dumps that should
     // match what the user sees on screen.
     const stream = new PassThrough();
     if (columns !== undefined) {
-      ;
-      (stream as unknown as {
-        columns: number;
-      }).columns = columns;
+      (
+        stream as unknown as {
+          columns: number;
+        }
+      ).columns = columns;
     }
-    stream.on('data', chunk => {
+    stream.on("data", (chunk) => {
       output += chunk.toString();
     });
 
     // Render the component wrapped in RenderOnceAndExit
     // Non-TTY stdout (PassThrough) gives full-frame output instead of diffs
-    const instance = await render(<RenderOnceAndExit>{node}</RenderOnceAndExit>, {
-      stdout: stream as unknown as NodeJS.WriteStream,
-      patchConsole: false
-    });
+    const instance = await render(
+      <RenderOnceAndExit>{node}</RenderOnceAndExit>,
+      {
+        stdout: stream as unknown as NodeJS.WriteStream,
+        patchConsole: false,
+      },
+    );
 
     // Wait for the component to exit naturally
     await instance.waitUntilExit();
@@ -109,7 +112,10 @@ export function renderToAnsiString(node: React.ReactNode, columns?: number): Pro
 /**
  * Renders a React node to a plain text string (ANSI codes stripped).
  */
-export async function renderToString(node: React.ReactNode, columns?: number): Promise<string> {
+export async function renderToString(
+  node: React.ReactNode,
+  columns?: number,
+): Promise<string> {
   const output = await renderToAnsiString(node, columns);
   return stripAnsi(output);
 }

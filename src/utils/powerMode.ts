@@ -1,4 +1,4 @@
-import type { SettingsJson } from './settings/types.js'
+import type { SettingsJson } from "./settings/types.js";
 
 /**
  * Power modes control how much machinery the session loads and exposes:
@@ -17,17 +17,17 @@ import type { SettingsJson } from './settings/types.js'
  *
  * The mode is a persisted user setting (settings.json `powerMode`). All gates
  * read it through the merged settings so a /mode switch (which persists and
- * resets the settings cache) takes effect immediately and deterministically —
+ * resets the settings cache) takes effect immediately and deterministically:
  * within a mode the tool list is stable, so prompt caching is unaffected
  * except for the single expected re-warm when the user changes modes.
  */
 export const POWER_MODES = ['cheap', 'normal', 'rust', 'full'] as const
 
-export type PowerMode = (typeof POWER_MODES)[number]
+export type PowerMode = (typeof POWER_MODES)[number];
 
 /**
  * Modes offered in the /mode picker and help text. 'full' is retired from the
- * UI — it was just normal with every optional tool force-enabled, a confusing
+ * UI: it was just normal with every optional tool force-enabled, a confusing
  * third choice with no real value over normal. It stays in POWER_MODES (and in
  * the settings schema, tool/theme gate maps) so a persisted `powerMode: 'full'`
  * still resolves and `/mode full` still works for power users, but it is no
@@ -35,7 +35,7 @@ export type PowerMode = (typeof POWER_MODES)[number]
  */
 export const SELECTABLE_POWER_MODES = ['cheap', 'normal', 'rust'] as const
 
-export const DEFAULT_POWER_MODE: PowerMode = 'normal'
+export const DEFAULT_POWER_MODE: PowerMode = "normal";
 
 /** Modes that retain the user's normal /tools and provider behavior. */
 export function isNormalToolingMode(mode: PowerMode): boolean {
@@ -49,8 +49,8 @@ type SettingsWithPowerMode = Pick<SettingsJson, 'powerMode'>
  * Returns null when the value doesn't name a mode.
  */
 export function normalizePowerMode(value: string): PowerMode | null {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized) return null
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
   switch (normalized) {
     case 'cheap':
     case 'eco':
@@ -71,7 +71,7 @@ export function normalizePowerMode(value: string): PowerMode | null {
     case 'all':
       return 'full'
     default:
-      return null
+      return null;
   }
 }
 
@@ -83,7 +83,7 @@ export function normalizePowerMode(value: string): PowerMode | null {
  * external edits to that file LIVE. Without a pin, a second concurrently
  * running Tau session that runs `/mode` writes powerMode to the shared file,
  * this session's watcher fires, resetSettingsCache() + applySettingsChange()
- * run, and this session silently switches mode mid-conversation — the
+ * run, and this session silently switches mode mid-conversation: the
  * cross-session leak users hit ("switch mode in session B, session A inherits
  * it"). The pin makes each session's mode sticky: seeded once at startup from
  * the persisted value, changed ONLY by this session's own /mode. Persisting to
@@ -93,7 +93,7 @@ export function normalizePowerMode(value: string): PowerMode | null {
  * null = not yet seeded; getPowerModeFromSettings falls back to the passed
  * settings (its original pure behavior, which keeps unit tests deterministic).
  */
-let sessionPowerModePin: PowerMode | null = null
+let sessionPowerModePin: PowerMode | null = null;
 
 /** Pure settings → mode resolution, independent of the session pin. */
 function resolvePowerModeFromSettingsValue(
@@ -107,16 +107,16 @@ function resolvePowerModeFromSettingsValue(
 /**
  * Resolve the effective power mode. When this session has pinned a mode (the
  * normal case after startup seeding), the pin wins over `settings` so that a
- * live external edit to the shared settings.json — surfaced through either
- * getInitialSettings() or a reactive appState.settings — cannot switch the
+ * live external edit to the shared settings.json: surfaced through either
+ * getInitialSettings() or a reactive appState.settings: cannot switch the
  * running session. Before seeding (pin === null) it behaves as the original
  * pure resolver, so direct unit tests stay deterministic.
  */
 export function getPowerModeFromSettings(
   settings: SettingsWithPowerMode | undefined,
 ): PowerMode {
-  if (sessionPowerModePin !== null) return sessionPowerModePin
-  return resolvePowerModeFromSettingsValue(settings)
+  if (sessionPowerModePin !== null) return sessionPowerModePin;
+  return resolvePowerModeFromSettingsValue(settings);
 }
 
 /**
@@ -125,7 +125,7 @@ export function getPowerModeFromSettings(
  * survives later external settings-file churn.
  */
 export function setSessionPowerMode(mode: PowerMode): void {
-  sessionPowerModePin = mode
+  sessionPowerModePin = mode;
 }
 
 /**
@@ -138,13 +138,13 @@ export function seedSessionPowerMode(
   settings: SettingsWithPowerMode | undefined,
 ): void {
   if (sessionPowerModePin === null) {
-    sessionPowerModePin = resolvePowerModeFromSettingsValue(settings)
+    sessionPowerModePin = resolvePowerModeFromSettingsValue(settings);
   }
 }
 
 /** Test-only: clear the pin so pure settings-based resolution is exercised. */
 export function resetSessionPowerModeForTesting(): void {
-  sessionPowerModePin = null
+  sessionPowerModePin = null;
 }
 
 export const POWER_MODE_LABELS: Record<PowerMode, string> = {
@@ -156,7 +156,7 @@ export const POWER_MODE_LABELS: Record<PowerMode, string> = {
 
 export const POWER_MODE_DESCRIPTIONS: Record<PowerMode, string> = {
   cheap:
-    'Core tools only — optional tools, skills, agents, plugins, MCP, and LSP are all off and hidden from the model (folder configs are ignored; /tools hidden)',
+    "Core tools only: optional tools, skills, agents, plugins, MCP, and LSP are all off and hidden from the model (folder configs are ignored; /tools hidden)",
   normal:
     'Default behavior — your /tools toggles apply; MCP, skills, agents, and LSP load as configured',
   rust:

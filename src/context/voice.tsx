@@ -1,19 +1,24 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { createContext, useContext, useState, useSyncExternalStore } from 'react';
-import { createStore, type Store } from '../state/store.js';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createStore, type Store } from "../state/store.js";
 export type VoiceState = {
-  voiceState: 'idle' | 'recording' | 'processing';
+  voiceState: "idle" | "recording" | "processing";
   voiceError: string | null;
   voiceInterimTranscript: string;
   voiceAudioLevels: number[];
   voiceWarmingUp: boolean;
 };
 const DEFAULT_STATE: VoiceState = {
-  voiceState: 'idle',
+  voiceState: "idle",
   voiceError: null,
-  voiceInterimTranscript: '',
+  voiceInterimTranscript: "",
   voiceAudioLevels: [],
-  voiceWarmingUp: false
+  voiceWarmingUp: false,
 };
 type VoiceStore = Store<VoiceState>;
 const VoiceContext = createContext<VoiceStore | null>(null);
@@ -22,13 +27,13 @@ type Props = {
 };
 export function VoiceProvider(t0) {
   const $ = _c(3);
-  const {
-    children
-  } = t0;
+  const { children } = t0;
   const [store] = useState(_temp);
   let t1;
   if ($[0] !== children || $[1] !== store) {
-    t1 = <VoiceContext.Provider value={store}>{children}</VoiceContext.Provider>;
+    t1 = (
+      <VoiceContext.Provider value={store}>{children}</VoiceContext.Provider>
+    );
     $[0] = children;
     $[1] = store;
     $[2] = t1;
@@ -69,7 +74,7 @@ export function useVoiceState(selector) {
 }
 
 /**
- * Get the voice state setter. Stable reference — never causes re-renders.
+ * Get the voice state setter. Stable reference: never causes re-renders.
  * store.setState is synchronous: callers can read getVoiceState() immediately
  * after to observe the new value (VoiceKeybindingHandler relies on this).
  */
@@ -79,7 +84,7 @@ export function useSetVoiceState() {
 
 /**
  * Get a synchronous reader for fresh state inside callbacks. Unlike
- * useVoiceState (which subscribes), this doesn't cause re-renders — use
+ * useVoiceState (which subscribes), this doesn't cause re-renders: use
  * inside event handlers that need to read state set earlier in the same tick.
  */
 export function useGetVoiceState() {

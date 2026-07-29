@@ -1,13 +1,26 @@
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import useStdin from '../../ink/hooks/use-stdin.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { initializePowerModeTheme, isPowerModeThemeTransitionActive, subscribePowerModeTheme } from '../../utils/modeTheme.js';
-import { getPowerModeFromSettings } from '../../utils/powerMode.js';
-import { getInitialSettings } from '../../utils/settings/settings.js';
-import { getSystemThemeName, type SystemTheme } from '../../utils/systemTheme.js';
-import type { ThemeName, ThemeSetting } from '../../utils/theme.js';
+import { feature } from "bun:bundle";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import useStdin from "../../ink/hooks/use-stdin.js";
+import { getGlobalConfig, saveGlobalConfig } from "../../utils/config.js";
+import {
+  initializePowerModeTheme,
+  isPowerModeThemeTransitionActive,
+  subscribePowerModeTheme,
+} from "../../utils/modeTheme.js";
+import { getPowerModeFromSettings } from "../../utils/powerMode.js";
+import { getInitialSettings } from "../../utils/settings/settings.js";
+import {
+  getSystemThemeName,
+  type SystemTheme,
+} from "../../utils/systemTheme.js";
+import type { ThemeName, ThemeSetting } from "../../utils/theme.js";
 type ThemeContextValue = {
   /** The saved user preference. May be 'auto'. */
   themeSetting: ThemeSetting;
@@ -20,13 +33,13 @@ type ThemeContextValue = {
   /**
    * Bumped ~30fps while a /mode palette cross-fade runs so every themed
    * component re-resolves getTheme() and picks up the interpolated accents.
-   * Constant when idle — zero re-render cost outside transitions.
+   * Constant when idle: zero re-render cost outside transitions.
    */
   modeThemeTick: number;
 };
 
 // Non-'auto' default so useTheme() works without a provider (tests, tooling).
-const DEFAULT_THEME: ThemeName = 'dark';
+const DEFAULT_THEME: ThemeName = "dark";
 const ThemeContext = createContext<ThemeContextValue>({
   themeSetting: DEFAULT_THEME,
   setThemeSetting: () => {},
@@ -34,7 +47,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   savePreview: () => {},
   cancelPreview: () => {},
   currentTheme: DEFAULT_THEME,
-  modeThemeTick: 0
+  modeThemeTick: 0,
 });
 type Props = {
   children: React.ReactNode;
@@ -45,17 +58,19 @@ function defaultInitialTheme(): ThemeSetting {
   return getGlobalConfig().theme;
 }
 function defaultSaveTheme(setting: ThemeSetting): void {
-  saveGlobalConfig(current => ({
+  saveGlobalConfig((current) => ({
     ...current,
-    theme: setting
+    theme: setting,
   }));
 }
 export function ThemeProvider({
   children,
   initialState,
-  onThemeSave = defaultSaveTheme
+  onThemeSave = defaultSaveTheme,
 }: Props) {
-  const [themeSetting, setThemeSetting] = useState(initialState ?? defaultInitialTheme);
+  const [themeSetting, setThemeSetting] = useState(
+    initialState ?? defaultInitialTheme,
+  );
   const [previewTheme, setPreviewTheme] = useState<ThemeSetting | null>(null);
 
   // Power-mode palette: seed from persisted settings so the first frame
@@ -74,12 +89,12 @@ export function ThemeProvider({
       }
     };
     const start = () => {
-      setModeThemeTick(t => t + 1);
+      setModeThemeTick((t) => t + 1);
       if (interval !== null) return;
       interval = setInterval(() => {
         // Bump first so the frame after the fade completes still repaints
         // once with the settled palette before the ticker stops.
-        setModeThemeTick(t => t + 1);
+        setModeThemeTick((t) => t + 1);
         if (!isPowerModeThemeTransitionActive()) {
           stop();
         }
@@ -97,70 +112,76 @@ export function ThemeProvider({
 
   // Track terminal theme for 'auto' resolution. Seeds from $COLORFGBG (or
   // 'dark' if unset); the OSC 11 watcher corrects it on first poll.
-  const [systemTheme, setSystemTheme] = useState<SystemTheme>(() => (initialState ?? themeSetting) === 'auto' ? getSystemThemeName() : 'dark');
+  const [systemTheme, setSystemTheme] = useState<SystemTheme>(() =>
+    (initialState ?? themeSetting) === "auto" ? getSystemThemeName() : "dark",
+  );
 
   // The setting currently in effect (preview wins while picker is open)
   const activeSetting = previewTheme ?? themeSetting;
-  const {
-    internal_querier
-  } = useStdin();
+  const { internal_querier } = useStdin();
 
   // Watch for live terminal theme changes while 'auto' is active.
   // Positive feature() pattern so the watcher import is dead-code-eliminated
   // in external builds.
   useEffect(() => {
-    if (feature('AUTO_THEME')) {
-      if (activeSetting !== 'auto' || !internal_querier) return;
+    if (feature("AUTO_THEME")) {
+      if (activeSetting !== "auto" || !internal_querier) return;
       let cleanup: (() => void) | undefined;
       let cancelled = false;
-      void import('../../utils/systemThemeWatcher.js').then(({
-        watchSystemTheme
-      }) => {
-        if (cancelled) return;
-        cleanup = watchSystemTheme(internal_querier, setSystemTheme);
-      });
+      void import("../../utils/systemThemeWatcher.js").then(
+        ({ watchSystemTheme }) => {
+          if (cancelled) return;
+          cleanup = watchSystemTheme(internal_querier, setSystemTheme);
+        },
+      );
       return () => {
         cancelled = true;
         cleanup?.();
       };
     }
   }, [activeSetting, internal_querier]);
-  const currentTheme: ThemeName = activeSetting === 'auto' ? systemTheme : activeSetting;
-  const value = useMemo<ThemeContextValue>(() => ({
-    themeSetting,
-    setThemeSetting: (newSetting: ThemeSetting) => {
-      setThemeSetting(newSetting);
-      setPreviewTheme(null);
-      // Switching to 'auto' restarts the watcher (activeSetting dep), whose
-      // first poll fires immediately. Seed from the cache so the OSC
-      // round-trip doesn't flash the wrong palette.
-      if (newSetting === 'auto') {
-        setSystemTheme(getSystemThemeName());
-      }
-      onThemeSave?.(newSetting);
-    },
-    setPreviewTheme: (newSetting_0: ThemeSetting) => {
-      setPreviewTheme(newSetting_0);
-      if (newSetting_0 === 'auto') {
-        setSystemTheme(getSystemThemeName());
-      }
-    },
-    savePreview: () => {
-      if (previewTheme !== null) {
-        setThemeSetting(previewTheme);
+  const currentTheme: ThemeName =
+    activeSetting === "auto" ? systemTheme : activeSetting;
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      themeSetting,
+      setThemeSetting: (newSetting: ThemeSetting) => {
+        setThemeSetting(newSetting);
         setPreviewTheme(null);
-        onThemeSave?.(previewTheme);
-      }
-    },
-    cancelPreview: () => {
-      if (previewTheme !== null) {
-        setPreviewTheme(null);
-      }
-    },
-    currentTheme,
-    modeThemeTick
-  }), [themeSetting, previewTheme, currentTheme, onThemeSave, modeThemeTick]);
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+        // Switching to 'auto' restarts the watcher (activeSetting dep), whose
+        // first poll fires immediately. Seed from the cache so the OSC
+        // round-trip doesn't flash the wrong palette.
+        if (newSetting === "auto") {
+          setSystemTheme(getSystemThemeName());
+        }
+        onThemeSave?.(newSetting);
+      },
+      setPreviewTheme: (newSetting_0: ThemeSetting) => {
+        setPreviewTheme(newSetting_0);
+        if (newSetting_0 === "auto") {
+          setSystemTheme(getSystemThemeName());
+        }
+      },
+      savePreview: () => {
+        if (previewTheme !== null) {
+          setThemeSetting(previewTheme);
+          setPreviewTheme(null);
+          onThemeSave?.(previewTheme);
+        }
+      },
+      cancelPreview: () => {
+        if (previewTheme !== null) {
+          setPreviewTheme(null);
+        }
+      },
+      currentTheme,
+      modeThemeTick,
+    }),
+    [themeSetting, previewTheme, currentTheme, onThemeSave, modeThemeTick],
+  );
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }
 
 /**
@@ -169,10 +190,7 @@ export function ThemeProvider({
  */
 export function useTheme() {
   const $ = _c(3);
-  const {
-    currentTheme,
-    setThemeSetting
-  } = useContext(ThemeContext);
+  const { currentTheme, setThemeSetting } = useContext(ThemeContext);
   let t0;
   if ($[0] !== currentTheme || $[1] !== setThemeSetting) {
     t0 = [currentTheme, setThemeSetting];
@@ -194,17 +212,18 @@ export function useThemeSetting() {
 }
 export function usePreviewTheme() {
   const $ = _c(4);
-  const {
-    setPreviewTheme,
-    savePreview,
-    cancelPreview
-  } = useContext(ThemeContext);
+  const { setPreviewTheme, savePreview, cancelPreview } =
+    useContext(ThemeContext);
   let t0;
-  if ($[0] !== cancelPreview || $[1] !== savePreview || $[2] !== setPreviewTheme) {
+  if (
+    $[0] !== cancelPreview ||
+    $[1] !== savePreview ||
+    $[2] !== setPreviewTheme
+  ) {
     t0 = {
       setPreviewTheme,
       savePreview,
-      cancelPreview
+      cancelPreview,
     };
     $[0] = cancelPreview;
     $[1] = savePreview;

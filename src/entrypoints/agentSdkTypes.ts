@@ -12,23 +12,23 @@
 import type {
   CallToolResult,
   ToolAnnotations,
-} from '@modelcontextprotocol/sdk/types.js'
+} from "@modelcontextprotocol/sdk/types.js";
 
 // Control protocol types for SDK builders (bridge subpath consumers)
 /** @alpha */
 export type {
   SDKControlRequest,
   SDKControlResponse,
-} from './sdk/controlTypes.js'
+} from "./sdk/controlTypes.js";
 // Re-export core types (common serializable types)
-export * from './sdk/coreTypes.js'
+export * from "./sdk/coreTypes.js";
 // Re-export runtime types (callbacks, interfaces with methods)
-export * from './sdk/runtimeTypes.js'
+export * from "./sdk/runtimeTypes.js";
 
 // Re-export settings types (generated from settings JSON schema)
-export type { Settings } from './sdk/settingsTypes.generated.js'
+export type { Settings } from "./sdk/settingsTypes.generated.js";
 // Re-export tool types (all marked @internal until SDK API stabilizes)
-export * from './sdk/toolTypes.js'
+export * from "./sdk/toolTypes.js";
 
 // ============================================================================
 // Functions
@@ -39,7 +39,7 @@ import type {
   SDKResultMessage,
   SDKSessionInfo,
   SDKUserMessage,
-} from './sdk/coreTypes.js'
+} from "./sdk/coreTypes.js";
 // Import types needed for function signatures
 import type {
   AnyZodRawShape,
@@ -59,7 +59,7 @@ import type {
   SdkMcpToolDefinition,
   SessionMessage,
   SessionMutationOptions,
-} from './sdk/runtimeTypes.js'
+} from "./sdk/runtimeTypes.js";
 
 export type {
   ListSessionsOptions,
@@ -68,7 +68,7 @@ export type {
   ForkSessionOptions,
   ForkSessionResult,
   SDKSessionInfo,
-}
+};
 
 export function tool<Schema extends AnyZodRawShape>(
   _name: string,
@@ -79,20 +79,20 @@ export function tool<Schema extends AnyZodRawShape>(
     extra: unknown,
   ) => Promise<CallToolResult>,
   _extras?: {
-    annotations?: ToolAnnotations
-    searchHint?: string
-    alwaysLoad?: boolean
+    annotations?: ToolAnnotations;
+    searchHint?: string;
+    alwaysLoad?: boolean;
   },
 ): SdkMcpToolDefinition<Schema> {
-  throw new Error('not implemented')
+  throw new Error("not implemented");
 }
 
 type CreateSdkMcpServerOptions = {
-  name: string
-  version?: string
+  name: string;
+  version?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools?: Array<SdkMcpToolDefinition<any>>
-}
+  tools?: Array<SdkMcpToolDefinition<any>>;
+};
 
 /**
  * Creates an MCP server instance that can be used with the SDK transport.
@@ -103,22 +103,22 @@ type CreateSdkMcpServerOptions = {
 export function createSdkMcpServer(
   _options: CreateSdkMcpServerOptions,
 ): McpSdkServerConfigWithInstance {
-  throw new Error('not implemented')
+  throw new Error("not implemented");
 }
 
 export class AbortError extends Error {}
 
 /** @internal */
 export function query(_params: {
-  prompt: string | AsyncIterable<SDKUserMessage>
-  options?: InternalOptions
-}): InternalQuery
+  prompt: string | AsyncIterable<SDKUserMessage>;
+  options?: InternalOptions;
+}): InternalQuery;
 export function query(_params: {
-  prompt: string | AsyncIterable<SDKUserMessage>
-  options?: Options
-}): Query
+  prompt: string | AsyncIterable<SDKUserMessage>;
+  options?: Options;
+}): Query;
 export function query(): Query {
-  throw new Error('query is not implemented in the SDK')
+  throw new Error("query is not implemented in the SDK");
 }
 
 /**
@@ -129,7 +129,7 @@ export function query(): Query {
 export function unstable_v2_createSession(
   _options: SDKSessionOptions,
 ): SDKSession {
-  throw new Error('unstable_v2_createSession is not implemented in the SDK')
+  throw new Error("unstable_v2_createSession is not implemented in the SDK");
 }
 
 /**
@@ -141,7 +141,7 @@ export function unstable_v2_resumeSession(
   _sessionId: string,
   _options: SDKSessionOptions,
 ): SDKSession {
-  throw new Error('unstable_v2_resumeSession is not implemented in the SDK')
+  throw new Error("unstable_v2_resumeSession is not implemented in the SDK");
 }
 
 // @[MODEL LAUNCH]: Update the example model ID in this docstring.
@@ -161,7 +161,7 @@ export async function unstable_v2_prompt(
   _message: string,
   _options: SDKSessionOptions,
 ): Promise<SDKResultMessage> {
-  throw new Error('unstable_v2_prompt is not implemented in the SDK')
+  throw new Error("unstable_v2_prompt is not implemented in the SDK");
 }
 
 /**
@@ -179,7 +179,7 @@ export async function getSessionMessages(
   _sessionId: string,
   _options?: GetSessionMessagesOptions,
 ): Promise<SessionMessage[]> {
-  throw new Error('getSessionMessages is not implemented in the SDK')
+  throw new Error("getSessionMessages is not implemented in the SDK");
 }
 
 /**
@@ -204,7 +204,7 @@ export async function getSessionMessages(
 export async function listSessions(
   _options?: ListSessionsOptions,
 ): Promise<SDKSessionInfo[]> {
-  throw new Error('listSessions is not implemented in the SDK')
+  throw new Error("listSessions is not implemented in the SDK");
 }
 
 /**
@@ -220,7 +220,7 @@ export async function getSessionInfo(
   _sessionId: string,
   _options?: GetSessionInfoOptions,
 ): Promise<SDKSessionInfo | undefined> {
-  throw new Error('getSessionInfo is not implemented in the SDK')
+  throw new Error("getSessionInfo is not implemented in the SDK");
 }
 
 /**
@@ -234,7 +234,7 @@ export async function renameSession(
   _title: string,
   _options?: SessionMutationOptions,
 ): Promise<void> {
-  throw new Error('renameSession is not implemented in the SDK')
+  throw new Error("renameSession is not implemented in the SDK");
 }
 
 /**
@@ -248,7 +248,7 @@ export async function tagSession(
   _tag: string | null,
   _options?: SessionMutationOptions,
 ): Promise<void> {
-  throw new Error('tagSession is not implemented in the SDK')
+  throw new Error("tagSession is not implemented in the SDK");
 }
 
 /**
@@ -263,13 +263,13 @@ export async function tagSession(
  *
  * @param sessionId - UUID of the source session
  * @param options - `{ dir?, upToMessageId?, title? }`
- * @returns `{ sessionId }` — UUID of the new forked session
+ * @returns `{ sessionId }`: UUID of the new forked session
  */
 export async function forkSession(
   _sessionId: string,
   _options?: ForkSessionOptions,
 ): Promise<ForkSessionResult> {
-  throw new Error('forkSession is not implemented in the SDK')
+  throw new Error("forkSession is not implemented in the SDK");
 }
 
 // ============================================================================
@@ -281,12 +281,12 @@ export async function forkSession(
  * @internal
  */
 export type CronTask = {
-  id: string
-  cron: string
-  prompt: string
-  createdAt: number
-  recurring?: boolean
-}
+  id: string;
+  cron: string;
+  prompt: string;
+  createdAt: number;
+  recurring?: boolean;
+};
 
 /**
  * Cron scheduler tuning knobs (jitter + expiry). Sourced at runtime from the
@@ -296,21 +296,21 @@ export type CronTask = {
  * @internal
  */
 export type CronJitterConfig = {
-  recurringFrac: number
-  recurringCapMs: number
-  oneShotMaxMs: number
-  oneShotFloorMs: number
-  oneShotMinuteMod: number
-  recurringMaxAgeMs: number
-}
+  recurringFrac: number;
+  recurringCapMs: number;
+  oneShotMaxMs: number;
+  oneShotFloorMs: number;
+  oneShotMinuteMod: number;
+  recurringMaxAgeMs: number;
+};
 
 /**
  * Event yielded by `watchScheduledTasks()`.
  * @internal
  */
 export type ScheduledTaskEvent =
-  | { type: 'fire'; task: CronTask }
-  | { type: 'missed'; tasks: CronTask[] }
+  | { type: "fire"; task: CronTask }
+  | { type: "missed"; tasks: CronTask[] };
 
 /**
  * Handle returned by `watchScheduledTasks()`.
@@ -318,14 +318,14 @@ export type ScheduledTaskEvent =
  */
 export type ScheduledTasksHandle = {
   /** Async stream of fire/missed events. Drain with `for await`. */
-  events(): AsyncGenerator<ScheduledTaskEvent>
+  events(): AsyncGenerator<ScheduledTaskEvent>;
   /**
    * Epoch ms of the soonest scheduled fire across all loaded tasks, or null
    * if nothing is scheduled. Useful for deciding whether to tear down an
    * idle agent subprocess or keep it warm for an imminent fire.
    */
-  getNextFireTime(): number | null
-}
+  getNextFireTime(): number | null;
+};
 
 /**
  * Watch `<dir>/.claude/scheduled_tasks.json` and yield events as tasks fire.
@@ -334,10 +334,10 @@ export type ScheduledTasksHandle = {
  * session in the same dir won't double-fire. Releases the lock and closes
  * the file watcher when the signal aborts.
  *
- * - `fire` — a task whose cron schedule was met. One-shot tasks are already
+ * - `fire`: a task whose cron schedule was met. One-shot tasks are already
  *   deleted from the file when this yields; recurring tasks are rescheduled
  *   (or deleted if aged out).
- * - `missed` — one-shot tasks whose window passed while the daemon was down.
+ * - `missed`: one-shot tasks whose window passed while the daemon was down.
  *   Yielded once on initial load; a background delete removes them from the
  *   file shortly after.
  *
@@ -348,11 +348,11 @@ export type ScheduledTasksHandle = {
  * @internal
  */
 export function watchScheduledTasks(_opts: {
-  dir: string
-  signal: AbortSignal
-  getJitterConfig?: () => CronJitterConfig
+  dir: string;
+  signal: AbortSignal;
+  getJitterConfig?: () => CronJitterConfig;
 }): ScheduledTasksHandle {
-  throw new Error('not implemented')
+  throw new Error("not implemented");
 }
 
 /**
@@ -361,7 +361,7 @@ export function watchScheduledTasks(_opts: {
  * @internal
  */
 export function buildMissedTaskNotification(_missed: CronTask[]): string {
-  throw new Error('not implemented')
+  throw new Error("not implemented");
 }
 
 /**
@@ -369,25 +369,25 @@ export function buildMissedTaskNotification(_missed: CronTask[]): string {
  * @internal
  */
 export type InboundPrompt = {
-  content: string | unknown[]
-  uuid?: string
-}
+  content: string | unknown[];
+  uuid?: string;
+};
 
 /**
  * Options for connectRemoteControl.
  * @internal
  */
 export type ConnectRemoteControlOptions = {
-  dir: string
-  name?: string
-  workerType?: string
-  branch?: string
-  gitRepoUrl?: string | null
-  getAccessToken: () => string | undefined
-  baseUrl: string
-  orgUUID: string
-  model: string
-}
+  dir: string;
+  name?: string;
+  workerType?: string;
+  branch?: string;
+  gitRepoUrl?: string | null;
+  getAccessToken: () => string | undefined;
+  baseUrl: string;
+  orgUUID: string;
+  model: string;
+};
 
 /**
  * Handle returned by connectRemoteControl. Write query() yields in,
@@ -396,30 +396,30 @@ export type ConnectRemoteControlOptions = {
  * @internal
  */
 export type RemoteControlHandle = {
-  sessionUrl: string
-  environmentId: string
-  bridgeSessionId: string
-  write(msg: SDKMessage): void
-  sendResult(): void
-  sendControlRequest(req: unknown): void
-  sendControlResponse(res: unknown): void
-  sendControlCancelRequest(requestId: string): void
-  inboundPrompts(): AsyncGenerator<InboundPrompt>
-  controlRequests(): AsyncGenerator<unknown>
-  permissionResponses(): AsyncGenerator<unknown>
+  sessionUrl: string;
+  environmentId: string;
+  bridgeSessionId: string;
+  write(msg: SDKMessage): void;
+  sendResult(): void;
+  sendControlRequest(req: unknown): void;
+  sendControlResponse(res: unknown): void;
+  sendControlCancelRequest(requestId: string): void;
+  inboundPrompts(): AsyncGenerator<InboundPrompt>;
+  controlRequests(): AsyncGenerator<unknown>;
+  permissionResponses(): AsyncGenerator<unknown>;
   onStateChange(
     cb: (
-      state: 'ready' | 'connected' | 'reconnecting' | 'failed',
+      state: "ready" | "connected" | "reconnecting" | "failed",
       detail?: string,
     ) => void,
-  ): void
-  teardown(): Promise<void>
-}
+  ): void;
+  teardown(): Promise<void>;
+};
 
 /**
  * Hold a claude.ai remote-control bridge connection from a daemon process.
  *
- * The daemon owns the WebSocket in the PARENT process — if the agent
+ * The daemon owns the WebSocket in the PARENT process: if the agent
  * subprocess (spawned via `query()`) crashes, the daemon respawns it while
  * claude.ai keeps the same session. Contrast with `query.enableRemoteControl`
  * which puts the WS in the CHILD process (dies with the agent).
@@ -429,7 +429,7 @@ export type RemoteControlHandle = {
  * stream. Handle `controlRequests()` locally (interrupt → abort, set_model
  * → reconfigure).
  *
- * Skips the `tengu_ccr_bridge` gate and policy-limits check — @internal
+ * Skips the `tengu_ccr_bridge` gate and policy-limits check: @internal
  * caller is pre-entitled. OAuth is still required (env var or keychain).
  *
  * Returns null on no-OAuth or registration failure.
@@ -439,5 +439,5 @@ export type RemoteControlHandle = {
 export async function connectRemoteControl(
   _opts: ConnectRemoteControlOptions,
 ): Promise<RemoteControlHandle | null> {
-  throw new Error('not implemented')
+  throw new Error("not implemented");
 }

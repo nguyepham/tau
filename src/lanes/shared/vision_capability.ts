@@ -14,7 +14,7 @@
  *
  * Only `true` unlocks sending pixels. `false` and `undefined` fall back to
  * text (OCR extract, else a marker), which every provider on earth accepts.
- * So a wrong guess can never break a request — the worst case is a slightly
+ * So a wrong guess can never break a request: the worst case is a slightly
  * weaker answer, never a 400.
  *
  * Evidence comes from the same catalogs the /models picker already fetches:
@@ -24,13 +24,13 @@
  * picked yesterday is still known today.
  */
 
-const memory = new Map<string, boolean>()
-let loaded = false
-let dirty = false
-let flushTimer: ReturnType<typeof setTimeout> | null = null
+const memory = new Map<string, boolean>();
+let loaded = false;
+let dirty = false;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function keyFor(provider: string, model: string): string {
-  return `${provider.trim().toLowerCase()}::${model.trim().toLowerCase()}`
+  return `${provider.trim().toLowerCase()}::${model.trim().toLowerCase()}`;
 }
 
 function storePath(): string | null {
@@ -38,59 +38,59 @@ function storePath(): string | null {
     // Required lazily: this module is imported by sync converter paths and
     // must not drag config/env machinery into them at load time.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { CACHE_PATHS } = require('../../utils/cachePaths.js') as {
-      CACHE_PATHS: { visionCapability: () => string }
-    }
-    return CACHE_PATHS.visionCapability()
+    const { CACHE_PATHS } = require("../../utils/cachePaths.js") as {
+      CACHE_PATHS: { visionCapability: () => string };
+    };
+    return CACHE_PATHS.visionCapability();
   } catch {
-    return null
+    return null;
   }
 }
 
 function load(): void {
-  if (loaded) return
-  loaded = true
-  const path = storePath()
-  if (!path) return
+  if (loaded) return;
+  loaded = true;
+  const path = storePath();
+  if (!path) return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { readFileSync } = require('fs') as typeof import('fs')
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
-      models?: Record<string, boolean>
-    }
+    const { readFileSync } = require("fs") as typeof import("fs");
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as {
+      models?: Record<string, boolean>;
+    };
     for (const [k, v] of Object.entries(parsed.models ?? {})) {
-      if (typeof v === 'boolean') memory.set(k, v)
+      if (typeof v === "boolean") memory.set(k, v);
     }
   } catch {
-    /* first run, or an unreadable cache — start empty */
+    /* first run, or an unreadable cache: start empty */
   }
 }
 
 function scheduleFlush(): void {
-  if (flushTimer) return
+  if (flushTimer) return;
   flushTimer = setTimeout(() => {
-    flushTimer = null
-    if (!dirty) return
-    dirty = false
-    const path = storePath()
-    if (!path) return
+    flushTimer = null;
+    if (!dirty) return;
+    dirty = false;
+    const path = storePath();
+    if (!path) return;
     void (async () => {
       try {
-        const { mkdir, writeFile } = await import('fs/promises')
-        const { dirname } = await import('path')
-        await mkdir(dirname(path), { recursive: true })
+        const { mkdir, writeFile } = await import("fs/promises");
+        const { dirname } = await import("path");
+        await mkdir(dirname(path), { recursive: true });
         await writeFile(
           path,
           JSON.stringify({ v: 1, models: Object.fromEntries(memory) }),
-          'utf8',
-        )
+          "utf8",
+        );
       } catch {
         /* best effort */
       }
-    })()
-  }, 2_000)
+    })();
+  }, 2_000);
   // Never hold the process open for a cache write.
-  flushTimer.unref?.()
+  flushTimer.unref?.();
 }
 
 /** Record what a provider catalog told us. Later evidence wins. */
@@ -99,13 +99,13 @@ export function recordModelVision(
   model: string | undefined,
   capable: boolean,
 ): void {
-  if (!provider || !model) return
-  load()
-  const key = keyFor(provider, model)
-  if (memory.get(key) === capable) return
-  memory.set(key, capable)
-  dirty = true
-  scheduleFlush()
+  if (!provider || !model) return;
+  load();
+  const key = keyFor(provider, model);
+  if (memory.get(key) === capable) return;
+  memory.set(key, capable);
+  dirty = true;
+  scheduleFlush();
 }
 
 /**
@@ -116,27 +116,27 @@ export function modelAcceptsImages(
   provider: string | undefined,
   model: string | undefined,
 ): boolean | undefined {
-  if (!provider || !model) return undefined
-  load()
+  if (!provider || !model) return undefined;
+  load();
 
-  const direct = memory.get(keyFor(provider, model))
-  if (direct !== undefined) return direct
+  const direct = memory.get(keyFor(provider, model));
+  if (direct !== undefined) return direct;
 
   // OpenRouter-style suffixes (`:free`, `:nitro`) and provider-prefixed ids
-  // describe routing, not modality — fall back to the bare id.
-  const bare = model.replace(/:(free|nitro|floor|online|extended)$/i, '')
+  // describe routing, not modality: fall back to the bare id.
+  const bare = model.replace(/:(free|nitro|floor|online|extended)$/i, "");
   if (bare !== model) {
-    const stripped = memory.get(keyFor(provider, bare))
-    if (stripped !== undefined) return stripped
+    const stripped = memory.get(keyFor(provider, bare));
+    if (stripped !== undefined) return stripped;
   }
 
   // Same model id learned under a different provider (the OpenRouter catalog
   // is the richest source, and gateways resell the same weights).
-  const suffix = `::${bare.trim().toLowerCase()}`
+  const suffix = `::${bare.trim().toLowerCase()}`;
   for (const [k, v] of memory) {
-    if (k.endsWith(suffix)) return v
+    if (k.endsWith(suffix)) return v;
   }
-  return undefined
+  return undefined;
 }
 
 /**
@@ -153,7 +153,7 @@ export function modelAcceptsImages(
  * a prefix that cannot move under a live conversation. Same discipline as
  * volatile_freeze.ts.
  */
-const decided = new Map<string, boolean>()
+const decided = new Map<string, boolean>();
 
 /**
  * The answer used for wire-format decisions. Call this only when an
@@ -164,20 +164,20 @@ export function decideImageSupport(
   provider: string | undefined,
   model: string | undefined,
 ): boolean {
-  const key = keyFor(provider ?? '', model ?? '')
-  const existing = decided.get(key)
-  if (existing !== undefined) return existing
-  const answer = modelAcceptsImages(provider, model) === true
-  decided.set(key, answer)
-  return answer
+  const key = keyFor(provider ?? "", model ?? "");
+  const existing = decided.get(key);
+  if (existing !== undefined) return existing;
+  const answer = modelAcceptsImages(provider, model) === true;
+  decided.set(key, answer);
+  return answer;
 }
 
 /** Test hook. */
 export function _resetVisionCapabilityForTest(): void {
-  memory.clear()
-  decided.clear()
-  loaded = true
-  dirty = false
+  memory.clear();
+  decided.clear();
+  loaded = true;
+  dirty = false;
 }
 
 /** Test hook: assert a capability without touching disk. */
@@ -186,7 +186,7 @@ export function _seedVisionCapabilityForTest(
   model: string,
   capable: boolean,
 ): void {
-  loaded = true
-  decided.delete(keyFor(provider, model))
-  memory.set(keyFor(provider, model), capable)
+  loaded = true;
+  decided.delete(keyFor(provider, model));
+  memory.set(keyFor(provider, model), capable);
 }

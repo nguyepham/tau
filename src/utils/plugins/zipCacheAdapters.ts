@@ -10,45 +10,45 @@
  * for extracted plugins used during a single session.
  */
 
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import { logForDebugging } from '../debug.js'
-import { jsonParse, jsonStringify } from '../slowOperations.js'
-import { loadKnownMarketplacesConfigSafe } from './marketplaceManager.js'
+import { readFile } from "fs/promises";
+import { join } from "path";
+import { logForDebugging } from "../debug.js";
+import { jsonParse, jsonStringify } from "../slowOperations.js";
+import { loadKnownMarketplacesConfigSafe } from "./marketplaceManager.js";
 import {
   type KnownMarketplacesFile,
   KnownMarketplacesFileSchema,
   type PluginMarketplace,
   PluginMarketplaceSchema,
-} from './schemas.js'
+} from "./schemas.js";
 import {
   atomicWriteToZipCache,
   getMarketplaceJsonRelativePath,
   getPluginZipCachePath,
   getZipCacheKnownMarketplacesPath,
-} from './zipCache.js'
+} from "./zipCache.js";
 
 // ── Metadata I/O ──
 
 /**
  * Read known_marketplaces.json from the zip cache.
  * Returns empty object if file doesn't exist, can't be parsed, or fails schema
- * validation (data comes from a shared mounted volume — other containers may write).
+ * validation (data comes from a shared mounted volume: other containers may write).
  */
 export async function readZipCacheKnownMarketplaces(): Promise<KnownMarketplacesFile> {
   try {
-    const content = await readFile(getZipCacheKnownMarketplacesPath(), 'utf-8')
-    const parsed = KnownMarketplacesFileSchema().safeParse(jsonParse(content))
+    const content = await readFile(getZipCacheKnownMarketplacesPath(), "utf-8");
+    const parsed = KnownMarketplacesFileSchema().safeParse(jsonParse(content));
     if (!parsed.success) {
       logForDebugging(
         `Invalid known_marketplaces.json in zip cache: ${parsed.error.message}`,
-        { level: 'error' },
-      )
-      return {}
+        { level: "error" },
+      );
+      return {};
     }
-    return parsed.data
+    return parsed.data;
   } catch {
-    return {}
+    return {};
   }
 }
 
@@ -61,7 +61,7 @@ export async function writeZipCacheKnownMarketplaces(
   await atomicWriteToZipCache(
     getZipCacheKnownMarketplacesPath(),
     jsonStringify(data, null, 2),
-  )
+  );
 }
 
 // ── Marketplace JSON ──
@@ -72,25 +72,25 @@ export async function writeZipCacheKnownMarketplaces(
 export async function readMarketplaceJson(
   marketplaceName: string,
 ): Promise<PluginMarketplace | null> {
-  const zipCachePath = getPluginZipCachePath()
+  const zipCachePath = getPluginZipCachePath();
   if (!zipCachePath) {
-    return null
+    return null;
   }
-  const relPath = getMarketplaceJsonRelativePath(marketplaceName)
-  const fullPath = join(zipCachePath, relPath)
+  const relPath = getMarketplaceJsonRelativePath(marketplaceName);
+  const fullPath = join(zipCachePath, relPath);
   try {
-    const content = await readFile(fullPath, 'utf-8')
-    const parsed = jsonParse(content)
-    const result = PluginMarketplaceSchema().safeParse(parsed)
+    const content = await readFile(fullPath, "utf-8");
+    const parsed = jsonParse(content);
+    const result = PluginMarketplaceSchema().safeParse(parsed);
     if (result.success) {
-      return result.data
+      return result.data;
     }
     logForDebugging(
       `Invalid marketplace JSON for ${marketplaceName}: ${result.error}`,
-    )
-    return null
+    );
+    return null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -101,14 +101,14 @@ export async function saveMarketplaceJsonToZipCache(
   marketplaceName: string,
   installLocation: string,
 ): Promise<void> {
-  const zipCachePath = getPluginZipCachePath()
+  const zipCachePath = getPluginZipCachePath();
   if (!zipCachePath) {
-    return
+    return;
   }
-  const content = await readMarketplaceJsonContent(installLocation)
+  const content = await readMarketplaceJsonContent(installLocation);
   if (content !== null) {
-    const relPath = getMarketplaceJsonRelativePath(marketplaceName)
-    await atomicWriteToZipCache(join(zipCachePath, relPath), content)
+    const relPath = getMarketplaceJsonRelativePath(marketplaceName);
+    await atomicWriteToZipCache(join(zipCachePath, relPath), content);
   }
 }
 
@@ -119,18 +119,18 @@ export async function saveMarketplaceJsonToZipCache(
  */
 async function readMarketplaceJsonContent(dir: string): Promise<string | null> {
   const candidates = [
-    join(dir, '.claude-plugin', 'marketplace.json'),
-    join(dir, 'marketplace.json'),
+    join(dir, ".claude-plugin", "marketplace.json"),
+    join(dir, "marketplace.json"),
     dir, // For URL sources, installLocation IS the marketplace JSON file
-  ]
+  ];
   for (const candidate of candidates) {
     try {
-      return await readFile(candidate, 'utf-8')
+      return await readFile(candidate, "utf-8");
     } catch {
-      // ENOENT (doesn't exist) or EISDIR (directory) — try next
+      // ENOENT (doesn't exist) or EISDIR (directory): try next
     }
   }
-  return null
+  return null;
 }
 
 /**
@@ -139,26 +139,26 @@ async function readMarketplaceJsonContent(dir: string): Promise<string | null> {
  * so ephemeral containers can access marketplaces without re-cloning.
  */
 export async function syncMarketplacesToZipCache(): Promise<void> {
-  // Read-only iteration — Safe variant so a corrupted config doesn't throw.
+  // Read-only iteration: Safe variant so a corrupted config doesn't throw.
   // This runs during startup paths; a throw here cascades to the same
   // try-block that catches loadAllPlugins failures.
-  const knownMarketplaces = await loadKnownMarketplacesConfigSafe()
+  const knownMarketplaces = await loadKnownMarketplacesConfigSafe();
 
   // Save marketplace JSONs to zip cache
   for (const [name, entry] of Object.entries(knownMarketplaces)) {
-    if (!entry.installLocation) continue
+    if (!entry.installLocation) continue;
     try {
-      await saveMarketplaceJsonToZipCache(name, entry.installLocation)
+      await saveMarketplaceJsonToZipCache(name, entry.installLocation);
     } catch (error) {
-      logForDebugging(`Failed to save marketplace JSON for ${name}: ${error}`)
+      logForDebugging(`Failed to save marketplace JSON for ${name}: ${error}`);
     }
   }
 
   // Merge with previously cached data (ephemeral containers lose global config)
-  const zipCacheKnownMarketplaces = await readZipCacheKnownMarketplaces()
+  const zipCacheKnownMarketplaces = await readZipCacheKnownMarketplaces();
   const mergedKnownMarketplaces: KnownMarketplacesFile = {
     ...zipCacheKnownMarketplaces,
     ...knownMarketplaces,
-  }
-  await writeZipCacheKnownMarketplaces(mergedKnownMarketplaces)
+  };
+  await writeZipCacheKnownMarketplaces(mergedKnownMarketplaces);
 }

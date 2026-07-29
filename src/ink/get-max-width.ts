@@ -1,11 +1,11 @@
-import { LayoutEdge, type LayoutNode } from './layout/node.js'
+import { LayoutEdge, type LayoutNode } from "./layout/node.js";
 
 /**
  * Returns the yoga node's content width (computed width minus padding and
  * border).
  *
  * Warning: can return a value WIDER than the parent container. In a
- * column-direction flex parent, width is the cross axis — align-items:
+ * column-direction flex parent, width is the cross axis: align-items:
  * stretch never shrinks children below their intrinsic size, so the text
  * node overflows (standard CSS behavior). Yoga measures leaf nodes in two
  * passes: the AtMost pass determines width, the Exactly pass determines
@@ -21,7 +21,7 @@ const getMaxWidth = (yogaNode: LayoutNode): number => {
     yogaNode.getComputedPadding(LayoutEdge.Right) -
     yogaNode.getComputedBorder(LayoutEdge.Left) -
     yogaNode.getComputedBorder(LayoutEdge.Right)
-  )
-}
+  );
+};
 
-export default getMaxWidth
+export default getMaxWidth;

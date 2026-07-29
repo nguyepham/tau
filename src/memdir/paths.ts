@@ -1,22 +1,22 @@
-import memoize from 'lodash-es/memoize.js'
-import { homedir } from 'os'
-import { isAbsolute, join, normalize, sep } from 'path'
+import memoize from "lodash-es/memoize.js";
+import { homedir } from "os";
+import { isAbsolute, join, normalize, sep } from "path";
 import {
   getIsNonInteractiveSession,
   getProjectRoot,
-} from '../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+} from "../bootstrap/state.js";
+import { getFeatureValue_CACHED_MAY_BE_STALE } from "../services/analytics/growthbook.js";
 import {
   getClaudeConfigHomeDir,
   isEnvDefinedFalsy,
   isEnvTruthy,
-} from '../utils/envUtils.js'
-import { findCanonicalGitRoot } from '../utils/git.js'
-import { sanitizePath } from '../utils/path.js'
+} from "../utils/envUtils.js";
+import { findCanonicalGitRoot } from "../utils/git.js";
+import { sanitizePath } from "../utils/path.js";
 import {
   getInitialSettings,
   getSettingsForSource,
-} from '../utils/settings/settings.js'
+} from "../utils/settings/settings.js";
 
 /**
  * Whether auto-memory features are enabled (memdir, agent memory, past session search).
@@ -28,30 +28,30 @@ import {
  *   5. Default: enabled
  */
 export function isAutoMemoryEnabled(): boolean {
-  const envVal = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY
+  const envVal = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
   if (isEnvTruthy(envVal)) {
-    return false
+    return false;
   }
   if (isEnvDefinedFalsy(envVal)) {
-    return true
+    return true;
   }
   // --bare / SIMPLE: prompts.ts already drops the memory section from the
   // system prompt via its SIMPLE early-return; this gate stops the other half
   // (extractMemories turn-end fork, autoDream, /remember, /dream, team sync).
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
-    return false
+    return false;
   }
   if (
     isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
     !process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
   ) {
-    return false
+    return false;
   }
-  const settings = getInitialSettings()
+  const settings = getInitialSettings();
   if (settings.autoMemoryEnabled !== undefined) {
-    return settings.autoMemoryEnabled
+    return settings.autoMemoryEnabled;
   }
-  return true
+  return true;
 }
 
 /**
@@ -62,31 +62,31 @@ export function isAutoMemoryEnabled(): boolean {
  */
 export function isSelfLearningEnabled(): boolean {
   if (!isAutoMemoryEnabled()) {
-    return false
+    return false;
   }
-  return getInitialSettings().selfLearningEnabled === true
+  return getInitialSettings().selfLearningEnabled === true;
 }
 
 /**
  * Whether the extract-memories background agent will run this session.
  *
  * The main agent's prompt always has full save instructions regardless of
- * this gate — when the main agent writes memories, the background agent
+ * this gate: when the main agent writes memories, the background agent
  * skips that range (hasMemoryWritesSince in extractMemories.ts); when it
  * doesn't, the background agent catches anything missed.
  *
- * Callers must also gate on feature('EXTRACT_MEMORIES') — that check cannot
+ * Callers must also gate on feature('EXTRACT_MEMORIES'): that check cannot
  * live inside this helper because feature() only tree-shakes when used
  * directly in an `if` condition.
  */
 export function isExtractModeActive(): boolean {
   if (!isSelfLearningEnabled()) {
-    return false
+    return false;
   }
   return (
     !getIsNonInteractiveSession() ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_slate_thimble', false)
-  )
+    getFeatureValue_CACHED_MAY_BE_STALE("tengu_slate_thimble", false)
+  );
 }
 
 /**
@@ -97,13 +97,13 @@ export function isExtractModeActive(): boolean {
  */
 export function getMemoryBaseDir(): string {
   if (process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) {
-    return process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+    return process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR;
   }
-  return getClaudeConfigHomeDir()
+  return getClaudeConfigHomeDir();
 }
 
-const AUTO_MEM_DIRNAME = 'memory'
-const AUTO_MEM_ENTRYPOINT_NAME = 'MEMORY.md'
+const AUTO_MEM_DIRNAME = "memory";
+const AUTO_MEM_ENTRYPOINT_NAME = "MEMORY.md";
 
 /**
  * Subdirectory under the auto-memory dir where the self-learning loop stages
@@ -111,17 +111,17 @@ const AUTO_MEM_ENTRYPOINT_NAME = 'MEMORY.md'
  * so staged proposals are NEVER used until the user approves them via the
  * /learned command. Approval moves the file up to the top level.
  */
-export const LEARNED_SUBDIR = 'learned'
+export const LEARNED_SUBDIR = "learned";
 
 /**
  * Normalize and validate a candidate auto-memory directory path.
  *
  * SECURITY: Rejects paths that would be dangerous as a read-allowlist root
  * or that normalize() doesn't fully resolve:
- * - relative (!isAbsolute): "../foo" — would be interpreted relative to CWD
+ * - relative (!isAbsolute): "../foo": would be interpreted relative to CWD
  * - root/near-root (length < 3): "/" → "" after strip; "/a" too short
  * - Windows drive-root (C: regex): "C:\" → "C:" after strip
- * - UNC paths (\\server\share): network paths — opaque trust boundary
+ * - UNC paths (\\server\share): network paths: opaque trust boundary
  * - null byte: survives normalize(), can truncate in syscalls
  *
  * Returns the normalized path with exactly one trailing separator,
@@ -132,42 +132,42 @@ function validateMemoryPath(
   expandTilde: boolean,
 ): string | undefined {
   if (!raw) {
-    return undefined
+    return undefined;
   }
-  let candidate = raw
+  let candidate = raw;
   // Settings.json paths support ~/ expansion (user-friendly). The env var
   // override does not (it's set programmatically by Cowork/SDK, which should
   // always pass absolute paths). Bare "~", "~/", "~/.", "~/..", etc. are NOT
-  // expanded — they would make isAutoMemPath() match all of $HOME or its
+  // expanded: they would make isAutoMemPath() match all of $HOME or its
   // parent (same class of danger as "/" or "C:\").
   if (
     expandTilde &&
-    (candidate.startsWith('~/') || candidate.startsWith('~\\'))
+    (candidate.startsWith("~/") || candidate.startsWith("~\\"))
   ) {
-    const rest = candidate.slice(2)
+    const rest = candidate.slice(2);
     // Reject trivial remainders that would expand to $HOME or an ancestor.
     // normalize('') = '.', normalize('.') = '.', normalize('foo/..') = '.',
     // normalize('..') = '..', normalize('foo/../..') = '..'
-    const restNorm = normalize(rest || '.')
-    if (restNorm === '.' || restNorm === '..') {
-      return undefined
+    const restNorm = normalize(rest || ".");
+    if (restNorm === "." || restNorm === "..") {
+      return undefined;
     }
-    candidate = join(homedir(), rest)
+    candidate = join(homedir(), rest);
   }
   // normalize() may preserve a trailing separator; strip before adding
   // exactly one to match the trailing-sep contract of getAutoMemPath()
-  const normalized = normalize(candidate).replace(/[/\\]+$/, '')
+  const normalized = normalize(candidate).replace(/[/\\]+$/, "");
   if (
     !isAbsolute(normalized) ||
     normalized.length < 3 ||
     /^[A-Za-z]:$/.test(normalized) ||
-    normalized.startsWith('\\\\') ||
-    normalized.startsWith('//') ||
-    normalized.includes('\0')
+    normalized.startsWith("\\\\") ||
+    normalized.startsWith("//") ||
+    normalized.includes("\0")
   ) {
-    return undefined
+    return undefined;
   }
-  return (normalized + sep).normalize('NFC')
+  return (normalized + sep).normalize("NFC");
 }
 
 /**
@@ -183,7 +183,7 @@ function getAutoMemPathOverride(): string | undefined {
   return validateMemoryPath(
     process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE,
     false,
-  )
+  );
 }
 
 /**
@@ -191,7 +191,7 @@ function getAutoMemPathOverride(): string | undefined {
  * Supports ~/ expansion for user convenience.
  *
  * SECURITY: projectSettings (.claude/settings.json committed to the repo) is
- * intentionally excluded — a malicious repo could otherwise set
+ * intentionally excluded: a malicious repo could otherwise set
  * autoMemoryDirectory: "~/.ssh" and gain silent write access to sensitive
  * directories via the filesystem.ts write carve-out (which fires when
  * isAutoMemPath() matches and hasAutoMemPathOverride() is false). This follows
@@ -199,21 +199,21 @@ function getAutoMemPathOverride(): string | undefined {
  */
 function getAutoMemPathSetting(): string | undefined {
   const dir =
-    getSettingsForSource('policySettings')?.autoMemoryDirectory ??
-    getSettingsForSource('flagSettings')?.autoMemoryDirectory ??
-    getSettingsForSource('localSettings')?.autoMemoryDirectory ??
-    getSettingsForSource('userSettings')?.autoMemoryDirectory
-  return validateMemoryPath(dir, true)
+    getSettingsForSource("policySettings")?.autoMemoryDirectory ??
+    getSettingsForSource("flagSettings")?.autoMemoryDirectory ??
+    getSettingsForSource("localSettings")?.autoMemoryDirectory ??
+    getSettingsForSource("userSettings")?.autoMemoryDirectory;
+  return validateMemoryPath(dir, true);
 }
 
 /**
  * Check if CLAUDE_COWORK_MEMORY_PATH_OVERRIDE is set to a valid override.
  * Use this as a signal that the SDK caller has explicitly opted into
- * the auto-memory mechanics — e.g. to decide whether to inject the
+ * the auto-memory mechanics: e.g. to decide whether to inject the
  * memory prompt when a custom system prompt replaces the default.
  */
 export function hasAutoMemPathOverride(): boolean {
-  return getAutoMemPathOverride() !== undefined
+  return getAutoMemPathOverride() !== undefined;
 }
 
 /**
@@ -222,7 +222,7 @@ export function hasAutoMemPathOverride(): boolean {
  * same repo share one auto-memory directory (anthropics/claude-code#24382).
  */
 function getAutoMemBase(): string {
-  return findCanonicalGitRoot(getProjectRoot()) ?? getProjectRoot()
+  return findCanonicalGitRoot(getProjectRoot()) ?? getProjectRoot();
 }
 
 /**
@@ -243,17 +243,17 @@ function getAutoMemBase(): string {
  */
 export const getAutoMemPath = memoize(
   (): string => {
-    const override = getAutoMemPathOverride() ?? getAutoMemPathSetting()
+    const override = getAutoMemPathOverride() ?? getAutoMemPathSetting();
     if (override) {
-      return override
+      return override;
     }
-    const projectsDir = join(getMemoryBaseDir(), 'projects')
+    const projectsDir = join(getMemoryBaseDir(), "projects");
     return (
       join(projectsDir, sanitizePath(getAutoMemBase()), AUTO_MEM_DIRNAME) + sep
-    ).normalize('NFC')
+    ).normalize("NFC");
   },
   () => getProjectRoot(),
-)
+);
 
 /**
  * Returns the daily log file path for the given date (defaults to today).
@@ -265,10 +265,10 @@ export const getAutoMemPath = memoize(
  * topic files + MEMORY.md.
  */
 export function getAutoMemDailyLogPath(date: Date = new Date()): string {
-  const yyyy = date.getFullYear().toString()
-  const mm = (date.getMonth() + 1).toString().padStart(2, '0')
-  const dd = date.getDate().toString().padStart(2, '0')
-  return join(getAutoMemPath(), 'logs', yyyy, mm, `${yyyy}-${mm}-${dd}.md`)
+  const yyyy = date.getFullYear().toString();
+  const mm = (date.getMonth() + 1).toString().padStart(2, "0");
+  const dd = date.getDate().toString().padStart(2, "0");
+  return join(getAutoMemPath(), "logs", yyyy, mm, `${yyyy}-${mm}-${dd}.md`);
 }
 
 /**
@@ -276,7 +276,7 @@ export function getAutoMemDailyLogPath(date: Date = new Date()): string {
  * Follows the same resolution order as getAutoMemPath().
  */
 export function getAutoMemEntrypoint(): string {
-  return join(getAutoMemPath(), AUTO_MEM_ENTRYPOINT_NAME)
+  return join(getAutoMemPath(), AUTO_MEM_ENTRYPOINT_NAME);
 }
 
 /**
@@ -284,7 +284,7 @@ export function getAutoMemEntrypoint(): string {
  * Proposed memories live here until the user promotes them via /learned.
  */
 export function getAutoMemLearnedPath(): string {
-  return join(getAutoMemPath(), LEARNED_SUBDIR)
+  return join(getAutoMemPath(), LEARNED_SUBDIR);
 }
 
 /**
@@ -292,16 +292,16 @@ export function getAutoMemLearnedPath(): string {
  *
  * When CLAUDE_COWORK_MEMORY_PATH_OVERRIDE is set, this matches against the
  * env-var override directory. Note that a true return here does NOT imply
- * write permission in that case — the filesystem.ts write carve-out is gated
+ * write permission in that case: the filesystem.ts write carve-out is gated
  * on !hasAutoMemPathOverride() (it exists to bypass DANGEROUS_DIRECTORIES).
  *
  * The settings.json autoMemoryDirectory DOES get the write carve-out: it's the
  * user's explicit choice from a trusted settings source (projectSettings is
- * excluded — see getAutoMemPathSetting), and hasAutoMemPathOverride() remains
+ * excluded: see getAutoMemPathSetting), and hasAutoMemPathOverride() remains
  * false for it.
  */
 export function isAutoMemPath(absolutePath: string): boolean {
   // SECURITY: Normalize to prevent path traversal bypasses via .. segments
-  const normalizedPath = normalize(absolutePath)
-  return normalizedPath.startsWith(getAutoMemPath())
+  const normalizedPath = normalize(absolutePath);
+  return normalizedPath.startsWith(getAutoMemPath());
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tau preinstall — clears dangling global bin shims before npm links bins.
+ * Tau preinstall: clears dangling global bin shims before npm links bins.
  *
  * When a previous global update was interrupted (EPERM cleanup on Windows,
  * Ctrl-C, antivirus locks), npm can lose track of the `tau` / `claudex`
@@ -25,22 +25,21 @@ import {
   readFileSync,
   readlinkSync,
   unlinkSync,
-} from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const BIN_NAMES = ['tau', 'claudex'];
-const WIN_EXTS = ['', '.cmd', '.ps1'];
+const BIN_NAMES = ["tau", "claudex"];
+const WIN_EXTS = ["", ".cmd", ".ps1"];
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function getPackageName() {
   try {
-    return JSON.parse(
-      readFileSync(join(packageRoot, 'package.json'), 'utf8'),
-    ).name;
+    return JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"))
+      .name;
   } catch {
-    return '@abdoknbgit/tau';
+    return "@abdoknbgit/tau";
   }
 }
 
@@ -51,17 +50,17 @@ function getPackageName() {
  */
 function getGlobalBinDir() {
   // packageRoot = .../node_modules/@scope/name → up 2 = node_modules
-  const nodeModules = resolve(packageRoot, '..', '..');
-  if (basename(nodeModules) !== 'node_modules') return null; // dev repo / npm link
+  const nodeModules = resolve(packageRoot, "..", "..");
+  if (basename(nodeModules) !== "node_modules") return null; // dev repo / npm link
   const prefixOrLib = dirname(nodeModules);
-  if (process.platform === 'win32') {
+  if (process.platform === "win32") {
     // %APPDATA%\npm\node_modules → bin shims live in %APPDATA%\npm
     return prefixOrLib;
   }
   // <prefix>/lib/node_modules → <prefix>/bin ; <prefix>/node_modules → <prefix>/bin
   const prefix =
-    basename(prefixOrLib) === 'lib' ? dirname(prefixOrLib) : prefixOrLib;
-  return join(prefix, 'bin');
+    basename(prefixOrLib) === "lib" ? dirname(prefixOrLib) : prefixOrLib;
+  return join(prefix, "bin");
 }
 
 /** Resolve targets from npm's quoted sh/cmd/ps1 launcher templates. */
@@ -98,15 +97,15 @@ export function classifyShim(shimPath, packageName) {
     if (stat.isSymbolicLink()) {
       const target = readlinkSync(shimPath);
       const resolved = resolve(dirname(shimPath), target);
-      if (!existsSync(resolved)) return 'dangling';
-      const normalized = resolved.split('\\').join('/');
+      if (!existsSync(resolved)) return "dangling";
+      const normalized = resolved.split("\\").join("/");
       return normalized.includes(`node_modules/${packageName}/`)
-        ? 'ours'
-        : 'foreign';
+        ? "ours"
+        : "foreign";
     }
     // Resolve npm's complete quoted target, including absolute/relative
     // prefixes. Preserve custom launchers whose shell variables are unknown.
-    const content = readFileSync(shimPath, 'utf8').split('\\').join('/');
+    const content = readFileSync(shimPath, "utf8").split("\\").join("/");
     const targets = getEmbeddedShimTargets(shimPath, content);
     let hasMissingTarget = false;
     for (const target of targets) {
@@ -114,13 +113,13 @@ export function classifyShim(shimPath, packageName) {
         hasMissingTarget = true;
         continue;
       }
-      const normalized = target.split('\\').join('/');
-      if (normalized.includes(`node_modules/${packageName}/`)) return 'ours';
-      return 'foreign';
+      const normalized = target.split("\\").join("/");
+      if (normalized.includes(`node_modules/${packageName}/`)) return "ours";
+      return "foreign";
     }
-    return hasMissingTarget ? 'dangling' : 'foreign';
+    return hasMissingTarget ? "dangling" : "foreign";
   } catch {
-    return 'unknown';
+    return "unknown";
   }
 }
 
@@ -130,7 +129,7 @@ export function cleanDanglingBinShims(
   platform = process.platform,
 ) {
   if (!binDir || !existsSync(binDir)) return;
-  const exts = platform === 'win32' ? WIN_EXTS : [''];
+  const exts = platform === "win32" ? WIN_EXTS : [""];
 
   for (const name of BIN_NAMES) {
     for (const ext of exts) {
@@ -142,7 +141,7 @@ export function cleanDanglingBinShims(
       }
 
       const kind = classifyShim(shimPath, packageName);
-      if (kind === 'dangling') {
+      if (kind === "dangling") {
         try {
           unlinkSync(shimPath);
           console.log(
@@ -151,7 +150,7 @@ export function cleanDanglingBinShims(
         } catch {
           // npm may still EEXIST; the error message tells the user what to delete.
         }
-      } else if (kind === 'foreign') {
+      } else if (kind === "foreign") {
         console.warn(
           `[tau] Warning: '${shimPath}' belongs to another package. ` +
             `If this install fails with EEXIST, remove that package first ` +
@@ -169,7 +168,8 @@ function main() {
 }
 
 const invokedDirectly =
-  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
   try {

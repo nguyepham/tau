@@ -9,49 +9,49 @@ import {
   isImageFilePath,
   PASTE_THRESHOLD,
   tryReadImageFromPath,
-} from '../utils/imagePaste.js'
-import type { ImageDimensions } from '../utils/imageResizer.js'
-import { getPlatform } from '../utils/platform.js'
+} from "../utils/imagePaste.js";
+import type { ImageDimensions } from "../utils/imageResizer.js";
+import { getPlatform } from "../utils/platform.js";
 
-const CLIPBOARD_CHECK_DEBOUNCE_MS = 50
-const PASTE_COMPLETION_TIMEOUT_MS = 100
+const CLIPBOARD_CHECK_DEBOUNCE_MS = 50;
+const PASTE_COMPLETION_TIMEOUT_MS = 100;
 
 type PasteHandlerProps = {
-  onPaste?: (text: string) => void
-  onInput: (input: string, key: Key) => void
+  onPaste?: (text: string) => void;
+  onInput: (input: string, key: Key) => void;
   onImagePaste?: (
     base64Image: string,
     mediaType?: string,
     filename?: string,
     dimensions?: ImageDimensions,
     sourcePath?: string,
-  ) => void
-}
+  ) => void;
+};
 
 export function usePasteHandler({
   onPaste,
   onInput,
   onImagePaste,
 }: PasteHandlerProps): {
-  wrappedOnInput: (input: string, key: Key, event: InputEvent) => void
+  wrappedOnInput: (input: string, key: Key, event: InputEvent) => void;
   pasteState: {
-    chunks: string[]
-    timeoutId: ReturnType<typeof setTimeout> | null
-  }
-  isPasting: boolean
+    chunks: string[];
+    timeoutId: ReturnType<typeof setTimeout> | null;
+  };
+  isPasting: boolean;
 } {
   const [pasteState, setPasteState] = React.useState<{
-    chunks: string[]
-    timeoutId: ReturnType<typeof setTimeout> | null
-  }>({ chunks: [], timeoutId: null })
-  const [isPasting, setIsPasting] = React.useState(false)
-  const isMountedRef = React.useRef(true)
+    chunks: string[];
+    timeoutId: ReturnType<typeof setTimeout> | null;
+  }>({ chunks: [], timeoutId: null });
+  const [isPasting, setIsPasting] = React.useState(false);
+  const isMountedRef = React.useRef(true);
   // Mirrors pasteState.timeoutId but updated synchronously. When paste + a
   // keystroke arrive in the same stdin chunk, both wrappedOnInput calls run
-  // in the same discreteUpdates batch before React commits — the second call
+  // in the same discreteUpdates batch before React commits: the second call
   // reads stale pasteState.timeoutId (null) and takes the onInput path. If
   // that key is Enter, it submits the old input and the paste is lost.
-  const pastePendingRef = React.useRef(false)
+  const pastePendingRef = React.useRef(false);
 
   const isMacOS = React.useMemo(() => getPlatform() === 'macos', [])
   // Terminals send an empty bracketed paste when the clipboard holds
@@ -65,45 +65,45 @@ export function usePasteHandler({
 
   React.useEffect(() => {
     return () => {
-      isMountedRef.current = false
-    }
-  }, [])
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const checkClipboardForImageImpl = React.useCallback(() => {
-    if (!onImagePaste || !isMountedRef.current) return
+    if (!onImagePaste || !isMountedRef.current) return;
 
     void getImageFromClipboard()
-      .then(imageData => {
+      .then((imageData) => {
         if (imageData && isMountedRef.current) {
           onImagePaste(
             imageData.base64,
             imageData.mediaType,
             undefined, // no filename for clipboard images
             imageData.dimensions,
-          )
+          );
         }
       })
-      .catch(error => {
+      .catch((error) => {
         if (isMountedRef.current) {
-          logError(error as Error)
+          logError(error as Error);
         }
       })
       .finally(() => {
         if (isMountedRef.current) {
-          setIsPasting(false)
+          setIsPasting(false);
         }
-      })
-  }, [onImagePaste])
+      });
+  }, [onImagePaste]);
 
   const checkClipboardForImage = useDebounceCallback(
     checkClipboardForImageImpl,
     CLIPBOARD_CHECK_DEBOUNCE_MS,
-  )
+  );
 
   const resetPasteTimeout = React.useCallback(
     (currentTimeoutId: ReturnType<typeof setTimeout> | null) => {
       if (currentTimeoutId) {
-        clearTimeout(currentTimeoutId)
+        clearTimeout(currentTimeoutId);
       }
       return setTimeout(
         (
@@ -116,14 +116,14 @@ export function usePasteHandler({
           canReadClipboardImage,
           pastePendingRef,
         ) => {
-          pastePendingRef.current = false
+          pastePendingRef.current = false;
           setPasteState(({ chunks }) => {
             // Join chunks and filter out orphaned focus sequences
             // These can appear when focus events split during paste
             const pastedText = chunks
-              .join('')
-              .replace(/\[I$/, '')
-              .replace(/\[O$/, '')
+              .join("")
+              .replace(/\[I$/, "")
+              .replace(/\[O$/, "");
 
             // Check if the pasted text contains image file paths
             // When dragging multiple images, they may come as:
@@ -135,55 +135,55 @@ export function usePasteHandler({
             // This works because spaces within paths are escaped (e.g., `file\ name.png`)
             const lines = pastedText
               .split(/ (?=\/|[A-Za-z]:\\)/)
-              .flatMap(part => part.split('\n'))
-              .filter(line => line.trim())
-            const imagePaths = lines.filter(line => isImageFilePath(line))
+              .flatMap((part) => part.split("\n"))
+              .filter((line) => line.trim());
+            const imagePaths = lines.filter((line) => isImageFilePath(line));
 
             if (onImagePaste && imagePaths.length > 0) {
               const isTempScreenshot =
                 /\/TemporaryItems\/.*screencaptureui.*\/Screenshot/i.test(
                   pastedText,
-                )
+                );
 
               // Process all image paths
               void Promise.all(
-                imagePaths.map(imagePath => tryReadImageFromPath(imagePath)),
-              ).then(results => {
+                imagePaths.map((imagePath) => tryReadImageFromPath(imagePath)),
+              ).then((results) => {
                 const validImages = results.filter(
                   (r): r is NonNullable<typeof r> => r !== null,
-                )
+                );
 
                 if (validImages.length > 0) {
                   // Successfully read at least one image
                   for (const imageData of validImages) {
-                    const filename = basename(imageData.path)
+                    const filename = basename(imageData.path);
                     onImagePaste(
                       imageData.base64,
                       imageData.mediaType,
                       filename,
                       imageData.dimensions,
                       imageData.path,
-                    )
+                    );
                   }
                   // If some paths weren't images, paste them as text
                   const nonImageLines = lines.filter(
-                    line => !isImageFilePath(line),
-                  )
+                    (line) => !isImageFilePath(line),
+                  );
                   if (nonImageLines.length > 0 && onPaste) {
-                    onPaste(nonImageLines.join('\n'))
+                    onPaste(nonImageLines.join("\n"));
                   }
-                  setIsPasting(false)
+                  setIsPasting(false);
                 } else if (isTempScreenshot && isMacOS) {
                   // For temporary screenshot files that no longer exist, try clipboard
-                  checkClipboardForImage()
+                  checkClipboardForImage();
                 } else {
                   if (onPaste) {
-                    onPaste(pastedText)
+                    onPaste(pastedText);
                   }
-                  setIsPasting(false)
+                  setIsPasting(false);
                 }
-              })
-              return { chunks: [], timeoutId: null }
+              });
+              return { chunks: [], timeoutId: null };
             }
 
             // If paste is empty (common when trying to paste images with
@@ -199,12 +199,12 @@ export function usePasteHandler({
 
             // Handle regular paste
             if (onPaste) {
-              onPaste(pastedText)
+              onPaste(pastedText);
             }
             // Reset isPasting state after paste is complete
-            setIsPasting(false)
-            return { chunks: [], timeoutId: null }
-          })
+            setIsPasting(false);
+            return { chunks: [], timeoutId: null };
+          });
         },
         PASTE_COMPLETION_TIMEOUT_MS,
         setPasteState,
@@ -215,7 +215,7 @@ export function usePasteHandler({
         isMacOS,
         canReadClipboardImage,
         pastePendingRef,
-      )
+      );
     },
     [
       canReadClipboardImage,
@@ -235,11 +235,11 @@ export function usePasteHandler({
   const wrappedOnInput = (input: string, key: Key, event: InputEvent): void => {
     // Detect paste from the parsed keypress event.
     // The keypress parser sets isPasted=true for content within bracketed paste.
-    const isFromPaste = event.keypress.isPasted
+    const isFromPaste = event.keypress.isPasted;
 
     // If this is pasted content, set isPasting state for UI feedback
     if (isFromPaste) {
-      setIsPasting(true)
+      setIsPasting(true);
     }
 
     // Handle large pastes (>PASTE_THRESHOLD chars)
@@ -256,8 +256,8 @@ export function usePasteHandler({
     // - Unix: ` /` - Windows: ` C:\` etc.
     const hasImageFilePath = input
       .split(/ (?=\/|[A-Za-z]:\\)/)
-      .flatMap(part => part.split('\n'))
-      .some(line => isImageFilePath(line.trim()))
+      .flatMap((part) => part.split("\n"))
+      .some((line) => isImageFilePath(line.trim()));
 
     // Handle empty paste (clipboard image)
     // When the user pastes an image with Cmd+V / Ctrl+V, the terminal sends an
@@ -271,8 +271,8 @@ export function usePasteHandler({
     ) {
       checkClipboardForImage()
       // Reset isPasting since there's no text content to process
-      setIsPasting(false)
-      return
+      setIsPasting(false);
+      return;
     }
 
     // Check if we should handle as paste (from bracketed paste, large input, or continuation)
@@ -281,31 +281,31 @@ export function usePasteHandler({
       (input.length > PASTE_THRESHOLD ||
         pastePendingRef.current ||
         hasImageFilePath ||
-        isFromPaste)
+        isFromPaste);
 
     if (shouldHandleAsPaste) {
-      pastePendingRef.current = true
+      pastePendingRef.current = true;
       setPasteState(({ chunks, timeoutId }) => {
         return {
           chunks: [...chunks, input],
           timeoutId: resetPasteTimeout(timeoutId),
-        }
-      })
-      return
+        };
+      });
+      return;
     }
-    onInput(input, key)
+    onInput(input, key);
     if (input.length > 10) {
       // Ensure that setIsPasting is turned off on any other multicharacter
       // input, because the stdin buffer may chunk at arbitrary points and split
       // the closing escape sequence if the input length is too long for the
       // stdin buffer.
-      setIsPasting(false)
+      setIsPasting(false);
     }
-  }
+  };
 
   return {
     wrappedOnInput,
     pasteState,
     isPasting,
-  }
+  };
 }

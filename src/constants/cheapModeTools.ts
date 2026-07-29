@@ -1,29 +1,29 @@
-import { TASK_OUTPUT_TOOL_NAME } from '../tools/TaskOutputTool/constants.js'
-import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../tools/ExitPlanModeTool/constants.js'
-import { ENTER_PLAN_MODE_TOOL_NAME } from '../tools/EnterPlanModeTool/constants.js'
-import { ASK_USER_QUESTION_TOOL_NAME } from '../tools/AskUserQuestionTool/prompt.js'
-import { TASK_STOP_TOOL_NAME } from '../tools/TaskStopTool/prompt.js'
-import { FILE_READ_TOOL_NAME } from '../tools/FileReadTool/constants.js'
-import { WEB_SEARCH_TOOL_NAME } from '../tools/WebSearchTool/prompt.js'
-import { TODO_WRITE_TOOL_NAME } from '../tools/TodoWriteTool/constants.js'
-import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
-import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js'
-import { GLOB_TOOL_NAME } from '../tools/GlobTool/prompt.js'
-import { SHELL_TOOL_NAMES } from '../utils/shell/shellToolUtils.js'
-import { SNAPSHOT_TOOL_NAME } from '../tools/SnapshotTool/prompt.js'
-import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
-import { FILE_WRITE_TOOL_NAME } from '../tools/FileWriteTool/constants.js'
-import { NOTEBOOK_EDIT_TOOL_NAME } from '../tools/NotebookEditTool/constants.js'
-import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
-import { TASK_GET_TOOL_NAME } from '../tools/TaskGetTool/constants.js'
-import { TASK_LIST_TOOL_NAME } from '../tools/TaskListTool/constants.js'
-import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
-import { TOOL_SEARCH_TOOL_NAME } from '../tools/ToolSearchTool/constants.js'
-import { TOOL_OUTPUT_RETRIEVE_TOOL_NAME } from '../tools/ToolOutputRetrieveTool/constants.js'
+import { TASK_OUTPUT_TOOL_NAME } from "../tools/TaskOutputTool/constants.js";
+import { EXIT_PLAN_MODE_V2_TOOL_NAME } from "../tools/ExitPlanModeTool/constants.js";
+import { ENTER_PLAN_MODE_TOOL_NAME } from "../tools/EnterPlanModeTool/constants.js";
+import { ASK_USER_QUESTION_TOOL_NAME } from "../tools/AskUserQuestionTool/prompt.js";
+import { TASK_STOP_TOOL_NAME } from "../tools/TaskStopTool/prompt.js";
+import { FILE_READ_TOOL_NAME } from "../tools/FileReadTool/constants.js";
+import { WEB_SEARCH_TOOL_NAME } from "../tools/WebSearchTool/prompt.js";
+import { TODO_WRITE_TOOL_NAME } from "../tools/TodoWriteTool/constants.js";
+import { GREP_TOOL_NAME } from "../tools/GrepTool/prompt.js";
+import { WEB_FETCH_TOOL_NAME } from "../tools/WebFetchTool/prompt.js";
+import { GLOB_TOOL_NAME } from "../tools/GlobTool/prompt.js";
+import { SHELL_TOOL_NAMES } from "../utils/shell/shellToolUtils.js";
+import { SNAPSHOT_TOOL_NAME } from "../tools/SnapshotTool/prompt.js";
+import { FILE_EDIT_TOOL_NAME } from "../tools/FileEditTool/constants.js";
+import { FILE_WRITE_TOOL_NAME } from "../tools/FileWriteTool/constants.js";
+import { NOTEBOOK_EDIT_TOOL_NAME } from "../tools/NotebookEditTool/constants.js";
+import { TASK_CREATE_TOOL_NAME } from "../tools/TaskCreateTool/constants.js";
+import { TASK_GET_TOOL_NAME } from "../tools/TaskGetTool/constants.js";
+import { TASK_LIST_TOOL_NAME } from "../tools/TaskListTool/constants.js";
+import { TASK_UPDATE_TOOL_NAME } from "../tools/TaskUpdateTool/constants.js";
+import { TOOL_SEARCH_TOOL_NAME } from "../tools/ToolSearchTool/constants.js";
+import { TOOL_OUTPUT_RETRIEVE_TOOL_NAME } from "../tools/ToolOutputRetrieveTool/constants.js";
 
 /**
- * Core tool names kept in cheap power mode. Everything else — optional
- * prebuilt tools, agents, skills, MCP, and the auxiliary built-ins — is
+ * Core tool names kept in cheap power mode. Everything else: optional
+ * prebuilt tools, agents, skills, MCP, and the auxiliary built-ins: is
  * dropped so the request stays minimal. Conditional availability (embedded
  * search, todo v2, PowerShell platform gate) is handled upstream by
  * getAllBaseTools(); this set only needs to name the allowed core.
@@ -32,7 +32,7 @@ import { TOOL_OUTPUT_RETRIEVE_TOOL_NAME } from '../tools/ToolOutputRetrieveTool/
  * stale initialTools merged from an earlier mode can never leak non-core
  * tools into a cheap-mode request.
  *
- * Lives in its own leaf module (constants only — no tool implementations)
+ * Lives in its own leaf module (constants only: no tool implementations)
  * so it stays importable under bun test and keeps a single unambiguous
  * symbol in the bundle.
  */
@@ -59,4 +59,4 @@ export const CHEAP_MODE_CORE_TOOL_NAME_SET: ReadonlySet<string> = new Set([
   EXIT_PLAN_MODE_V2_TOOL_NAME,
   TOOL_OUTPUT_RETRIEVE_TOOL_NAME,
   TOOL_SEARCH_TOOL_NAME,
-])
+]);

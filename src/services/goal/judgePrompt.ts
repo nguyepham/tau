@@ -12,13 +12,13 @@
  */
 
 /** Cap on feedback fed back into the loop, so one verdict can't dominate a nudge. */
-const MAX_FEEDBACK_CHARS = 1_000
+const MAX_FEEDBACK_CHARS = 1_000;
 
 export type GoalVerdict = {
-  passed: boolean
+  passed: boolean;
   /** Present when passed is false: what is unmet and the concrete next action. */
-  feedback?: string
-}
+  feedback?: string;
+};
 
 /**
  * Built as a user message appended to a fork of the live conversation, NOT as a
@@ -26,7 +26,7 @@ export type GoalVerdict = {
  * prompt is part of that cache key. Changing it would cost a full re-read of the
  * session on every verification.
  *
- * That delivery is also why the rubric never asks for the transcript — the
+ * That delivery is also why the rubric never asks for the transcript: the
  * verifier is already looking at it.
  */
 export function buildGoalJudgePrompt(description: string): string {
@@ -56,12 +56,12 @@ Rules:
 Reply with ONLY a single JSON object and nothing else:
 {"passed": true}
 or
-{"passed": false, "feedback": "<what is unmet and the concrete fix>"}`
+{"passed": false, "feedback": "<what is unmet and the concrete fix>"}`;
 }
 
 /** Strips ```json fences the model may wrap the object in. */
 function stripFences(text: string): string {
-  return text.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '')
+  return text.replace(/```[a-zA-Z]*\n?/g, "").replace(/```/g, "");
 }
 
 /**
@@ -72,40 +72,40 @@ function stripFences(text: string): string {
  * containing braces inside a feedback string is still extracted whole.
  */
 function jsonCandidates(text: string): string[] {
-  const candidates: string[] = []
+  const candidates: string[] = [];
   for (let start = text.length - 1; start >= 0; start--) {
-    if (text[start] !== '{') continue
-    let depth = 0
-    let inString = false
-    let escaped = false
+    if (text[start] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
     for (let i = start; i < text.length; i++) {
-      const ch = text[i]!
+      const ch = text[i]!;
       if (escaped) {
-        escaped = false
-        continue
+        escaped = false;
+        continue;
       }
-      if (ch === '\\') {
-        escaped = true
-        continue
+      if (ch === "\\") {
+        escaped = true;
+        continue;
       }
       if (ch === '"') {
-        inString = !inString
-        continue
+        inString = !inString;
+        continue;
       }
-      if (inString) continue
-      if (ch === '{') depth++
-      else if (ch === '}') {
-        depth--
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
         if (depth === 0) {
-          candidates.push(text.slice(start, i + 1))
-          break
+          candidates.push(text.slice(start, i + 1));
+          break;
         }
       }
     }
     // Bound the work on pathological output (many unclosed braces).
-    if (candidates.length >= 5) break
+    if (candidates.length >= 5) break;
   }
-  return candidates
+  return candidates;
 }
 
 /**
@@ -114,59 +114,63 @@ function jsonCandidates(text: string): string[] {
  * verdict whose feedback is the template text, which would push meaningless
  * guidance into the loop.
  */
-const TEMPLATE_ECHO = '<what is unmet'
+const TEMPLATE_ECHO = "<what is unmet";
 
 /**
  * Parses the verifier's reply into a verdict, or null if it did not answer in
  * the required shape.
  *
- * Null is not "failed" — the caller treats an unreadable verdict as no verdict
+ * Null is not "failed": the caller treats an unreadable verdict as no verdict
  * and falls back to the model's own claim. A verifier that cannot answer must
  * not be able to trap the loop.
  */
 export function parseJudgeVerdict(text: string): GoalVerdict | null {
-  if (!text) return null
-  const stripped = stripFences(text)
+  if (!text) return null;
+  const stripped = stripFences(text);
 
   // The contract is a bare object and nothing else, so try the whole reply
   // first. Scanning is recovery for models that narrate before answering, and
   // it must not get the chance to pick a different object out of a reply that
   // already complied.
-  const trimmed = stripped.trim()
+  const trimmed = stripped.trim();
   const candidates =
-    trimmed.startsWith('{') && trimmed.endsWith('}')
+    trimmed.startsWith("{") && trimmed.endsWith("}")
       ? [trimmed, ...jsonCandidates(stripped)]
-      : jsonCandidates(stripped)
+      : jsonCandidates(stripped);
 
   for (const candidate of candidates) {
-    let parsed: unknown
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(candidate)
+      parsed = JSON.parse(candidate);
     } catch {
-      continue
+      continue;
     }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      continue;
 
-    const record = parsed as Record<string, unknown>
-    const rawPassed = record.passed
+    const record = parsed as Record<string, unknown>;
+    const rawPassed = record.passed;
     // Only a real boolean counts. "true" as a string, 1, or a missing field all
     // mean the verifier did not follow the contract, and guessing which way it
     // meant to rule is worse than declining to read it.
-    if (typeof rawPassed !== 'boolean') continue
+    if (typeof rawPassed !== "boolean") continue;
 
-    if (rawPassed) return { passed: true }
+    if (rawPassed) return { passed: true };
 
-    const rawFeedback = record.feedback
-    if (typeof rawFeedback === 'string' && rawFeedback.includes(TEMPLATE_ECHO)) {
+    const rawFeedback = record.feedback;
+    if (
+      typeof rawFeedback === "string" &&
+      rawFeedback.includes(TEMPLATE_ECHO)
+    ) {
       // The reply template, not a verdict. Keep scanning for a real one.
-      continue
+      continue;
     }
     const feedback =
-      typeof rawFeedback === 'string' && rawFeedback.trim()
+      typeof rawFeedback === "string" && rawFeedback.trim()
         ? rawFeedback.trim().slice(0, MAX_FEEDBACK_CHARS)
-        : undefined
-    return feedback ? { passed: false, feedback } : { passed: false }
+        : undefined;
+    return feedback ? { passed: false, feedback } : { passed: false };
   }
 
-  return null
+  return null;
 }

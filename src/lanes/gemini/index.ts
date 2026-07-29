@@ -1,19 +1,25 @@
 /**
- * Gemini Lane — Entry Point
+ * Gemini Lane: Entry Point
  *
  * Exports the Gemini lane instance and handles initialization.
  * Call initGeminiLane() at startup to configure auth and register
  * with the dispatcher.
  */
 
-export { geminiLane, GeminiLane } from './loop.js'
-export { GEMINI_TOOL_REGISTRY, buildGeminiFunctionDeclarations } from './tools.js'
-export { assembleGeminiSystemPrompt, buildGeminiSystemInstruction } from './prompt.js'
-export { geminiApi, GeminiApiError } from './api.js'
+export { geminiLane, GeminiLane } from "./loop.js";
+export {
+  GEMINI_TOOL_REGISTRY,
+  buildGeminiFunctionDeclarations,
+} from "./tools.js";
+export {
+  assembleGeminiSystemPrompt,
+  buildGeminiSystemInstruction,
+} from "./prompt.js";
+export { geminiApi, GeminiApiError } from "./api.js";
 
-import { geminiLane } from './loop.js'
-import { geminiApi } from './api.js'
-import { registerLane } from '../dispatcher.js'
+import { geminiLane } from "./loop.js";
+import { geminiApi } from "./api.js";
+import { registerLane } from "../dispatcher.js";
 
 /**
  * Initialize the Gemini lane.
@@ -29,19 +35,19 @@ import { registerLane } from '../dispatcher.js'
  * Call this once at startup, after auth is resolved.
  */
 export function initGeminiLane(opts?: {
-  apiKey?: string
+  apiKey?: string;
   /** Deprecated single-token path. Use cliOAuthToken / antigravityOAuthToken. */
-  oauthToken?: string
-  oauthMode?: 'cli' | 'antigravity'
+  oauthToken?: string;
+  oauthMode?: "cli" | "antigravity";
   /** OAuth token from Gemini CLI flow (free-tier flash/lite models). */
-  cliOAuthToken?: string
+  cliOAuthToken?: string;
   /** OAuth token from Antigravity flow (Gemini 3.x pro/flash/image models). */
-  antigravityOAuthToken?: string
+  antigravityOAuthToken?: string;
 }): void {
   // Configure API client with auth. OAuth tokens can come from the Code
   // Assist CLI flow (free tier) or the Antigravity flow (gray-area). The
   // lane routes per-model to the right executor via executorForModel.
-  const apiKey = opts?.apiKey ?? process.env.GEMINI_API_KEY
+  const apiKey = opts?.apiKey ?? process.env.GEMINI_API_KEY;
 
   geminiApi.configure({
     apiKey,
@@ -49,11 +55,11 @@ export function initGeminiLane(opts?: {
     oauthMode: opts?.oauthMode,
     cliOAuthToken: opts?.cliOAuthToken,
     antigravityOAuthToken: opts?.antigravityOAuthToken,
-  })
+  });
 
   // Register with the dispatcher
-  registerLane(geminiLane)
+  registerLane(geminiLane);
 
   // Mark healthy if auth is available
-  geminiLane.setHealthy(geminiApi.isConfigured)
+  geminiLane.setHealthy(geminiApi.isConfigured);
 }

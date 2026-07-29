@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
-import React, { type PropsWithChildren } from 'react';
-import Box, { type Props as BoxProps } from './Box.js';
-type Props = Omit<BoxProps, 'noSelect'> & {
+import React, { type PropsWithChildren } from "react";
+import Box, { type Props as BoxProps } from "./Box.js";
+type Props = Omit<BoxProps, "noSelect"> & {
   /**
    * Extend the exclusion zone from column 0 to this box's right edge,
    * for every row this box occupies. Use for gutters rendered inside a
@@ -17,7 +17,7 @@ type Props = Omit<BoxProps, 'noSelect'> & {
 /**
  * Marks its contents as non-selectable in fullscreen text selection.
  * Cells inside this box are skipped by both the selection highlight and
- * the copied text — the gutter stays visually unchanged while the user
+ * the copied text: the gutter stays visually unchanged while the user
  * drags, making it clear what will be copied.
  *
  * Use to fence off gutters (line numbers, diff +/- sigils, list bullets)
@@ -38,11 +38,7 @@ export function NoSelect(t0) {
   let children;
   let fromLeftEdge;
   if ($[0] !== t0) {
-    ({
-      children,
-      fromLeftEdge,
-      ...boxProps
-    } = t0);
+    ({ children, fromLeftEdge, ...boxProps } = t0);
     $[0] = t0;
     $[1] = boxProps;
     $[2] = children;
@@ -55,7 +51,11 @@ export function NoSelect(t0) {
   const t1 = fromLeftEdge ? "from-left-edge" : true;
   let t2;
   if ($[4] !== boxProps || $[5] !== children || $[6] !== t1) {
-    t2 = <Box {...boxProps} noSelect={t1}>{children}</Box>;
+    t2 = (
+      <Box {...boxProps} noSelect={t1}>
+        {children}
+      </Box>
+    );
     $[4] = boxProps;
     $[5] = children;
     $[6] = t1;

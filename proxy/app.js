@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Tau proxy daemon — MITM between Tau CLI and DeepSeek.
+ * Tau proxy daemon: MITM between Tau CLI and DeepSeek.
  *
  * Overrides temperature, top_p, thinking on user requests.
  * Logs session details to ./proxy/logs/.
  *
- * Ported from proxy/app.py — DeepSeek only (no Antigravity).
+ * Ported from proxy/app.py: DeepSeek only (no Antigravity).
  */
 
 import express from "express";

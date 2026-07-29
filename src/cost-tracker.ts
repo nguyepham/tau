@@ -1,5 +1,5 @@
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import chalk from 'chalk'
+import type { BetaUsage as Usage } from "@anthropic-ai/sdk/resources/beta/messages/messages.mjs";
+import chalk from "chalk";
 import {
   addToTotalCostState,
   addToTotalLinesChanged,
@@ -26,35 +26,38 @@ import {
   resetStateForTests,
   setCostStateForRestore,
   setHasUnknownModelCost,
-} from './bootstrap/state.js'
-import type { ModelUsage } from './entrypoints/agentSdkTypes.js'
+} from "./bootstrap/state.js";
+import type { ModelUsage } from "./entrypoints/agentSdkTypes.js";
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from './services/analytics/index.js'
-import { getAdvisorUsage } from './utils/advisor.js'
+} from "./services/analytics/index.js";
+import { getAdvisorUsage } from "./utils/advisor.js";
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
-} from './utils/config.js'
+} from "./utils/config.js";
 import {
   getContextWindowForModel,
   getModelMaxOutputTokens,
-} from './utils/context.js'
-import { isFastModeEnabled } from './utils/fastMode.js'
-import { formatDuration, formatNumber } from './utils/format.js'
-import type { FpsMetrics } from './utils/fpsTracker.js'
-import { getCanonicalName } from './utils/model/model.js'
-import { getAPIProvider, isThirdPartyProvider } from './utils/model/providers.js'
-import { getProviderModelSet } from './utils/model/configs.js'
-import { calculateUSDCost } from './utils/modelCost.js'
+} from "./utils/context.js";
+import { isFastModeEnabled } from "./utils/fastMode.js";
+import { formatDuration, formatNumber } from "./utils/format.js";
+import type { FpsMetrics } from "./utils/fpsTracker.js";
+import { getCanonicalName } from "./utils/model/model.js";
+import {
+  getAPIProvider,
+  isThirdPartyProvider,
+} from "./utils/model/providers.js";
+import { getProviderModelSet } from "./utils/model/configs.js";
+import { calculateUSDCost } from "./utils/modelCost.js";
 import {
   getCurrentSurfPhase,
   getPendingTurnPhase,
   isSurfEnabled,
   recordSurfUsage,
-} from './utils/surf/state.js'
-import { logSurfEntry } from './utils/surf/logger.js'
+} from "./utils/surf/state.js";
+import { logSurfEntry } from "./utils/surf/logger.js";
 export {
   getTotalCostUSD as getTotalCost,
   getTotalDuration,
@@ -75,18 +78,18 @@ export {
   setHasUnknownModelCost,
   getModelUsage,
   getUsageForModel,
-}
+};
 
 type StoredCostState = {
-  totalCostUSD: number
-  totalAPIDuration: number
-  totalAPIDurationWithoutRetries: number
-  totalToolDuration: number
-  totalLinesAdded: number
-  totalLinesRemoved: number
-  lastDuration: number | undefined
-  modelUsage: { [modelName: string]: ModelUsage } | undefined
-}
+  totalCostUSD: number;
+  totalAPIDuration: number;
+  totalAPIDurationWithoutRetries: number;
+  totalToolDuration: number;
+  totalLinesAdded: number;
+  totalLinesRemoved: number;
+  lastDuration: number | undefined;
+  modelUsage: { [modelName: string]: ModelUsage } | undefined;
+};
 
 /**
  * Gets stored cost state from project config for a specific session.
@@ -96,15 +99,15 @@ type StoredCostState = {
 export function getStoredSessionCosts(
   sessionId: string,
 ): StoredCostState | undefined {
-  const projectConfig = getCurrentProjectConfig()
+  const projectConfig = getCurrentProjectConfig();
 
   // Only return costs if this is the same session that was last saved
   if (projectConfig.lastSessionId !== sessionId) {
-    return undefined
+    return undefined;
   }
 
   // Build model usage with context windows
-  let modelUsage: { [modelName: string]: ModelUsage } | undefined
+  let modelUsage: { [modelName: string]: ModelUsage } | undefined;
   if (projectConfig.lastModelUsage) {
     modelUsage = Object.fromEntries(
       Object.entries(projectConfig.lastModelUsage).map(([model, usage]) => [
@@ -115,7 +118,7 @@ export function getStoredSessionCosts(
           maxOutputTokens: getModelMaxOutputTokens(model).default,
         },
       ]),
-    )
+    );
   }
 
   return {
@@ -128,7 +131,7 @@ export function getStoredSessionCosts(
     totalLinesRemoved: projectConfig.lastLinesRemoved ?? 0,
     lastDuration: projectConfig.lastDuration,
     modelUsage,
-  }
+  };
 }
 
 /**
@@ -137,12 +140,12 @@ export function getStoredSessionCosts(
  * @returns true if cost state was restored, false otherwise
  */
 export function restoreCostStateForSession(sessionId: string): boolean {
-  const data = getStoredSessionCosts(sessionId)
+  const data = getStoredSessionCosts(sessionId);
   if (!data) {
-    return false
+    return false;
   }
-  setCostStateForRestore(data)
-  return true
+  setCostStateForRestore(data);
+  return true;
 }
 
 /**
@@ -150,7 +153,7 @@ export function restoreCostStateForSession(sessionId: string): boolean {
  * Call this before switching sessions to avoid losing accumulated costs.
  */
 export function saveCurrentSessionCosts(fpsMetrics?: FpsMetrics): void {
-  saveCurrentProjectConfig(current => ({
+  saveCurrentProjectConfig((current) => ({
     ...current,
     lastCost: getTotalCostUSD(),
     lastAPIDuration: getTotalAPIDuration(),
@@ -180,11 +183,11 @@ export function saveCurrentSessionCosts(fpsMetrics?: FpsMetrics): void {
       ]),
     ),
     lastSessionId: getSessionId(),
-  }))
+  }));
 }
 
 function formatCost(cost: number, maxDecimalPlaces: number = 4): string {
-  return `$${cost > 0.5 ? round(cost, 100).toFixed(2) : cost.toFixed(maxDecimalPlaces)}`
+  return `$${cost > 0.5 ? round(cost, 100).toFixed(2) : cost.toFixed(maxDecimalPlaces)}`;
 }
 
 /**
@@ -194,32 +197,32 @@ function formatCost(cost: number, maxDecimalPlaces: number = 4): string {
  */
 function resolveDisplayModelName(model: string): string {
   try {
-    const provider = getAPIProvider()
-    if (!isThirdPartyProvider(provider)) return getCanonicalName(model)
+    const provider = getAPIProvider();
+    if (!isThirdPartyProvider(provider)) return getCanonicalName(model);
     // Resolve Claude aliases to the provider's actual model name.
-    const m = model.toLowerCase()
-    const models = getProviderModelSet(provider)
-    if (m.includes('opus'))       return models.opus
-    if (m.includes('haiku'))      return models.haiku
-    if (m.includes('sonnet'))     return models.sonnet
+    const m = model.toLowerCase();
+    const models = getProviderModelSet(provider);
+    if (m.includes("opus")) return models.opus;
+    if (m.includes("haiku")) return models.haiku;
+    if (m.includes("sonnet")) return models.sonnet;
     // If it doesn't look like a Claude alias, it's already a provider model.
-    if (!m.includes('claude'))    return model
-    return models.sonnet // default mapping
+    if (!m.includes("claude")) return model;
+    return models.sonnet; // default mapping
   } catch {
-    return getCanonicalName(model)
+    return getCanonicalName(model);
   }
 }
 
 function formatModelUsage(): string {
-  const modelUsageMap = getModelUsage()
+  const modelUsageMap = getModelUsage();
   if (Object.keys(modelUsageMap).length === 0) {
-    return 'Usage:                 0 input, 0 output, 0 cache read, 0 cache write'
+    return "Usage:                 0 input, 0 output, 0 cache read, 0 cache write";
   }
 
   // Accumulate usage by short name
-  const usageByShortName: { [shortName: string]: ModelUsage } = {}
+  const usageByShortName: { [shortName: string]: ModelUsage } = {};
   for (const [model, usage] of Object.entries(modelUsageMap)) {
-    const shortName = resolveDisplayModelName(model)
+    const shortName = resolveDisplayModelName(model);
     if (!usageByShortName[shortName]) {
       usageByShortName[shortName] = {
         inputTokens: 0,
@@ -230,67 +233,67 @@ function formatModelUsage(): string {
         costUSD: 0,
         contextWindow: 0,
         maxOutputTokens: 0,
-      }
+      };
     }
-    const accumulated = usageByShortName[shortName]
-    accumulated.inputTokens += usage.inputTokens
-    accumulated.outputTokens += usage.outputTokens
-    accumulated.cacheReadInputTokens += usage.cacheReadInputTokens
-    accumulated.cacheCreationInputTokens += usage.cacheCreationInputTokens
-    accumulated.webSearchRequests += usage.webSearchRequests
-    accumulated.costUSD += usage.costUSD
+    const accumulated = usageByShortName[shortName];
+    accumulated.inputTokens += usage.inputTokens;
+    accumulated.outputTokens += usage.outputTokens;
+    accumulated.cacheReadInputTokens += usage.cacheReadInputTokens;
+    accumulated.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+    accumulated.webSearchRequests += usage.webSearchRequests;
+    accumulated.costUSD += usage.costUSD;
   }
 
-  let result = 'Usage by model:'
-  const showCacheHit = getAPIProvider() === 'agentrouter'
+  let result = "Usage by model:";
+  const showCacheHit = getAPIProvider() === "agentrouter";
   for (const [shortName, usage] of Object.entries(usageByShortName)) {
     const usageString =
       `  ${formatNumber(usage.inputTokens)} input, ` +
       `${formatNumber(usage.outputTokens)} output, ` +
       `${formatNumber(usage.cacheReadInputTokens)} cache read, ` +
       `${formatNumber(usage.cacheCreationInputTokens)} cache write` +
-      (showCacheHit ? `, ${formatCacheHit(usage)} cache hit` : '') +
+      (showCacheHit ? `, ${formatCacheHit(usage)} cache hit` : "") +
       (usage.webSearchRequests > 0
         ? `, ${formatNumber(usage.webSearchRequests)} web search`
-        : '') +
-      ` (${formatCost(usage.costUSD)})`
-    result += `\n` + `${shortName}:`.padStart(21) + usageString
+        : "") +
+      ` (${formatCost(usage.costUSD)})`;
+    result += `\n` + `${shortName}:`.padStart(21) + usageString;
   }
-  return result
+  return result;
 }
 
 function formatCacheHit(usage: ModelUsage): string {
   const cacheEligible =
     usage.inputTokens +
     usage.cacheReadInputTokens +
-    usage.cacheCreationInputTokens
+    usage.cacheCreationInputTokens;
   if (cacheEligible <= 0 || usage.cacheReadInputTokens <= 0) {
-    return '0%'
+    return "0%";
   }
-  const percent = (usage.cacheReadInputTokens / cacheEligible) * 100
-  return `${percent >= 10 ? percent.toFixed(0) : percent.toFixed(1)}%`
+  const percent = (usage.cacheReadInputTokens / cacheEligible) * 100;
+  return `${percent >= 10 ? percent.toFixed(0) : percent.toFixed(1)}%`;
 }
 
 export function formatTotalCost(): string {
   const costDisplay =
     formatCost(getTotalCostUSD()) +
     (hasUnknownModelCost()
-      ? ' (costs may be inaccurate due to usage of unknown models)'
-      : '')
+      ? " (costs may be inaccurate due to usage of unknown models)"
+      : "");
 
-  const modelUsageDisplay = formatModelUsage()
+  const modelUsageDisplay = formatModelUsage();
 
   return chalk.dim(
     `Total cost:            ${costDisplay}\n` +
       `Total duration (API):  ${formatDuration(getTotalAPIDuration())}
 Total duration (wall): ${formatDuration(getTotalDuration())}
-Total code changes:    ${getTotalLinesAdded()} ${getTotalLinesAdded() === 1 ? 'line' : 'lines'} added, ${getTotalLinesRemoved()} ${getTotalLinesRemoved() === 1 ? 'line' : 'lines'} removed
+Total code changes:    ${getTotalLinesAdded()} ${getTotalLinesAdded() === 1 ? "line" : "lines"} added, ${getTotalLinesRemoved()} ${getTotalLinesRemoved() === 1 ? "line" : "lines"} removed
 ${modelUsageDisplay}`,
-  )
+  );
 }
 
 function round(number: number, precision: number): number {
-  return Math.round(number * precision) / precision
+  return Math.round(number * precision) / precision;
 }
 
 function addToTotalModelUsage(
@@ -307,18 +310,18 @@ function addToTotalModelUsage(
     costUSD: 0,
     contextWindow: 0,
     maxOutputTokens: 0,
-  }
+  };
 
-  modelUsage.inputTokens += usage.input_tokens
-  modelUsage.outputTokens += usage.output_tokens
-  modelUsage.cacheReadInputTokens += usage.cache_read_input_tokens ?? 0
-  modelUsage.cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0
+  modelUsage.inputTokens += usage.input_tokens;
+  modelUsage.outputTokens += usage.output_tokens;
+  modelUsage.cacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
+  modelUsage.cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
   modelUsage.webSearchRequests +=
-    usage.server_tool_use?.web_search_requests ?? 0
-  modelUsage.costUSD += cost
-  modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas())
-  modelUsage.maxOutputTokens = getModelMaxOutputTokens(model).default
-  return modelUsage
+    usage.server_tool_use?.web_search_requests ?? 0;
+  modelUsage.costUSD += cost;
+  modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas());
+  modelUsage.maxOutputTokens = getModelMaxOutputTokens(model).default;
+  return modelUsage;
 }
 
 export function addToTotalSessionCost(
@@ -326,23 +329,23 @@ export function addToTotalSessionCost(
   usage: Usage,
   model: string,
 ): number {
-  const modelUsage = addToTotalModelUsage(cost, usage, model)
-  addToTotalCostState(cost, modelUsage, model)
+  const modelUsage = addToTotalModelUsage(cost, usage, model);
+  addToTotalCostState(cost, modelUsage, model);
 
   // Surf per-phase token accounting. Fires on every API response the
-  // main loop records — including advisor recursion below, which is
+  // main loop records: including advisor recursion below, which is
   // fine because recordSurfUsage is additive (turns are counted once,
   // from applyPhase.ts, so advisor recursion doesn't inflate that).
   if (isSurfEnabled()) {
-    const pendingPhase = getPendingTurnPhase()
+    const pendingPhase = getPendingTurnPhase();
     if (pendingPhase) {
       recordSurfUsage(pendingPhase, {
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
         cacheReadTokens: usage.cache_read_input_tokens ?? 0,
         cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
-      })
-      // JSONL log for the verification feedback loop — append one record
+      });
+      // JSONL log for the verification feedback loop: append one record
       // per API response. Fire-and-forget; errors are swallowed inside.
       logSurfEntry({
         phase: pendingPhase,
@@ -354,31 +357,31 @@ export function addToTotalSessionCost(
         cacheReadTokens: usage.cache_read_input_tokens ?? 0,
         cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
         costUSD: cost,
-      })
+      });
     }
   }
 
   const attrs =
-    isFastModeEnabled() && usage.speed === 'fast'
-      ? { model, speed: 'fast' }
-      : { model }
+    isFastModeEnabled() && usage.speed === "fast"
+      ? { model, speed: "fast" }
+      : { model };
 
-  getCostCounter()?.add(cost, attrs)
-  getTokenCounter()?.add(usage.input_tokens, { ...attrs, type: 'input' })
-  getTokenCounter()?.add(usage.output_tokens, { ...attrs, type: 'output' })
+  getCostCounter()?.add(cost, attrs);
+  getTokenCounter()?.add(usage.input_tokens, { ...attrs, type: "input" });
+  getTokenCounter()?.add(usage.output_tokens, { ...attrs, type: "output" });
   getTokenCounter()?.add(usage.cache_read_input_tokens ?? 0, {
     ...attrs,
-    type: 'cacheRead',
-  })
+    type: "cacheRead",
+  });
   getTokenCounter()?.add(usage.cache_creation_input_tokens ?? 0, {
     ...attrs,
-    type: 'cacheCreation',
-  })
+    type: "cacheCreation",
+  });
 
-  let totalCost = cost
+  let totalCost = cost;
   for (const advisorUsage of getAdvisorUsage(usage)) {
-    const advisorCost = calculateUSDCost(advisorUsage.model, advisorUsage)
-    logEvent('tengu_advisor_tool_token_usage', {
+    const advisorCost = calculateUSDCost(advisorUsage.model, advisorUsage);
+    logEvent("tengu_advisor_tool_token_usage", {
       advisor_model:
         advisorUsage.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       input_tokens: advisorUsage.input_tokens,
@@ -387,12 +390,12 @@ export function addToTotalSessionCost(
       cache_creation_input_tokens:
         advisorUsage.cache_creation_input_tokens ?? 0,
       cost_usd_micros: Math.round(advisorCost * 1_000_000),
-    })
+    });
     totalCost += addToTotalSessionCost(
       advisorCost,
       advisorUsage,
       advisorUsage.model,
-    )
+    );
   }
-  return totalCost
+  return totalCost;
 }

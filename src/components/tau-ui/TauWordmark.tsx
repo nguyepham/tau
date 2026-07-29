@@ -1,12 +1,12 @@
-import * as React from 'react'
-import { useEffect, useState } from 'react'
+import * as React from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   NoSelect,
   Text,
   type ClickEvent,
   useAnimationFrame,
-} from '../../ink.js'
+} from "../../ink.js";
 import {
   getPowerModeThemeMode,
   getPowerModeWordmarkPalette,
@@ -21,19 +21,19 @@ import {
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { interpolateColor, toRGBColor } from '../Spinner/utils.js'
 
-type RGB = { r: number; g: number; b: number }
+type RGB = { r: number; g: number; b: number };
 
 type Trace = {
-  glyph: number
-  i: number
-  l: number
-}
+  glyph: number;
+  i: number;
+  l: number;
+};
 
 type LogoMap = {
-  glyph: Map<string, number>
-  trace: Map<string, Trace>
-  center: Map<number, { x: number; y: number }>
-}
+  glyph: Map<string, number>;
+  trace: Map<string, Trace>;
+  center: Map<number, { x: number; y: number }>;
+};
 
 type Burst = {
   x: number
@@ -75,143 +75,143 @@ const NEAR = [
   [-1, -1],
   [0, -1],
   [1, -1],
-] as const
+] as const;
 
 // Wordmark colors live in modeTheme.ts (getPowerModeWordmarkPalette): the
 // grey→white design in normal mode, soft bronze in cheap, soft gold in full.
 // Sampled every animation frame, so /mode cross-fades reach the logo too.
 
-const FRAME_MS = 40
-const IDLE_MS = 4600
-const IDLE_RINGS = 3
-const IDLE_WIDTH = 3.8
-const IDLE_TAIL = 9.5
-const IDLE_PHASE_OFFSET = 0.29
-const RIPPLE_MS = 1020
-const BLOOM_MS = 1600
-const MAX_BURSTS = 5
+const FRAME_MS = 40;
+const IDLE_MS = 4600;
+const IDLE_RINGS = 3;
+const IDLE_WIDTH = 3.8;
+const IDLE_TAIL = 9.5;
+const IDLE_PHASE_OFFSET = 0.29;
+const RIPPLE_MS = 1020;
+const BLOOM_MS = 1600;
+const MAX_BURSTS = 5;
 
-let launchPlayed = false
+let launchPlayed = false;
 
 function clamp(n: number): number {
-  return Math.max(0, Math.min(1, n))
+  return Math.max(0, Math.min(1, n));
 }
 
 function ease(t: number): number {
-  const p = clamp(t)
-  return p * p * (3 - 2 * p)
+  const p = clamp(t);
+  return p * p * (3 - 2 * p);
 }
 
 function mix(a: RGB, b: RGB, t: number): RGB {
-  return interpolateColor(a, b, clamp(t))
+  return interpolateColor(a, b, clamp(t));
 }
 
 function key(x: number, y: number): string {
-  return `${x},${y}`
+  return `${x},${y}`;
 }
 
 function lit(char: string): boolean {
-  return char !== ' ' && char !== '_' && char !== '~' && char !== ','
+  return char !== " " && char !== "_" && char !== "~" && char !== ",";
 }
 
 function painted(char: string): boolean {
-  return char !== ' '
+  return char !== " ";
 }
 
 function route(list: Array<{ x: number; y: number }>) {
-  const left = new Map(list.map(item => [key(item.x, item.y), item]))
-  const path: Array<{ x: number; y: number }> = []
-  let cur = [...left.values()].sort((a, b) => a.y - b.y || a.x - b.x)[0]
-  let dir = { x: 1, y: 0 }
+  const left = new Map(list.map((item) => [key(item.x, item.y), item]));
+  const path: Array<{ x: number; y: number }> = [];
+  let cur = [...left.values()].sort((a, b) => a.y - b.y || a.x - b.x)[0];
+  let dir = { x: 1, y: 0 };
 
   while (cur) {
-    path.push(cur)
-    left.delete(key(cur.x, cur.y))
-    if (!left.size) return path
+    path.push(cur);
+    left.delete(key(cur.x, cur.y));
+    if (!left.size) return path;
 
     const next = NEAR.map(([dx, dy]) => left.get(key(cur.x + dx, cur.y + dy)))
       .filter((item): item is { x: number; y: number } => !!item)
       .sort((a, b) => {
-        const ax = a.x - cur!.x
-        const ay = a.y - cur!.y
-        const bx = b.x - cur!.x
-        const by = b.y - cur!.y
-        const adot = ax * dir.x + ay * dir.y
-        const bdot = bx * dir.x + by * dir.y
-        if (adot !== bdot) return bdot - adot
-        return Math.abs(ax) + Math.abs(ay) - (Math.abs(bx) + Math.abs(by))
-      })[0]
+        const ax = a.x - cur!.x;
+        const ay = a.y - cur!.y;
+        const bx = b.x - cur!.x;
+        const by = b.y - cur!.y;
+        const adot = ax * dir.x + ay * dir.y;
+        const bdot = bx * dir.x + by * dir.y;
+        if (adot !== bdot) return bdot - adot;
+        return Math.abs(ax) + Math.abs(ay) - (Math.abs(bx) + Math.abs(by));
+      })[0];
 
     if (!next) {
       cur = [...left.values()].sort((a, b) => {
-        const da = (a.x - cur!.x) ** 2 + (a.y - cur!.y) ** 2
-        const db = (b.x - cur!.x) ** 2 + (b.y - cur!.y) ** 2
-        return da - db
-      })[0]
-      dir = { x: 1, y: 0 }
-      continue
+        const da = (a.x - cur!.x) ** 2 + (a.y - cur!.y) ** 2;
+        const db = (b.x - cur!.x) ** 2 + (b.y - cur!.y) ** 2;
+        return da - db;
+      })[0];
+      dir = { x: 1, y: 0 };
+      continue;
     }
 
-    dir = { x: next.x - cur.x, y: next.y - cur.y }
-    cur = next
+    dir = { x: next.x - cur.x, y: next.y - cur.y };
+    cur = next;
   }
 
-  return path
+  return path;
 }
 
 function mapGlyphs(lines: readonly string[]): LogoMap {
-  const cells: Array<{ x: number; y: number }> = []
+  const cells: Array<{ x: number; y: number }> = [];
 
   for (let y = 0; y < lines.length; y++) {
     for (let x = 0; x < (lines[y]?.length ?? 0); x++) {
-      if (lit(lines[y]?.[x] ?? ' ')) cells.push({ x, y })
+      if (lit(lines[y]?.[x] ?? " ")) cells.push({ x, y });
     }
   }
 
-  const all = new Map(cells.map(item => [key(item.x, item.y), item]))
-  const seen = new Set<string>()
-  const glyph = new Map<string, number>()
-  const trace = new Map<string, Trace>()
-  const center = new Map<number, { x: number; y: number }>()
-  let id = 0
+  const all = new Map(cells.map((item) => [key(item.x, item.y), item]));
+  const seen = new Set<string>();
+  const glyph = new Map<string, number>();
+  const trace = new Map<string, Trace>();
+  const center = new Map<number, { x: number; y: number }>();
+  let id = 0;
 
   for (const item of cells) {
-    const start = key(item.x, item.y)
-    if (seen.has(start)) continue
+    const start = key(item.x, item.y);
+    if (seen.has(start)) continue;
 
-    const stack = [item]
-    const part: Array<{ x: number; y: number }> = []
-    seen.add(start)
+    const stack = [item];
+    const part: Array<{ x: number; y: number }> = [];
+    seen.add(start);
 
     while (stack.length) {
-      const cur = stack.pop()!
-      part.push(cur)
-      glyph.set(key(cur.x, cur.y), id)
+      const cur = stack.pop()!;
+      part.push(cur);
+      glyph.set(key(cur.x, cur.y), id);
 
       for (const [dx, dy] of NEAR) {
-        const next = all.get(key(cur.x + dx, cur.y + dy))
-        if (!next) continue
+        const next = all.get(key(cur.x + dx, cur.y + dy));
+        if (!next) continue;
 
-        const mark = key(next.x, next.y)
-        if (seen.has(mark)) continue
+        const mark = key(next.x, next.y);
+        if (seen.has(mark)) continue;
 
-        seen.add(mark)
-        stack.push(next)
+        seen.add(mark);
+        stack.push(next);
       }
     }
 
-    const path = route(part)
+    const path = route(part);
     path.forEach((cell, i) =>
       trace.set(key(cell.x, cell.y), { glyph: id, i, l: path.length }),
-    )
+    );
     center.set(id, {
       x: part.reduce((sum, cell) => sum + cell.x, 0) / part.length + 0.5,
       y: (part.reduce((sum, cell) => sum + cell.y, 0) / part.length) * 2 + 1,
-    })
-    id++
+    });
+    id++;
   }
 
-  return { glyph, trace, center }
+  return { glyph, trace, center };
 }
 
 type WordmarkDefinition = {
@@ -236,12 +236,12 @@ function nearestBuildGlyph(
   for (const [glyph, center] of map.center.entries()) {
     const distance = Math.hypot(x + 0.5 - center.x, y * 2 + 1 - center.y)
     if (distance < bestDistance) {
-      best = glyph
-      bestDistance = distance
+      best = glyph;
+      bestDistance = distance;
     }
   }
 
-  return best
+  return best;
 }
 
 function createWordmark(
@@ -336,21 +336,21 @@ function nearestGlyph(
   for (const [glyph, center] of wordmark.map.center.entries()) {
     const distance = Math.hypot(x + 0.5 - center.x, y * 2 + 1 - center.y)
     if (distance < bestDistance) {
-      best = glyph
-      bestDistance = distance
+      best = glyph;
+      bestDistance = distance;
     }
   }
 
-  return bestDistance <= 2.4 ? best : undefined
+  return bestDistance <= 2.4 ? best : undefined;
 }
 
 function noise(x: number, y: number, t: number): number {
-  const n = Math.sin(x * 12.9898 + y * 78.233 + t * 0.043) * 43758.5453
-  return n - Math.floor(n)
+  const n = Math.sin(x * 12.9898 + y * 78.233 + t * 0.043) * 43758.5453;
+  return n - Math.floor(n);
 }
 
 function gaussian(value: number, width: number): number {
-  return Math.exp(-((value / width) ** 2))
+  return Math.exp(-((value / width) ** 2));
 }
 
 function baseInk(
@@ -380,29 +380,27 @@ function idle(
 
   for (let ring = 0; ring < IDLE_RINGS; ring++) {
     const phase =
-      ((time / IDLE_MS + ring / IDLE_RINGS - IDLE_PHASE_OFFSET) % 1 + 1) % 1
-    const envelope = ease(Math.sin(phase * Math.PI))
-    const head = phase * reach
-    const delta = dist - head
+      (((time / IDLE_MS + ring / IDLE_RINGS - IDLE_PHASE_OFFSET) % 1) + 1) % 1;
+    const envelope = ease(Math.sin(phase * Math.PI));
+    const head = phase * reach;
+    const delta = dist - head;
     const crest =
       Math.abs(delta) < IDLE_WIDTH
         ? 0.5 + 0.5 * Math.cos((delta / IDLE_WIDTH) * Math.PI)
-        : 0
+        : 0;
     const tail =
-      delta < 0 && delta > -IDLE_TAIL
-        ? (1 + delta / IDLE_TAIL) ** 2.3
-        : 0
+      delta < 0 && delta > -IDLE_TAIL ? (1 + delta / IDLE_TAIL) ** 2.3 : 0;
 
-    peak += crest * envelope * 0.26
-    primary += (crest * 0.24 + tail * 0.13) * envelope
+    peak += crest * envelope * 0.26;
+    primary += (crest * 0.24 + tail * 0.13) * envelope;
   }
 
-  const breath = (0.5 + 0.5 * Math.sin(time * 0.0008)) * 0.035
+  const breath = (0.5 + 0.5 * Math.sin(time * 0.0008)) * 0.035;
 
   return {
     peak: 0.035 + peak / IDLE_RINGS,
     primary: breath + primary / IDLE_RINGS,
-  }
+  };
 }
 
 function burstEffect(
@@ -412,18 +410,18 @@ function burstEffect(
   bursts: readonly Burst[],
   time: number,
 ): { peak: number; primary: number } {
-  let peak = 0
-  let primary = 0
+  let peak = 0;
+  let primary = 0;
 
   for (const burst of bursts) {
     if (burst.identity !== wordmark.identity) continue
     const age = time - burst.at
     if (age < 0 || age > BLOOM_MS) continue
 
-    const p = age / RIPPLE_MS
-    const dx = x + 0.5 - burst.x
-    const dy = y * 2 + 1 - burst.y
-    const dist = Math.hypot(dx, dy)
+    const p = age / RIPPLE_MS;
+    const dx = x + 0.5 - burst.x;
+    const dy = y * 2 + 1 - burst.y;
+    const dist = Math.hypot(dx, dy);
 
     if (age <= RIPPLE_MS) {
       const radius = wordmark.span * (1 - (1 - clamp(p)) ** 1.62)
@@ -431,26 +429,26 @@ function burstEffect(
       const edge = gaussian(dist - radius, 0.76) * fade * burst.force
       const trail = dist < radius ? Math.exp(-(radius - dist) / 2.3) * fade : 0
       const flash =
-        gaussian(dist, 2.2) * Math.max(0, 1 - age / 140) * burst.force
+        gaussian(dist, 2.2) * Math.max(0, 1 - age / 140) * burst.force;
       const shimmer =
         edge *
-        (0.72 + noise(x + burst.x * 0.5, y + burst.y * 0.4, age * 0.06) * 0.5)
+        (0.72 + noise(x + burst.x * 0.5, y + burst.y * 0.4, age * 0.06) * 0.5);
 
-      peak += shimmer * 0.8 + flash * 0.95
-      primary += edge * 0.5 + trail * 0.2
+      peak += shimmer * 0.8 + flash * 0.95;
+      primary += edge * 0.5 + trail * 0.2;
     }
 
     const step = wordmark.map.trace.get(key(x, y))
     if (step && step.glyph === burst.glyph && step.l > 1) {
-      const life = clamp(age / BLOOM_MS)
-      const head = (age * 0.033) % step.l
+      const life = clamp(age / BLOOM_MS);
+      const head = (age * 0.033) % step.l;
       const distance = Math.min(
         Math.abs(step.i - head),
         step.l - Math.abs(step.i - head),
-      )
-      const trace = gaussian(distance, 1.05) * (1 - life) ** 0.58
-      peak += trace * 0.9 * burst.force
-      primary += trace * 0.42 * burst.force
+      );
+      const trace = gaussian(distance, 1.05) * (1 - life) ** 0.58;
+      peak += trace * 0.9 * burst.force;
+      primary += trace * 0.42 * burst.force;
     }
 
     const center = wordmark.map.center.get(burst.glyph)
@@ -463,7 +461,7 @@ function burstEffect(
     }
   }
 
-  return { peak, primary }
+  return { peak, primary };
 }
 
 function tone(
@@ -472,8 +470,8 @@ function tone(
   peak: number,
   primary: number,
 ): string {
-  const tinted = mix(base, palette.primary, Math.min(0.54, primary))
-  return toRGBColor(mix(tinted, palette.peak, Math.min(0.72, peak)))
+  const tinted = mix(base, palette.primary, Math.min(0.54, primary));
+  return toRGBColor(mix(tinted, palette.peak, Math.min(0.72, peak)));
 }
 
 function colorFor(
@@ -488,7 +486,7 @@ function colorFor(
   extraPeak = 0,
   extraPrimary = 0,
 ): string {
-  if (!animatable) return toRGBColor(base)
+  if (!animatable) return toRGBColor(base);
 
   const pulse = idle(wordmark, x, pixelY, time)
   const burst = burstEffect(
@@ -503,20 +501,22 @@ function colorFor(
     base,
     pulse.peak + burst.peak + extraPeak,
     pulse.primary + burst.primary + extraPrimary,
-  )
+  );
 }
 
 export function TauWordmark(): React.ReactNode {
   const [reducedMotion] = useState(() => {
-    // Idempotent seed — covers standalone renders (e.g. welcome screens)
+    // Idempotent seed: covers standalone renders (e.g. welcome screens)
     // that mount before/without the ThemeProvider doing it.
-    initializePowerModeTheme(getPowerModeFromSettings(getInitialSettings()))
-    return getInitialSettings().prefersReducedMotion ?? false
-  })
-  const animatable = !reducedMotion
-  const [ref, time] = useAnimationFrame(animatable ? FRAME_MS : null)
-  const [buildStartedAt] = useState(() => (animatable && !launchPlayed ? time : null))
-  const [bursts, setBursts] = useState<readonly Burst[]>([])
+    initializePowerModeTheme(getPowerModeFromSettings(getInitialSettings()));
+    return getInitialSettings().prefersReducedMotion ?? false;
+  });
+  const animatable = !reducedMotion;
+  const [ref, time] = useAnimationFrame(animatable ? FRAME_MS : null);
+  const [buildStartedAt] = useState(() =>
+    animatable && !launchPlayed ? time : null,
+  );
+  const [bursts, setBursts] = useState<readonly Burst[]>([]);
 
   // Mode identity and palette. Rust swaps TAUCODE for RUSTCODE while reusing
   // this component's exact font, reveal path, idle ripple, and click behavior.
@@ -540,20 +540,20 @@ export function TauWordmark(): React.ReactNode {
       : clamp((time - buildStartedAt) / wordmark.buildMs)
 
   useEffect(() => {
-    if (progress >= 1) launchPlayed = true
-  }, [progress])
+    if (progress >= 1) launchPlayed = true;
+  }, [progress]);
 
   useEffect(() => {
-    if (bursts.length === 0) return
+    if (bursts.length === 0) return;
 
-    setBursts(list => {
-      const next = list.filter(burst => time - burst.at <= BLOOM_MS)
-      return next.length === list.length ? list : next
-    })
-  }, [bursts.length, time])
+    setBursts((list) => {
+      const next = list.filter((burst) => time - burst.at <= BLOOM_MS);
+      return next.length === list.length ? list : next;
+    });
+  }, [bursts.length, time]);
 
   const handleClick = (event: ClickEvent) => {
-    if (!animatable) return
+    if (!animatable) return;
 
     const x = Math.floor(event.localCol)
     const y = Math.floor(event.localRow)
@@ -562,8 +562,8 @@ export function TauWordmark(): React.ReactNode {
     const glyph = select(wordmark, x, y) ?? nearestGlyph(wordmark, x, y)
     if (glyph === undefined) return
 
-    event.stopImmediatePropagation()
-    setBursts(list => [
+    event.stopImmediatePropagation();
+    setBursts((list) => [
       ...list.slice(Math.max(0, list.length - MAX_BURSTS + 1)),
       {
         x: x + 0.5,
@@ -573,24 +573,24 @@ export function TauWordmark(): React.ReactNode {
         at: time,
         force: 1 + Math.min(0.45, list.length * 0.12),
       },
-    ])
-  }
+    ]);
+  };
 
   const renderCell = (char: string, x: number, y: number) => {
     const index = wordmark.buildIndex.get(key(x, y))
     const buildAge =
       buildStartedAt == null || index === undefined
         ? Infinity
-        : time - buildStartedAt - index * BUILD_STEP_MS
-    const revealed = index === undefined || buildAge >= 0
-    if (!revealed) return <Text key={x}> </Text>
+        : time - buildStartedAt - index * BUILD_STEP_MS;
+    const revealed = index === undefined || buildAge >= 0;
+    if (!revealed) return <Text key={x}> </Text>;
 
     const pop =
       animatable && buildStartedAt !== null && index !== undefined
         ? 1 - ease(clamp(buildAge / BUILD_POP_MS))
-        : 0
-    const extraPeak = pop * 0.78
-    const extraPrimary = pop * 0.34
+        : 0;
+    const extraPeak = pop * 0.78;
+    const extraPrimary = pop * 0.34;
 
     const inkTop = colorFor(
       wordmark,
@@ -603,7 +603,7 @@ export function TauWordmark(): React.ReactNode {
       animatable,
       extraPeak,
       extraPrimary,
-    )
+    );
     const inkBottom = colorFor(
       wordmark,
       palette,
@@ -615,7 +615,7 @@ export function TauWordmark(): React.ReactNode {
       animatable,
       extraPeak,
       extraPrimary,
-    )
+    );
     const shadowTop = colorFor(
       wordmark,
       palette,
@@ -627,7 +627,7 @@ export function TauWordmark(): React.ReactNode {
       animatable,
       extraPeak * 0.22,
       extraPrimary * 0.2,
-    )
+    );
     const shadowBottom = colorFor(
       wordmark,
       palette,
@@ -639,45 +639,45 @@ export function TauWordmark(): React.ReactNode {
       animatable,
       extraPeak * 0.22,
       extraPrimary * 0.2,
-    )
+    );
 
-    if (char === ' ') {
-      return <Text key={x}> </Text>
+    if (char === " ") {
+      return <Text key={x}> </Text>;
     }
 
-    if (char === '_') {
+    if (char === "_") {
       return (
         <Text key={x} color={shadowBottom} backgroundColor={shadowBottom}>
-          {' '}
+          {" "}
         </Text>
-      )
+      );
     }
 
-    if (char === '^') {
+    if (char === "^") {
       return (
         <Text key={x} color={inkTop} backgroundColor={shadowBottom}>
           ▀
         </Text>
-      )
+      );
     }
 
-    if (char === '~') {
+    if (char === "~") {
       return (
         <Text key={x} color={shadowTop}>
           ▀
         </Text>
-      )
+      );
     }
 
-    if (char === ',') {
+    if (char === ",") {
       return (
         <Text key={x} color={shadowBottom}>
           ▄
         </Text>
-      )
+      );
     }
 
-    if (char === '█') {
+    if (char === "█") {
       return (
         <Text
           key={x}
@@ -697,23 +697,23 @@ export function TauWordmark(): React.ReactNode {
         >
           █
         </Text>
-      )
+      );
     }
 
-    if (char === '▀') {
+    if (char === "▀") {
       return (
         <Text key={x} color={inkTop}>
           ▀
         </Text>
-      )
+      );
     }
 
-    if (char === '▄') {
+    if (char === "▄") {
       return (
         <Text key={x} color={inkBottom}>
           ▄
         </Text>
-      )
+      );
     }
 
     return (
@@ -723,8 +723,8 @@ export function TauWordmark(): React.ReactNode {
       >
         {char}
       </Text>
-    )
-  }
+    );
+  };
 
   return (
     <NoSelect ref={ref} flexDirection="column" onClick={handleClick}>
@@ -732,5 +732,5 @@ export function TauWordmark(): React.ReactNode {
         <Box key={y}>{Array.from(line).map((char, x) => renderCell(char, x, y))}</Box>
       ))}
     </NoSelect>
-  )
+  );
 }

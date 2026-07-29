@@ -1,23 +1,81 @@
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/index.js'
-import { isEnvTruthy } from '../envUtils.js'
-import { getGlobalConfig, saveGlobalConfig } from '../config.js'
-import { getForcedProvider } from '../forcedProvider.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from "../../services/analytics/index.js";
+import { isEnvTruthy } from "../envUtils.js";
+import { getGlobalConfig, saveGlobalConfig } from "../config.js";
+import { getForcedProvider } from "../forcedProvider.js";
 
 export type APIProvider =
-  | 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
-  | 'openai' | 'gemini' | 'antigravity'
-  | 'openrouter' | 'agentrouter' | 'modelrouter' | 'vercel' | 'requesty' | 'opencode' | 'opencodego' | 'commandcode' | 'fireworks' | 'cloudflare' | 'groq' | 'mistral' | 'nim' | 'deepseek' | 'glm' | 'moonshot' | 'minimax' | 'ollama' | 'lmstudio'
-  | 'cline' | 'clinepass' | 'copilot' | 'cursor' | 'iflow' | 'kilocode' | 'kiro'
+  | "firstParty"
+  | "bedrock"
+  | "vertex"
+  | "foundry"
+  | "openai"
+  | "gemini"
+  | "antigravity"
+  | "openrouter"
+  | "agentrouter"
+  | "modelrouter"
+  | "vercel"
+  | "requesty"
+  | "opencode"
+  | "opencodego"
+  | "commandcode"
+  | "fireworks"
+  | "cloudflare"
+  | "groq"
+  | "mistral"
+  | "nim"
+  | "deepseek"
+  | "glm"
+  | "moonshot"
+  | "minimax"
+  | "ollama"
+  | "lmstudio"
+  | "cline"
+  | "clinepass"
+  | "copilot"
+  | "cursor"
+  | "iflow"
+  | "kilocode"
+  | "kiro";
 
 const VALID_PROVIDERS: readonly APIProvider[] = [
-  'firstParty', 'bedrock', 'vertex', 'foundry',
-  'openai', 'gemini', 'antigravity',
-  'openrouter', 'agentrouter', 'modelrouter', 'vercel', 'requesty', 'opencode', 'opencodego', 'commandcode', 'fireworks', 'cloudflare', 'groq', 'mistral', 'nim', 'deepseek', 'glm', 'moonshot', 'minimax', 'ollama', 'lmstudio',
-  'cline', 'clinepass', 'copilot', 'cursor', 'iflow', 'kilocode', 'kiro',
-]
+  "firstParty",
+  "bedrock",
+  "vertex",
+  "foundry",
+  "openai",
+  "gemini",
+  "antigravity",
+  "openrouter",
+  "agentrouter",
+  "modelrouter",
+  "vercel",
+  "requesty",
+  "opencode",
+  "opencodego",
+  "commandcode",
+  "fireworks",
+  "cloudflare",
+  "groq",
+  "mistral",
+  "nim",
+  "deepseek",
+  "glm",
+  "moonshot",
+  "minimax",
+  "ollama",
+  "lmstudio",
+  "cline",
+  "clinepass",
+  "copilot",
+  "cursor",
+  "iflow",
+  "kilocode",
+  "kiro",
+];
 
 export function isAPIProvider(value: string): value is APIProvider {
-  return VALID_PROVIDERS.includes(value as APIProvider)
+  return VALID_PROVIDERS.includes(value as APIProvider);
 }
 
 // Session-local snapshot of the active provider.
@@ -27,7 +85,7 @@ export function isAPIProvider(value: string): value is APIProvider {
 // ~/.claude.json by a 1-second fs.watchFile poller (see
 // startGlobalConfigFreshnessWatcher in utils/config.ts), so when one
 // session ran `/provider nim` the other session (running ollama) saw the
-// write within a second and started mis-routing requests — producing
+// write within a second and started mis-routing requests: producing
 // cross-talk 404s like "ollama API error 404: model 'nim/xxx' not found"
 // and vice-versa.
 //
@@ -36,57 +94,87 @@ export function isAPIProvider(value: string): value is APIProvider {
 // is preserved (for next-launch default), but in-memory routing for a
 // running session is frozen. `NODE_ENV=test` bypasses the cache so the
 // test suite can toggle providers freely.
-let _sessionActiveProvider: APIProvider | null = null
+let _sessionActiveProvider: APIProvider | null = null;
 
 function _resolveAPIProvider(): APIProvider {
   // 1. Check persistent config first (set by /provider command)
-  const configured = getGlobalConfig().activeProvider
+  const configured = getGlobalConfig().activeProvider;
   if (configured && VALID_PROVIDERS.includes(configured as APIProvider)) {
-    return configured as APIProvider
+    return configured as APIProvider;
   }
   // 2. Fall back to environment variables
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK))    return 'bedrock'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX))     return 'vertex'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY))    return 'foundry'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI))     return 'openai'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI))     return 'gemini'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENROUTER)) return 'openrouter'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_AGENTROUTER)) return 'agentrouter'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MODELROUTER) || isEnvTruthy(process.env.CLAUDE_CODE_USE_MODEL_ROUTER) || isEnvTruthy(process.env.CLAUDE_CODE_USE_LXG2IT)) return 'modelrouter'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERCEL) || isEnvTruthy(process.env.CLAUDE_CODE_USE_VERCEL_AI_GATEWAY)) return 'vercel'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_REQUESTY))    return 'requesty'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE_GO) || isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODEGO)) return 'opencodego'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE) || isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE_ZEN)) return 'opencode'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_COMMANDCODE) || isEnvTruthy(process.env.CLAUDE_CODE_USE_COMMAND_CODE)) return 'commandcode'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FIREWORKS)) return 'fireworks'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_CLOUDFLARE) || isEnvTruthy(process.env.CLAUDE_CODE_USE_CLOUDFLARE_WORKERS_AI)) return 'cloudflare'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GROQ))       return 'groq'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL))    return 'mistral'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NIM))        return 'nim'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_DEEPSEEK))   return 'deepseek'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GLM))        return 'glm'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MOONSHOT))   return 'moonshot'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MINIMAX))    return 'minimax'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OLLAMA))    return 'ollama'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_LMSTUDIO))  return 'lmstudio'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINE_PASS) || isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINEPASS)) return 'clinepass'
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINE)) return 'cline'
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) return "bedrock";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) return "vertex";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)) return "foundry";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) return "openai";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) return "gemini";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENROUTER)) return "openrouter";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_AGENTROUTER))
+    return "agentrouter";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_MODELROUTER) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_MODEL_ROUTER) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_LXG2IT)
+  )
+    return "modelrouter";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERCEL) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERCEL_AI_GATEWAY)
+  )
+    return "vercel";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_REQUESTY)) return "requesty";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE_GO) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODEGO)
+  )
+    return "opencodego";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENCODE_ZEN)
+  )
+    return "opencode";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_COMMANDCODE) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_COMMAND_CODE)
+  )
+    return "commandcode";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FIREWORKS)) return "fireworks";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_CLOUDFLARE) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_CLOUDFLARE_WORKERS_AI)
+  )
+    return "cloudflare";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GROQ)) return "groq";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)) return "mistral";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NIM)) return "nim";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_DEEPSEEK)) return "deepseek";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_GLM)) return "glm";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MOONSHOT)) return "moonshot";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_MINIMAX)) return "minimax";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OLLAMA)) return "ollama";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_LMSTUDIO)) return "lmstudio";
+  if (
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINE_PASS) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINEPASS)
+  )
+    return "clinepass";
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_CLINE)) return "cline";
 
   // 3. Auto-detect OpenCode Zen from known free-tier models if the user passes
   // them directly (e.g. `tau -m deepseek-v4-flash-free`) so they don't have to
   // manually set CLAUDE_CODE_USE_OPENCODE=1.
-  const model = process.env.ANTHROPIC_MODEL || ''
+  const model = process.env.ANTHROPIC_MODEL || "";
   if (
-    model.includes('deepseek-v4-flash-free') ||
-    model.includes('nemotron-3') ||
-    model.includes('qwen3.6-plus-free') ||
-    model.includes('minimax-m2.5-free') ||
-    model === 'big-pickle'
+    model.includes("deepseek-v4-flash-free") ||
+    model.includes("nemotron-3") ||
+    model.includes("qwen3.6-plus-free") ||
+    model.includes("minimax-m2.5-free") ||
+    model === "big-pickle"
   ) {
-    return 'opencode'
+    return "opencode";
   }
 
-  return 'firstParty'
+  return "firstParty";
 }
 
 export function getAPIProvider(): APIProvider {
@@ -94,12 +182,12 @@ export function getAPIProvider(): APIProvider {
   // precedence over the session snapshot AND the test bypass so an agent
   // spawned with provider='kiro' routes through Kiro regardless of what the
   // user has globally selected via /provider.
-  const forced = getForcedProvider()
-  if (forced !== undefined) return forced
+  const forced = getForcedProvider();
+  if (forced !== undefined) return forced;
 
   // /team-mode orchestrator binding. When team mode is ON and an
   // orchestrator role is configured, the main session runs on the
-  // orchestrator's pinned provider — not whatever /provider the user had
+  // orchestrator's pinned provider: not whatever /provider the user had
   // set before turning team-mode on. This is the contract users expect:
   // configuring `Orchestrator → Anthropic / Sonnet 4.6` should make the
   // orchestrator actually run on Anthropic. Subagents bypass this branch
@@ -108,14 +196,15 @@ export function getAPIProvider(): APIProvider {
   // Imported lazily to avoid a circular dep between providers.ts and
   // teamMode/state.ts (state.ts → model/providers.ts via isAPIProvider).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const teamMode = require('../teamMode/state.js') as typeof import('../teamMode/state.js')
-  const orchestratorBinding = teamMode.getTeamModeOrchestratorBinding()
-  if (orchestratorBinding) return orchestratorBinding.provider
+  const teamMode =
+    require("../teamMode/state.js") as typeof import("../teamMode/state.js");
+  const orchestratorBinding = teamMode.getTeamModeOrchestratorBinding();
+  if (orchestratorBinding) return orchestratorBinding.provider;
 
-  if (process.env.NODE_ENV === 'test') return _resolveAPIProvider()
-  if (_sessionActiveProvider !== null) return _sessionActiveProvider
-  _sessionActiveProvider = _resolveAPIProvider()
-  return _sessionActiveProvider
+  if (process.env.NODE_ENV === "test") return _resolveAPIProvider();
+  if (_sessionActiveProvider !== null) return _sessionActiveProvider;
+  _sessionActiveProvider = _resolveAPIProvider();
+  return _sessionActiveProvider;
 }
 
 /**
@@ -125,11 +214,11 @@ export function getAPIProvider(): APIProvider {
  * session without waiting on the config-freshness watcher.
  */
 export function setActiveProvider(provider: APIProvider): void {
-  _sessionActiveProvider = provider
-  saveGlobalConfig(current => ({
+  _sessionActiveProvider = provider;
+  saveGlobalConfig((current) => ({
     ...current,
     activeProvider: provider,
-  }))
+  }));
 }
 
 /**
@@ -137,49 +226,49 @@ export function setActiveProvider(provider: APIProvider): void {
  * Next getAPIProvider() call re-resolves from env vars.
  */
 export function clearActiveProvider(): void {
-  _sessionActiveProvider = null
-  saveGlobalConfig(current => ({
+  _sessionActiveProvider = null;
+  saveGlobalConfig((current) => ({
     ...current,
     activeProvider: undefined,
-  }))
+  }));
 }
 
 /** User-friendly display names for providers */
 export const PROVIDER_DISPLAY_NAMES: Record<APIProvider, string> = {
-  firstParty: 'Anthropic',
-  bedrock: 'AWS Bedrock',
-  vertex: 'Google Vertex AI',
-  foundry: 'Azure Foundry',
-  openai: 'OpenAI',
-  gemini: 'Google Gemini',
-  antigravity: 'Antigravity',
-  openrouter: 'OpenRouter',
-  agentrouter: 'AgentRouter',
-  modelrouter: 'Model Router',
-  vercel: 'Vercel AI Gateway',
-  requesty: 'Requesty',
-  opencode: 'OpenCode Zen',
-  opencodego: 'OpenCode Go',
-  commandcode: 'Command Code',
-  fireworks: 'Fireworks AI',
-  cloudflare: 'Cloudflare Workers AI',
-  groq: 'Groq',
-  mistral: 'Mistral',
-  nim: 'NVIDIA NIM',
-  deepseek: 'DeepSeek',
-  glm: 'GLM',
-  moonshot: 'Moonshot AI',
-  minimax: 'MiniMax AI',
-  ollama: 'Ollama',
-  lmstudio: 'LM Studio',
-  cline: 'Cline',
-  clinepass: 'Cline Pass',
-  copilot: 'GitHub Copilot',
-  cursor: 'Cursor',
-  iflow: 'iFlow',
-  kilocode: 'KiloCode',
-  kiro: 'Kiro',
-}
+  firstParty: "Anthropic",
+  bedrock: "AWS Bedrock",
+  vertex: "Google Vertex AI",
+  foundry: "Azure Foundry",
+  openai: "OpenAI",
+  gemini: "Google Gemini",
+  antigravity: "Antigravity",
+  openrouter: "OpenRouter",
+  agentrouter: "AgentRouter",
+  modelrouter: "Model Router",
+  vercel: "Vercel AI Gateway",
+  requesty: "Requesty",
+  opencode: "OpenCode Zen",
+  opencodego: "OpenCode Go",
+  commandcode: "Command Code",
+  fireworks: "Fireworks AI",
+  cloudflare: "Cloudflare Workers AI",
+  groq: "Groq",
+  mistral: "Mistral",
+  nim: "NVIDIA NIM",
+  deepseek: "DeepSeek",
+  glm: "GLM",
+  moonshot: "Moonshot AI",
+  minimax: "MiniMax AI",
+  ollama: "Ollama",
+  lmstudio: "LM Studio",
+  cline: "Cline",
+  clinepass: "Cline Pass",
+  copilot: "GitHub Copilot",
+  cursor: "Cursor",
+  iflow: "iFlow",
+  kilocode: "KiloCode",
+  kiro: "Kiro",
+};
 
 /** Providers available for user selection in /provider and /login */
 // `iflow` is hidden from the user-facing pickers after its CLI shutdown announcement.
@@ -188,29 +277,105 @@ export const PROVIDER_DISPLAY_NAMES: Record<APIProvider, string> = {
 // APIProvider union, env detection, auth flow, transformer, and routing are
 // all kept intact for compatibility.
 export const SELECTABLE_PROVIDERS: readonly APIProvider[] = [
-  'firstParty', 'openai', 'commandcode', 'antigravity', 'openrouter', 'agentrouter', 'vercel', 'requesty', 'opencode', 'opencodego', 'fireworks', 'cloudflare', 'mistral', 'nim', 'deepseek', 'glm', 'moonshot', 'minimax', 'ollama', 'lmstudio',
-  'cline', 'clinepass', 'copilot', 'kilocode', 'kiro',
-]
+  "firstParty",
+  "openai",
+  "commandcode",
+  "antigravity",
+  "openrouter",
+  "agentrouter",
+  "vercel",
+  "requesty",
+  "opencode",
+  "opencodego",
+  "fireworks",
+  "cloudflare",
+  "mistral",
+  "nim",
+  "deepseek",
+  "glm",
+  "moonshot",
+  "minimax",
+  "ollama",
+  "lmstudio",
+  "cline",
+  "clinepass",
+  "copilot",
+  "kilocode",
+  "kiro",
+];
 
 /** Providers that use OpenAI-compatible chat completions API */
 export function isOpenAICompatibleProvider(p: APIProvider): boolean {
-  return ['openai', 'openrouter', 'agentrouter', 'modelrouter', 'vercel', 'requesty', 'opencode', 'opencodego', 'fireworks', 'cloudflare', 'groq', 'mistral', 'nim', 'deepseek', 'glm', 'moonshot', 'minimax', 'ollama', 'lmstudio',
-          'cline', 'clinepass', 'copilot', 'iflow', 'kilocode'].includes(p)
+  return [
+    "openai",
+    "openrouter",
+    "agentrouter",
+    "modelrouter",
+    "vercel",
+    "requesty",
+    "opencode",
+    "opencodego",
+    "fireworks",
+    "cloudflare",
+    "groq",
+    "mistral",
+    "nim",
+    "deepseek",
+    "glm",
+    "moonshot",
+    "minimax",
+    "ollama",
+    "lmstudio",
+    "cline",
+    "clinepass",
+    "copilot",
+    "iflow",
+    "kilocode",
+  ].includes(p);
 }
 
 /** All non-Anthropic third-party LLM providers */
 export function isThirdPartyProvider(p: APIProvider): boolean {
-  return ['openai', 'gemini', 'antigravity', 'openrouter', 'agentrouter', 'modelrouter', 'vercel', 'requesty', 'opencode', 'opencodego', 'commandcode', 'fireworks', 'cloudflare', 'groq', 'mistral', 'nim', 'deepseek', 'glm', 'moonshot', 'minimax', 'ollama', 'lmstudio',
-          'cline', 'clinepass', 'copilot', 'cursor', 'iflow', 'kilocode', 'kiro'].includes(p)
+  return [
+    "openai",
+    "gemini",
+    "antigravity",
+    "openrouter",
+    "agentrouter",
+    "modelrouter",
+    "vercel",
+    "requesty",
+    "opencode",
+    "opencodego",
+    "commandcode",
+    "fireworks",
+    "cloudflare",
+    "groq",
+    "mistral",
+    "nim",
+    "deepseek",
+    "glm",
+    "moonshot",
+    "minimax",
+    "ollama",
+    "lmstudio",
+    "cline",
+    "clinepass",
+    "copilot",
+    "cursor",
+    "iflow",
+    "kilocode",
+    "kiro",
+  ].includes(p);
 }
 
 /** Original Anthropic-native providers (firstParty + cloud partners) */
 export function isAnthropicNativeProvider(p: APIProvider): boolean {
-  return ['firstParty', 'bedrock', 'vertex', 'foundry'].includes(p)
+  return ["firstParty", "bedrock", "vertex", "foundry"].includes(p);
 }
 
 export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS {
-  return getAPIProvider() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  return getAPIProvider() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
 }
 
 /**
@@ -219,18 +384,18 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
  * (or api-staging.anthropic.com for ant users).
  */
 export function isFirstPartyAnthropicBaseUrl(): boolean {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL
+  const baseUrl = process.env.ANTHROPIC_BASE_URL;
   if (!baseUrl) {
-    return true
+    return true;
   }
   try {
-    const host = new URL(baseUrl).host
-    const allowedHosts = ['api.anthropic.com']
-    if (process.env.USER_TYPE === 'ant') {
-      allowedHosts.push('api-staging.anthropic.com')
+    const host = new URL(baseUrl).host;
+    const allowedHosts = ["api.anthropic.com"];
+    if (process.env.USER_TYPE === "ant") {
+      allowedHosts.push("api-staging.anthropic.com");
     }
-    return allowedHosts.includes(host)
+    return allowedHosts.includes(host);
   } catch {
-    return false
+    return false;
   }
 }

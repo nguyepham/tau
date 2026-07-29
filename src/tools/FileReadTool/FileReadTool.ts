@@ -1,46 +1,46 @@
-import type { Base64ImageSource } from '@anthropic-ai/sdk/resources/index.mjs'
-import { readdir, readFile as readFileAsync } from 'fs/promises'
-import * as path from 'path'
-import { posix, win32 } from 'path'
-import { z } from 'zod/v4'
+import type { Base64ImageSource } from "@anthropic-ai/sdk/resources/index.mjs";
+import { readdir, readFile as readFileAsync } from "fs/promises";
+import * as path from "path";
+import { posix, win32 } from "path";
+import { z } from "zod/v4";
 import {
   PDF_AT_MENTION_INLINE_THRESHOLD,
   PDF_EXTRACT_SIZE_THRESHOLD,
   PDF_MAX_PAGES_PER_READ,
-} from '../../constants/apiLimits.js'
-import { hasBinaryExtension } from '../../constants/files.js'
-import { memoryFreshnessNote } from '../../memdir/memoryAge.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { logEvent } from '../../services/analytics/index.js'
+} from "../../constants/apiLimits.js";
+import { hasBinaryExtension } from "../../constants/files.js";
+import { memoryFreshnessNote } from "../../memdir/memoryAge.js";
+import { getFeatureValue_CACHED_MAY_BE_STALE } from "../../services/analytics/growthbook.js";
+import { logEvent } from "../../services/analytics/index.js";
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   getFileExtensionForAnalytics,
-} from '../../services/analytics/metadata.js'
+} from "../../services/analytics/metadata.js";
 import {
   countTokensWithAPI,
   roughTokenCountEstimationForFileType,
-} from '../../services/tokenEstimation.js'
+} from "../../services/tokenEstimation.js";
 import {
   activateConditionalSkillsForPaths,
   addSkillDirectories,
   discoverSkillDirsForPaths,
-} from '../../skills/loadSkillsDir.js'
-import type { ToolUseContext } from '../../Tool.js'
-import { buildTool, type ToolDef } from '../../Tool.js'
-import { getCwd } from '../../utils/cwd.js'
-import { recordVisitedDir } from '../../bootstrap/state.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
-import { getErrnoCode, isENOENT } from '../../utils/errors.js'
+} from "../../skills/loadSkillsDir.js";
+import type { ToolUseContext } from "../../Tool.js";
+import { buildTool, type ToolDef } from "../../Tool.js";
+import { getCwd } from "../../utils/cwd.js";
+import { recordVisitedDir } from "../../bootstrap/state.js";
+import { getClaudeConfigHomeDir, isEnvTruthy } from "../../utils/envUtils.js";
+import { getErrnoCode, isENOENT } from "../../utils/errors.js";
 import {
   addLineNumbers,
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getFileModificationTimeAsync,
   suggestPathUnderCwd,
-} from '../../utils/file.js'
-import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
-import { formatFileSize } from '../../utils/format.js'
-import { getFsImplementation } from '../../utils/fsOperations.js'
+} from "../../utils/file.js";
+import { logFileOperation } from "../../utils/fileOperationAnalytics.js";
+import { formatFileSize } from "../../utils/format.js";
+import { getFsImplementation } from "../../utils/fsOperations.js";
 import {
   compressImageBufferWithTokenLimit,
   createImageMetadataText,
@@ -48,12 +48,12 @@ import {
   type ImageDimensions,
   ImageResizeError,
   maybeResizeAndDownsampleImageBuffer,
-} from '../../utils/imageResizer.js'
-import { lazySchema } from '../../utils/lazySchema.js'
-import { logError } from '../../utils/log.js'
-import { isAutoMemFile } from '../../utils/memoryFileDetection.js'
-import { createUserMessage } from '../../utils/messages.js'
-import { getCanonicalName, getMainLoopModel } from '../../utils/model/model.js'
+} from "../../utils/imageResizer.js";
+import { lazySchema } from "../../utils/lazySchema.js";
+import { logError } from "../../utils/log.js";
+import { isAutoMemFile } from "../../utils/memoryFileDetection.js";
+import { createUserMessage } from "../../utils/messages.js";
+import { getCanonicalName, getMainLoopModel } from "../../utils/model/model.js";
 import {
   mapNotebookCellsToToolResult,
   readNotebook,
@@ -71,26 +71,26 @@ import {
   isPDFExtension,
   isPDFSupported,
   parsePDFPageRange,
-} from '../../utils/pdfUtils.js'
+} from "../../utils/pdfUtils.js";
 import {
   checkReadPermissionForTool,
   matchingRuleForInput,
-} from '../../utils/permissions/filesystem.js'
-import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
-import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
-import { readFileInRange } from '../../utils/readFileInRange.js'
-import { semanticBoolean } from '../../utils/semanticBoolean.js'
-import { semanticNumber } from '../../utils/semanticNumber.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { BASH_TOOL_NAME } from '../BashTool/toolName.js'
-import { getDefaultFileReadingLimits } from './limits.js'
+} from "../../utils/permissions/filesystem.js";
+import type { PermissionDecision } from "../../utils/permissions/PermissionResult.js";
+import { matchWildcardPattern } from "../../utils/permissions/shellRuleMatching.js";
+import { readFileInRange } from "../../utils/readFileInRange.js";
+import { semanticBoolean } from "../../utils/semanticBoolean.js";
+import { semanticNumber } from "../../utils/semanticNumber.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
+import { BASH_TOOL_NAME } from "../BashTool/toolName.js";
+import { getDefaultFileReadingLimits } from "./limits.js";
 import {
   buildSkeleton,
   fileReadTokenLimitAdvice,
   getAutoSkeletonMinBytes,
   isAutoSkeletonEnabled,
   isSkeletonSupportedExt,
-} from './skeleton.js'
+} from "./skeleton.js";
 import {
   DESCRIPTION,
   FILE_READ_TOOL_NAME,
@@ -99,7 +99,7 @@ import {
   OFFSET_INSTRUCTION_DEFAULT,
   OFFSET_INSTRUCTION_TARGETED,
   renderPromptTemplate,
-} from './prompt.js'
+} from "./prompt.js";
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -107,44 +107,44 @@ import {
   renderToolUseMessage,
   renderToolUseTag,
   userFacingName,
-} from './UI.js'
+} from "./UI.js";
 
 // Device files that would hang the process: infinite output or blocking input.
 // Checked by path only (no I/O). Safe devices like /dev/null are intentionally omitted.
 const BLOCKED_DEVICE_PATHS = new Set([
-  // Infinite output — never reach EOF
-  '/dev/zero',
-  '/dev/random',
-  '/dev/urandom',
-  '/dev/full',
+  // Infinite output: never reach EOF
+  "/dev/zero",
+  "/dev/random",
+  "/dev/urandom",
+  "/dev/full",
   // Blocks waiting for input
-  '/dev/stdin',
-  '/dev/tty',
-  '/dev/console',
+  "/dev/stdin",
+  "/dev/tty",
+  "/dev/console",
   // Nonsensical to read
-  '/dev/stdout',
-  '/dev/stderr',
+  "/dev/stdout",
+  "/dev/stderr",
   // fd aliases for stdin/stdout/stderr
-  '/dev/fd/0',
-  '/dev/fd/1',
-  '/dev/fd/2',
-])
+  "/dev/fd/0",
+  "/dev/fd/1",
+  "/dev/fd/2",
+]);
 
 function isBlockedDevicePath(filePath: string): boolean {
-  if (BLOCKED_DEVICE_PATHS.has(filePath)) return true
+  if (BLOCKED_DEVICE_PATHS.has(filePath)) return true;
   // /proc/self/fd/0-2 and /proc/<pid>/fd/0-2 are Linux aliases for stdio
   if (
-    filePath.startsWith('/proc/') &&
-    (filePath.endsWith('/fd/0') ||
-      filePath.endsWith('/fd/1') ||
-      filePath.endsWith('/fd/2'))
+    filePath.startsWith("/proc/") &&
+    (filePath.endsWith("/fd/0") ||
+      filePath.endsWith("/fd/1") ||
+      filePath.endsWith("/fd/2"))
   )
-    return true
-  return false
+    return true;
+  return false;
 }
 
 // Narrow no-break space (U+202F) used by some macOS versions in screenshot filenames
-const THIN_SPACE = String.fromCharCode(8239)
+const THIN_SPACE = String.fromCharCode(8239);
 
 /**
  * Resolves macOS screenshot paths that may have different space characters.
@@ -161,31 +161,31 @@ const THIN_SPACE = String.fromCharCode(8239)
  * the alternate path to try if the original doesn't exist, or undefined.
  */
 function getAlternateScreenshotPath(filePath: string): string | undefined {
-  const filename = path.basename(filePath)
-  const amPmPattern = /^(.+)([ \u202F])(AM|PM)(\.png)$/
-  const match = filename.match(amPmPattern)
-  if (!match) return undefined
+  const filename = path.basename(filePath);
+  const amPmPattern = /^(.+)([ \u202F])(AM|PM)(\.png)$/;
+  const match = filename.match(amPmPattern);
+  if (!match) return undefined;
 
-  const currentSpace = match[2]
-  const alternateSpace = currentSpace === ' ' ? THIN_SPACE : ' '
+  const currentSpace = match[2];
+  const alternateSpace = currentSpace === " " ? THIN_SPACE : " ";
   return filePath.replace(
     `${currentSpace}${match[3]}${match[4]}`,
     `${alternateSpace}${match[3]}${match[4]}`,
-  )
+  );
 }
 
 // File read listeners - allows other services to be notified when files are read
-type FileReadListener = (filePath: string, content: string) => void
-const fileReadListeners: FileReadListener[] = []
+type FileReadListener = (filePath: string, content: string) => void;
+const fileReadListeners: FileReadListener[] = [];
 
 export function registerFileReadListener(
   listener: FileReadListener,
 ): () => void {
-  fileReadListeners.push(listener)
+  fileReadListeners.push(listener);
   return () => {
-    const i = fileReadListeners.indexOf(listener)
-    if (i >= 0) fileReadListeners.splice(i, 1)
-  }
+    const i = fileReadListeners.indexOf(listener);
+    if (i >= 0) fileReadListeners.splice(i, 1);
+  };
 }
 
 export class MaxFileReadTokenExceededError extends Error {
@@ -194,17 +194,17 @@ export class MaxFileReadTokenExceededError extends Error {
     public maxTokens: number,
     // Trailing guidance. Defaulted so the generic form is preserved for any
     // caller that does not compute advice (e.g. the attachment fallback path).
-    advice = 'Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.',
+    advice = "Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
   ) {
     super(
       `File content (${tokenCount} tokens) exceeds maximum allowed tokens (${maxTokens}). ${advice}`,
-    )
-    this.name = 'MaxFileReadTokenExceededError'
+    );
+    this.name = "MaxFileReadTokenExceededError";
   }
 }
 
 // Common image extensions
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 
 /**
  * Detects if a file path is a session-related file for analytics logging.
@@ -213,59 +213,59 @@ const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
  */
 function detectSessionFileType(
   filePath: string,
-): 'session_memory' | 'session_transcript' | null {
-  const configDir = getClaudeConfigHomeDir()
+): "session_memory" | "session_transcript" | null {
+  const configDir = getClaudeConfigHomeDir();
 
   // Only match files within the Claude config directory
   if (!filePath.startsWith(configDir)) {
-    return null
+    return null;
   }
 
   // Normalize path to use forward slashes for consistent matching across platforms
-  const normalizedPath = filePath.split(win32.sep).join(posix.sep)
+  const normalizedPath = filePath.split(win32.sep).join(posix.sep);
 
   // Session memory files: ~/.claude/session-memory/*.md (including summary.md)
   if (
-    normalizedPath.includes('/session-memory/') &&
-    normalizedPath.endsWith('.md')
+    normalizedPath.includes("/session-memory/") &&
+    normalizedPath.endsWith(".md")
   ) {
-    return 'session_memory'
+    return "session_memory";
   }
 
   // Session JSONL transcript files: ~/.claude/projects/*/*.jsonl
   if (
-    normalizedPath.includes('/projects/') &&
-    normalizedPath.endsWith('.jsonl')
+    normalizedPath.includes("/projects/") &&
+    normalizedPath.endsWith(".jsonl")
   ) {
-    return 'session_transcript'
+    return "session_transcript";
   }
 
-  return null
+  return null;
 }
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    file_path: z.string().describe('The absolute path to the file to read'),
+    file_path: z.string().describe("The absolute path to the file to read"),
     offset: semanticNumber(z.number().int().nonnegative().optional()).describe(
-      'The line number to start reading from. Only provide if the file is too large to read at once',
+      "The line number to start reading from. Only provide if the file is too large to read at once",
     ),
     limit: semanticNumber(z.number().int().positive().optional()).describe(
-      'The number of lines to read. Only provide if the file is too large to read at once.',
+      "The number of lines to read. Only provide if the file is too large to read at once.",
     ),
     skeleton: semanticBoolean(z.boolean().optional()).describe(
-      'Return the file structure instead of full content: imports, signatures, and class shapes, with long function bodies elided. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the real file line numbers. Ideal first look at a large code file. Supported for common code languages (ts/js/py/go/rs/java/rb/cs/c/cpp/php); other files fall back to a normal read. NOTE: large supported code files return a skeleton AUTOMATICALLY when this parameter is omitted and no offset/limit is given; pass skeleton: false to force full content, or offset/limit to read a verbatim range. Editing still requires a full-content Read first.',
+      "Return the file structure instead of full content: imports, signatures, and class shapes, with long function bodies elided. Each elision marker shows the exact offset/limit Read call to expand that body, and line numbers are the real file line numbers. Ideal first look at a large code file. Supported for common code languages (ts/js/py/go/rs/java/rb/cs/c/cpp/php); other files fall back to a normal read. NOTE: large supported code files return a skeleton AUTOMATICALLY when this parameter is omitted and no offset/limit is given; pass skeleton: false to force full content, or offset/limit to read a verbatim range. Editing still requires a full-content Read first.",
     ),
     pages: z
       .string()
       .optional()
       .describe(
-        `Page range for PDF files (e.g., "1-5", "3", "10-20"). PDF-only — ignored for text/code files; use offset/limit to read a range there. Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
+        `Page range for PDF files (e.g., "1-5", "3", "10-20"). PDF-only: ignored for text/code files; use offset/limit to read a range there. Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
       ),
   }),
-)
-type InputSchema = ReturnType<typeof inputSchema>
+);
+type InputSchema = ReturnType<typeof inputSchema>;
 
-export type Input = z.infer<InputSchema>
+export type Input = z.infer<InputSchema>;
 
 /**
  * How the skeleton branch was reached: 'explicit' when the model passed
@@ -273,183 +273,183 @@ export type Input = z.infer<InputSchema>
  * file was converted by policy (see skeleton.ts auto-skeleton gates),
  * 'off' for a normal read.
  */
-type SkeletonMode = 'off' | 'explicit' | 'auto'
+type SkeletonMode = "off" | "explicit" | "auto";
 
 const outputSchema = lazySchema(() => {
   // Define the media types supported for images
   const imageMediaTypes = z.enum([
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-  ])
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+  ]);
 
-  return z.discriminatedUnion('type', [
+  return z.discriminatedUnion("type", [
     z.object({
-      type: z.literal('text'),
+      type: z.literal("text"),
       file: z.object({
-        filePath: z.string().describe('The path to the file that was read'),
-        content: z.string().describe('The content of the file'),
+        filePath: z.string().describe("The path to the file that was read"),
+        content: z.string().describe("The content of the file"),
         numLines: z
           .number()
-          .describe('Number of lines in the returned content'),
-        startLine: z.number().describe('The starting line number'),
-        totalLines: z.number().describe('Total number of lines in the file'),
+          .describe("Number of lines in the returned content"),
+        startLine: z.number().describe("The starting line number"),
+        totalLines: z.number().describe("Total number of lines in the file"),
       }),
     }),
     z.object({
-      type: z.literal('image'),
+      type: z.literal("image"),
       file: z.object({
-        base64: z.string().describe('Base64-encoded image data'),
-        type: imageMediaTypes.describe('The MIME type of the image'),
-        originalSize: z.number().describe('Original file size in bytes'),
+        base64: z.string().describe("Base64-encoded image data"),
+        type: imageMediaTypes.describe("The MIME type of the image"),
+        originalSize: z.number().describe("Original file size in bytes"),
         dimensions: z
           .object({
             originalWidth: z
               .number()
               .optional()
-              .describe('Original image width in pixels'),
+              .describe("Original image width in pixels"),
             originalHeight: z
               .number()
               .optional()
-              .describe('Original image height in pixels'),
+              .describe("Original image height in pixels"),
             displayWidth: z
               .number()
               .optional()
-              .describe('Displayed image width in pixels (after resizing)'),
+              .describe("Displayed image width in pixels (after resizing)"),
             displayHeight: z
               .number()
               .optional()
-              .describe('Displayed image height in pixels (after resizing)'),
+              .describe("Displayed image height in pixels (after resizing)"),
           })
           .optional()
-          .describe('Image dimension info for coordinate mapping'),
+          .describe("Image dimension info for coordinate mapping"),
       }),
     }),
     z.object({
-      type: z.literal('notebook'),
+      type: z.literal("notebook"),
       file: z.object({
-        filePath: z.string().describe('The path to the notebook file'),
-        cells: z.array(z.any()).describe('Array of notebook cells'),
+        filePath: z.string().describe("The path to the notebook file"),
+        cells: z.array(z.any()).describe("Array of notebook cells"),
       }),
     }),
     z.object({
-      type: z.literal('pdf'),
+      type: z.literal("pdf"),
       file: z.object({
-        filePath: z.string().describe('The path to the PDF file'),
-        base64: z.string().describe('Base64-encoded PDF data'),
-        originalSize: z.number().describe('Original file size in bytes'),
+        filePath: z.string().describe("The path to the PDF file"),
+        base64: z.string().describe("Base64-encoded PDF data"),
+        originalSize: z.number().describe("Original file size in bytes"),
       }),
     }),
     z.object({
-      type: z.literal('parts'),
+      type: z.literal("parts"),
       file: z.object({
-        filePath: z.string().describe('The path to the PDF file'),
-        originalSize: z.number().describe('Original file size in bytes'),
-        count: z.number().describe('Number of pages extracted'),
+        filePath: z.string().describe("The path to the PDF file"),
+        originalSize: z.number().describe("Original file size in bytes"),
+        count: z.number().describe("Number of pages extracted"),
         outputDir: z
           .string()
-          .describe('Directory containing extracted page images'),
+          .describe("Directory containing extracted page images"),
       }),
     }),
     z.object({
-      type: z.literal('file_unchanged'),
+      type: z.literal("file_unchanged"),
       file: z.object({
-        filePath: z.string().describe('The path to the file'),
+        filePath: z.string().describe("The path to the file"),
       }),
     }),
     z.object({
-      type: z.literal('skeleton'),
+      type: z.literal("skeleton"),
       file: z.object({
-        filePath: z.string().describe('The path to the file that was read'),
+        filePath: z.string().describe("The path to the file that was read"),
         formatted: z
           .string()
-          .describe('Line-numbered structure view with body-elision markers'),
-        keptLines: z.number().describe('Original lines still visible'),
-        elidedLines: z.number().describe('Original lines elided'),
-        elidedRegions: z.number().describe('Number of elided body regions'),
+          .describe("Line-numbered structure view with body-elision markers"),
+        keptLines: z.number().describe("Original lines still visible"),
+        elidedLines: z.number().describe("Original lines elided"),
+        elidedRegions: z.number().describe("Number of elided body regions"),
         truncatedLines: z
           .number()
-          .describe('Kept lines truncated for being too long to inline'),
+          .describe("Kept lines truncated for being too long to inline"),
         truncatedChars: z
           .number()
-          .describe('Characters dropped across all truncated lines'),
-        totalLines: z.number().describe('Total lines in the file'),
-        language: z.string().describe('Grammar used to parse the file'),
+          .describe("Characters dropped across all truncated lines"),
+        totalLines: z.number().describe("Total lines in the file"),
+        language: z.string().describe("Grammar used to parse the file"),
         auto: z
           .boolean()
           .optional()
           .describe(
-            'True when the skeleton was returned automatically for a large file rather than explicitly requested',
+            "True when the skeleton was returned automatically for a large file rather than explicitly requested",
           ),
       }),
     }),
-  ])
-})
-type OutputSchema = ReturnType<typeof outputSchema>
+  ]);
+});
+type OutputSchema = ReturnType<typeof outputSchema>;
 
-export type Output = z.infer<OutputSchema>
+export type Output = z.infer<OutputSchema>;
 
 export const FileReadTool = buildTool({
   name: FILE_READ_TOOL_NAME,
   searchHint: 'read files, images, PDFs, Word/Excel documents, notebooks',
   // Output is bounded by maxTokens (validateContentTokens). Persisting to a
-  // file the model reads back with Read is circular — never persist.
+  // file the model reads back with Read is circular: never persist.
   maxResultSizeChars: Infinity,
   strict: true,
   async description() {
-    return DESCRIPTION
+    return DESCRIPTION;
   },
   async prompt() {
-    const limits = getDefaultFileReadingLimits()
+    const limits = getDefaultFileReadingLimits();
     const maxSizeInstruction = limits.includeMaxSizeInPrompt
       ? `. Files larger than ${formatFileSize(limits.maxSizeBytes)} will return an error; use offset and limit for larger files`
-      : ''
+      : "";
     const offsetInstruction = limits.targetedRangeNudge
       ? OFFSET_INSTRUCTION_TARGETED
-      : OFFSET_INSTRUCTION_DEFAULT
+      : OFFSET_INSTRUCTION_DEFAULT;
     return renderPromptTemplate(
       pickLineFormatInstruction(),
       maxSizeInstruction,
       offsetInstruction,
-    )
+    );
   },
   get inputSchema(): InputSchema {
-    return inputSchema()
+    return inputSchema();
   },
   get outputSchema(): OutputSchema {
-    return outputSchema()
+    return outputSchema();
   },
   userFacingName,
   getToolUseSummary,
   getActivityDescription(input) {
-    const summary = getToolUseSummary(input)
-    return summary ? `Reading ${summary}` : 'Reading file'
+    const summary = getToolUseSummary(input);
+    return summary ? `Reading ${summary}` : "Reading file";
   },
   isConcurrencySafe() {
-    return true
+    return true;
   },
   isReadOnly() {
-    return true
+    return true;
   },
   toAutoClassifierInput(input) {
-    return input.file_path
+    return input.file_path;
   },
   isSearchOrReadCommand() {
-    return { isSearch: false, isRead: true }
+    return { isSearch: false, isRead: true };
   },
   getPath({ file_path }): string {
-    return file_path || getCwd()
+    return file_path || getCwd();
   },
   backfillObservableInput(input) {
     // hooks.mdx documents file_path as absolute; expand so hook allowlists
     // can't be bypassed via ~ or relative paths.
-    if (typeof input.file_path === 'string') {
-      input.file_path = expandPath(input.file_path)
+    if (typeof input.file_path === "string") {
+      input.file_path = expandPath(input.file_path);
     }
   },
   async preparePermissionMatcher({ file_path }) {
-    return pattern => matchWildcardPattern(pattern, file_path)
+    return (pattern) => matchWildcardPattern(pattern, file_path);
   },
   async checkPermissions(input, context): Promise<PermissionDecision> {
     const appState = context.getAppState()
@@ -488,66 +488,66 @@ export const FileReadTool = buildTool({
   renderToolUseMessage,
   renderToolUseTag,
   renderToolResultMessage,
-  // UI.tsx:140 — ALL types render summary chrome only: "Read N lines",
+  // UI.tsx:140: ALL types render summary chrome only: "Read N lines",
   // "Read image (42KB)". Never the content itself. The model-facing
   // serialization (below) sends content + CYBER_RISK_MITIGATION_REMINDER
   // + line prefixes; UI shows none of it. Nothing to index. Caught by
   // the render-fidelity test when this initially claimed file.content.
   extractSearchText() {
-    return ''
+    return "";
   },
   renderToolUseErrorMessage,
   async validateInput({ file_path, pages }, toolUseContext: ToolUseContext) {
     // Validate pages parameter (pure string parsing, no I/O)
     if (pages !== undefined) {
-      const parsed = parsePDFPageRange(pages)
+      const parsed = parsePDFPageRange(pages);
       if (!parsed) {
         return {
           result: false,
           message: `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`,
           errorCode: 7,
-        }
+        };
       }
       const rangeSize =
         parsed.lastPage === Infinity
           ? PDF_MAX_PAGES_PER_READ + 1
-          : parsed.lastPage - parsed.firstPage + 1
+          : parsed.lastPage - parsed.firstPage + 1;
       if (rangeSize > PDF_MAX_PAGES_PER_READ) {
         return {
           result: false,
           message: `Page range "${pages}" exceeds maximum of ${PDF_MAX_PAGES_PER_READ} pages per request. Please use a smaller range.`,
           errorCode: 8,
-        }
+        };
       }
     }
 
     // Path expansion + deny rule check (no I/O)
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = expandPath(file_path);
     // Remember this dir so later commands can find files here from another cwd.
-    recordVisitedDir(path.dirname(fullFilePath))
+    recordVisitedDir(path.dirname(fullFilePath));
 
-    const appState = toolUseContext.getAppState()
+    const appState = toolUseContext.getAppState();
     const denyRule = matchingRuleForInput(
       fullFilePath,
       appState.toolPermissionContext,
-      'read',
-      'deny',
-    )
+      "read",
+      "deny",
+    );
     if (denyRule !== null) {
       return {
         result: false,
         message:
-          'File is in a directory that is denied by your permission settings.',
+          "File is in a directory that is denied by your permission settings.",
         errorCode: 1,
-      }
+      };
     }
 
-    // SECURITY: UNC path check (no I/O) — defer filesystem operations
+    // SECURITY: UNC path check (no I/O): defer filesystem operations
     // until after user grants permission to prevent NTLM credential leaks
     const isUncPath =
-      fullFilePath.startsWith('\\\\') || fullFilePath.startsWith('//')
+      fullFilePath.startsWith("\\\\") || fullFilePath.startsWith("//");
     if (isUncPath) {
-      return { result: true }
+      return { result: true };
     }
 
     // Binary extension check (string check on extension only, no I/O).
@@ -570,20 +570,20 @@ export const FileReadTool = buildTool({
           ? officeParseDisabledMessage(ext)
           : `This tool cannot read binary files. The file appears to be a binary ${ext} file. Please use appropriate tools for binary file analysis.`,
         errorCode: 4,
-      }
+      };
     }
 
     // Block specific device files that would hang (infinite output or blocking input).
-    // This is a path-based check with no I/O — safe special files like /dev/null are allowed.
+    // This is a path-based check with no I/O: safe special files like /dev/null are allowed.
     if (isBlockedDevicePath(fullFilePath)) {
       return {
         result: false,
         message: `Cannot read '${file_path}': this device file would block or produce infinite output.`,
         errorCode: 9,
-      }
+      };
     }
 
-    return { result: true }
+    return { result: true };
   },
   async call(
     { file_path, offset = 1, limit = undefined, skeleton, pages },
@@ -591,60 +591,60 @@ export const FileReadTool = buildTool({
     _canUseTool?,
     parentMessage?,
   ) {
-    const { readFileState, fileReadingLimits } = context
+    const { readFileState, fileReadingLimits } = context;
 
-    const defaults = getDefaultFileReadingLimits()
+    const defaults = getDefaultFileReadingLimits();
     const maxSizeBytes =
-      fileReadingLimits?.maxSizeBytes ?? defaults.maxSizeBytes
-    const maxTokens = fileReadingLimits?.maxTokens ?? defaults.maxTokens
+      fileReadingLimits?.maxSizeBytes ?? defaults.maxSizeBytes;
+    const maxTokens = fileReadingLimits?.maxTokens ?? defaults.maxTokens;
 
     // Telemetry: track when callers override default read limits.
-    // Only fires on override (low volume) — event count = override frequency.
+    // Only fires on override (low volume): event count = override frequency.
     if (fileReadingLimits !== undefined) {
-      logEvent('tengu_file_read_limits_override', {
+      logEvent("tengu_file_read_limits_override", {
         hasMaxTokens: fileReadingLimits.maxTokens !== undefined,
         hasMaxSizeBytes: fileReadingLimits.maxSizeBytes !== undefined,
-      })
+      });
     }
 
-    const ext = path.extname(file_path).toLowerCase().slice(1)
+    const ext = path.extname(file_path).toLowerCase().slice(1);
     // Use expandPath for consistent path normalization with FileEditTool/FileWriteTool
     // (especially handles whitespace trimming and Windows path separators)
-    const fullFilePath = expandPath(file_path)
+    const fullFilePath = expandPath(file_path);
 
     // `pages` is PDF-only. On any other file type it does not apply. Rather than
-    // erroring in the user's face — or silently no-opping, which collides with
-    // the read-dedup stub and surfaces as a baffling "File unchanged" — drop the
+    // erroring in the user's face: or silently no-opping, which collides with
+    // the read-dedup stub and surfaces as a baffling "File unchanged": drop the
     // inapplicable param, read the file normally, and tag the result so the
     // mapper appends a model-only nudge steering the agent to offset/limit. The
     // user just sees a normal read; the agent self-corrects. General across
     // every non-PDF file type.
-    const pagesIgnoredOnNonPdf = pages !== undefined && !isPDFExtension(ext)
+    const pagesIgnoredOnNonPdf = pages !== undefined && !isPDFExtension(ext);
     if (pagesIgnoredOnNonPdf) {
-      pages = undefined
+      pages = undefined;
     }
     function markPagesIgnored<T extends { data: object }>(result: T): T {
-      if (pagesIgnoredOnNonPdf) pagesIgnoredResults.add(result.data)
-      return result
+      if (pagesIgnoredOnNonPdf) pagesIgnoredResults.add(result.data);
+      return result;
     }
 
     // Dedup: if we've already read this exact range and the file hasn't
     // changed on disk, return a stub instead of re-sending the full content.
-    // The earlier Read tool_result is still in context — two full copies
+    // The earlier Read tool_result is still in context: two full copies
     // waste cache_creation tokens on every subsequent turn. BQ proxy shows
     // ~18% of Read calls are same-file collisions (up to 2.64% of fleet
-    // cache_creation). Only applies to text/notebook reads — images/PDFs
+    // cache_creation). Only applies to text/notebook reads: images/PDFs
     // aren't cached in readFileState so won't match here.
     //
     // Ant soak: 1,734 dedup hits in 2h, no Read error regression.
     // Killswitch pattern: GB can disable if the stub message confuses
     // the model externally.
-    // 3P default: killswitch off = dedup enabled. Client-side only — no
+    // 3P default: killswitch off = dedup enabled. Client-side only: no
     // server support needed, safe for Bedrock/Vertex/Foundry.
     const dedupKillswitch = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_read_dedup_killswitch',
+      "tengu_read_dedup_killswitch",
       false,
-    )
+    );
     // Skeleton reads never dedup: they are cheap to recompute and their
     // output shape differs from the full-content read the dedup stub
     // would point the model back to. (Auto-skeleton reads don't need a
@@ -653,9 +653,9 @@ export const FileReadTool = buildTool({
     const existingState =
       dedupKillswitch || skeleton === true
         ? undefined
-        : readFileState.get(fullFilePath)
+        : readFileState.get(fullFilePath);
     // Only dedup entries that came from a prior Read (offset is always set
-    // by Read). Edit/Write store offset=undefined — their readFileState
+    // by Read). Edit/Write store offset=undefined: their readFileState
     // entry reflects post-edit mtime, so deduping against it would wrongly
     // point the model at the pre-edit Read content.
     if (
@@ -664,53 +664,53 @@ export const FileReadTool = buildTool({
       existingState.offset !== undefined
     ) {
       const rangeMatch =
-        existingState.offset === offset && existingState.limit === limit
+        existingState.offset === offset && existingState.limit === limit;
       if (rangeMatch) {
         try {
-          const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
+          const mtimeMs = await getFileModificationTimeAsync(fullFilePath);
           if (mtimeMs === existingState.timestamp) {
-            const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
-            logEvent('tengu_file_read_dedup', {
+            const analyticsExt = getFileExtensionForAnalytics(fullFilePath);
+            logEvent("tengu_file_read_dedup", {
               ...(analyticsExt !== undefined && { ext: analyticsExt }),
-            })
+            });
             return markPagesIgnored({
               data: {
-                type: 'file_unchanged' as const,
+                type: "file_unchanged" as const,
                 file: { filePath: file_path },
               },
-            })
+            });
           }
         } catch {
-          // stat failed — fall through to full read
+          // stat failed: fall through to full read
         }
       }
     }
 
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
-    const cwd = getCwd()
+    const cwd = getCwd();
     if (!isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
-      const newSkillDirs = await discoverSkillDirsForPaths([fullFilePath], cwd)
+      const newSkillDirs = await discoverSkillDirsForPaths([fullFilePath], cwd);
       if (newSkillDirs.length > 0) {
         // Store discovered dirs for attachment display
         for (const dir of newSkillDirs) {
-          context.dynamicSkillDirTriggers?.add(dir)
+          context.dynamicSkillDirTriggers?.add(dir);
         }
         // Don't await - let skill loading happen in the background
-        addSkillDirectories(newSkillDirs).catch(() => {})
+        addSkillDirectories(newSkillDirs).catch(() => {});
       }
 
       // Activate conditional skills whose path patterns match this file
-      activateConditionalSkillsForPaths([fullFilePath], cwd)
+      activateConditionalSkillsForPaths([fullFilePath], cwd);
     }
 
     // Auto-skeleton: a whole-file Read of a large, skeleton-supported code
     // file returns structure instead of full content. Decided once here at
-    // execution time — the result is frozen into the transcript like any
+    // execution time: the result is frozen into the transcript like any
     // other tool output, so later requests re-send identical bytes and no
     // provider prefix cache is disturbed. Explicit skeleton: false, an
     // offset/limit range, or pages always bypass the policy.
-    let skeletonMode: SkeletonMode = skeleton === true ? 'explicit' : 'off'
+    let skeletonMode: SkeletonMode = skeleton === true ? "explicit" : "off";
     if (
       skeleton === undefined &&
       offset <= 1 &&
@@ -720,12 +720,12 @@ export const FileReadTool = buildTool({
       isSkeletonSupportedExt(ext)
     ) {
       try {
-        const stats = await getFsImplementation().stat(fullFilePath)
+        const stats = await getFsImplementation().stat(fullFilePath);
         if (stats.size > getAutoSkeletonMinBytes()) {
-          skeletonMode = 'auto'
+          skeletonMode = "auto";
         }
       } catch {
-        // stat failed (missing file, permissions) — leave mode off and let
+        // stat failed (missing file, permissions): leave mode off and let
         // callInner surface the real error through the existing paths.
       }
     }
@@ -745,15 +745,15 @@ export const FileReadTool = buildTool({
         context,
         parentMessage?.message.id,
         skeletonMode,
-      )
-      return markPagesIgnored(result)
+      );
+      return markPagesIgnored(result);
     } catch (error) {
       // Handle file-not-found: suggest similar files
-      const code = getErrnoCode(error)
-      if (code === 'ENOENT') {
+      const code = getErrnoCode(error);
+      if (code === "ENOENT") {
         // macOS screenshots may use a thin space or regular space before
-        // AM/PM — try the alternate before giving up.
-        const altPath = getAlternateScreenshotPath(fullFilePath)
+        // AM/PM: try the alternate before giving up.
+        const altPath = getAlternateScreenshotPath(fullFilePath);
         if (altPath) {
           try {
             const result = await callInner(
@@ -770,114 +770,121 @@ export const FileReadTool = buildTool({
               context,
               parentMessage?.message.id,
               skeletonMode,
-            )
-            return markPagesIgnored(result)
+            );
+            return markPagesIgnored(result);
           } catch (altError) {
             if (!isENOENT(altError)) {
-              throw altError
+              throw altError;
             }
-            // Alt path also missing — fall through to friendly error
+            // Alt path also missing: fall through to friendly error
           }
         }
 
-        const similarFilename = findSimilarFile(fullFilePath)
-        const cwdSuggestion = await suggestPathUnderCwd(fullFilePath)
-        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`
+        const similarFilename = findSimilarFile(fullFilePath);
+        const cwdSuggestion = await suggestPathUnderCwd(fullFilePath);
+        let message = `File does not exist. ${FILE_NOT_FOUND_CWD_NOTE} ${getCwd()}.`;
         if (cwdSuggestion) {
-          message += ` Did you mean ${cwdSuggestion}?`
+          message += ` Did you mean ${cwdSuggestion}?`;
         } else if (similarFilename) {
-          message += ` Did you mean ${similarFilename}?`
+          message += ` Did you mean ${similarFilename}?`;
         }
-        throw new Error(message)
+        throw new Error(message);
       }
-      throw error
+      throw error;
     }
   },
   mapToolResultToToolResultBlockParam(data, toolUseID) {
     switch (data.type) {
-      case 'image': {
+      case "image": {
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content: [
             {
-              type: 'image',
+              type: "image",
               source: {
-                type: 'base64',
+                type: "base64",
                 data: data.file.base64,
                 media_type: data.file.type,
               },
             },
           ],
-        }
+        };
       }
-      case 'notebook':
-        return mapNotebookCellsToToolResult(data.file.cells, toolUseID)
-      case 'pdf':
+      case "notebook":
+        return mapNotebookCellsToToolResult(data.file.cells, toolUseID);
+      case "pdf":
         // Return PDF metadata only - the actual content is sent as a supplemental DocumentBlockParam
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content: `PDF file read: ${data.file.filePath} (${formatFileSize(data.file.originalSize)})`,
-        }
-      case 'parts':
+        };
+      case "parts":
         // Extracted page images are read and sent as image blocks in mapToolResultToAPIMessage
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content: `PDF pages extracted: ${data.file.count} page(s) from ${data.file.filePath} (${formatFileSize(data.file.originalSize)})`,
-        }
-      case 'file_unchanged':
+        };
+      case "file_unchanged":
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content:
             FILE_UNCHANGED_STUB +
-            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ''),
-        }
-      case 'skeleton': {
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ""),
+        };
+      case "skeleton": {
         // Built from parts: a skeleton may elide bodies, truncate overlong
         // lines, or both, and claiming "0 bodies elided" reads like a failure.
-        const { elidedRegions, elidedLines, totalLines, truncatedLines, truncatedChars, auto } = data.file
+        const {
+          elidedRegions,
+          elidedLines,
+          totalLines,
+          truncatedLines,
+          truncatedChars,
+          auto,
+        } = data.file;
         const parts = [
           auto
-            ? 'Auto-skeleton view: this file is large, so this Read returned its structure instead of full content.'
-            : 'Skeleton view:',
-        ]
+            ? "Auto-skeleton view: this file is large, so this Read returned its structure instead of full content."
+            : "Skeleton view:",
+        ];
         if (elidedRegions > 0) {
           parts.push(
-            `${elidedRegions} function ${elidedRegions === 1 ? 'body' : 'bodies'} elided (${elidedLines} of ${totalLines} lines); each ⋮ marker shows the exact Read offset/limit to expand that body.`,
-          )
+            `${elidedRegions} function ${elidedRegions === 1 ? "body" : "bodies"} elided (${elidedLines} of ${totalLines} lines); each ⋮ marker shows the exact Read offset/limit to expand that body.`,
+          );
         }
         if (truncatedLines > 0) {
           parts.push(
-            `${truncatedLines} overlong ${truncatedLines === 1 ? 'line was' : 'lines were'} truncated (${truncatedChars} chars dropped); such lines are typically minified code, inline sourcemaps, or embedded blobs, and re-reading one alone may still exceed the token limit.`,
-          )
+            `${truncatedLines} overlong ${truncatedLines === 1 ? "line was" : "lines were"} truncated (${truncatedChars} chars dropped); such lines are typically minified code, inline sourcemaps, or embedded blobs, and re-reading one alone may still exceed the token limit.`,
+          );
         }
         if (auto) {
           parts.push(
-            'Read specific ranges (offset/limit) for the bodies you need — preferred — or re-Read with skeleton: false to force the full file.',
-          )
+            "Read specific ranges (offset/limit) for the bodies you need: preferred: or re-Read with skeleton: false to force the full file.",
+          );
         }
         parts.push(
-          'Line numbers are real file line numbers. Before editing this file, Read the relevant full range first.',
-        )
-        const note = `<system-reminder>${parts.join(' ')}</system-reminder>`
+          "Line numbers are real file line numbers. Before editing this file, Read the relevant full range first.",
+        );
+        const note = `<system-reminder>${parts.join(" ")}</system-reminder>`;
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content:
             data.file.formatted +
-            '\n\n' +
+            "\n\n" +
             note +
-            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : '') +
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : "") +
             (shouldIncludeFileReadMitigation()
               ? CYBER_RISK_MITIGATION_REMINDER
-              : ''),
-        }
+              : ""),
+        };
       }
-      case 'text': {
-        let content: string
+      case "text": {
+        let content: string;
 
         if (data.file.content) {
           content =
@@ -885,45 +892,45 @@ export const FileReadTool = buildTool({
             formatFileLines(data.file) +
             (shouldIncludeFileReadMitigation()
               ? CYBER_RISK_MITIGATION_REMINDER
-              : '')
+              : "");
         } else {
           // Determine the appropriate warning message
           content =
             data.file.totalLines === 0
-              ? '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
-              : `<system-reminder>Warning: the file exists but is shorter than the provided offset (${data.file.startLine}). The file has ${data.file.totalLines} lines.</system-reminder>`
+              ? "<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>"
+              : `<system-reminder>Warning: the file exists but is shorter than the provided offset (${data.file.startLine}). The file has ${data.file.totalLines} lines.</system-reminder>`;
         }
 
         return {
           tool_use_id: toolUseID,
-          type: 'tool_result',
+          type: "tool_result",
           content:
             content +
-            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ''),
-        }
+            (pagesIgnoredResults.has(data) ? PAGES_IGNORED_NUDGE : ""),
+        };
       }
     }
   },
-} satisfies ToolDef<InputSchema, Output>)
+} satisfies ToolDef<InputSchema, Output>);
 
 function pickLineFormatInstruction(): string {
-  return LINE_FORMAT_INSTRUCTION
+  return LINE_FORMAT_INSTRUCTION;
 }
 
 /** Format file content with line numbers. */
 function formatFileLines(file: { content: string; startLine: number }): string {
-  return addLineNumbers(file)
+  return addLineNumbers(file);
 }
 
 export const CYBER_RISK_MITIGATION_REMINDER =
-  '\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n'
+  "\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n";
 
 // Models where cyber risk mitigation should be skipped
-const MITIGATION_EXEMPT_MODELS = new Set(['claude-opus-4-6'])
+const MITIGATION_EXEMPT_MODELS = new Set(["claude-opus-4-6"]);
 
 function shouldIncludeFileReadMitigation(): boolean {
-  const shortName = getCanonicalName(getMainLoopModel())
-  return !MITIGATION_EXEMPT_MODELS.has(shortName)
+  const shortName = getCanonicalName(getMainLoopModel());
+  return !MITIGATION_EXEMPT_MODELS.has(shortName);
 }
 
 /**
@@ -933,21 +940,21 @@ function shouldIncludeFileReadMitigation(): boolean {
  * into SDK types) and avoids sync fs in the mapper. WeakMap auto-GCs
  * when the data object becomes unreachable after rendering.
  */
-const memoryFileMtimes = new WeakMap<object, number>()
+const memoryFileMtimes = new WeakMap<object, number>();
 
 // Side-channel marking a Read result whose `pages` argument was dropped because
 // the file is not a PDF (pages is PDF-only). The mapper appends a model-only
-// nudge so the agent self-corrects to offset/limit — invisibly to the user, who
+// nudge so the agent self-corrects to offset/limit: invisibly to the user, who
 // only ever sees the "Read N lines" summary. Never an error and never a silent
 // no-op: the read still returns real content, keeping the agent fully capable.
-const pagesIgnoredResults = new WeakSet<object>()
+const pagesIgnoredResults = new WeakSet<object>();
 const PAGES_IGNORED_NUDGE =
-  '\n\n<system-reminder>Note: the "pages" parameter applies only to PDF files and was ignored for this read. To read a specific part of a text or code file, use offset/limit (1-indexed line numbers); for a large code file, skeleton: true returns a structural overview.</system-reminder>'
+  '\n\n<system-reminder>Note: the "pages" parameter applies only to PDF files and was ignored for this read. To read a specific part of a text or code file, use offset/limit (1-indexed line numbers); for a large code file, skeleton: true returns a structural overview.</system-reminder>';
 
 function memoryFileFreshnessPrefix(data: object): string {
-  const mtimeMs = memoryFileMtimes.get(data)
-  if (mtimeMs === undefined) return ''
-  return memoryFreshnessNote(mtimeMs)
+  const mtimeMs = memoryFileMtimes.get(data);
+  if (mtimeMs === undefined) return "";
+  return memoryFreshnessNote(mtimeMs);
 }
 
 async function validateContentTokens(
@@ -961,32 +968,32 @@ async function validateContentTokens(
   skeletonRequested = false,
 ): Promise<void> {
   const effectiveMaxTokens =
-    maxTokens ?? getDefaultFileReadingLimits().maxTokens
+    maxTokens ?? getDefaultFileReadingLimits().maxTokens;
 
-  const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
-  if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return
+  const tokenEstimate = roughTokenCountEstimationForFileType(content, ext);
+  if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return;
 
-  const tokenCount = await countTokensWithAPI(content)
-  const effectiveCount = tokenCount ?? tokenEstimate
+  const tokenCount = await countTokensWithAPI(content);
+  const effectiveCount = tokenCount ?? tokenEstimate;
 
   if (effectiveCount > effectiveMaxTokens) {
     throw new MaxFileReadTokenExceededError(
       effectiveCount,
       effectiveMaxTokens,
       fileReadTokenLimitAdvice(ext, skeletonRequested),
-    )
+    );
   }
 }
 
 type ImageResult = {
-  type: 'image'
+  type: "image";
   file: {
-    base64: string
-    type: Base64ImageSource['media_type']
-    originalSize: number
-    dimensions?: ImageDimensions
-  }
-}
+    base64: string;
+    type: Base64ImageSource["media_type"];
+    originalSize: number;
+    dimensions?: ImageDimensions;
+  };
+};
 
 function createImageResponse(
   buffer: Buffer,
@@ -995,14 +1002,14 @@ function createImageResponse(
   dimensions?: ImageDimensions,
 ): ImageResult {
   return {
-    type: 'image',
+    type: "image",
     file: {
-      base64: buffer.toString('base64'),
-      type: `image/${mediaType}` as Base64ImageSource['media_type'],
+      base64: buffer.toString("base64"),
+      type: `image/${mediaType}` as Base64ImageSource["media_type"],
       originalSize,
       dimensions,
     },
-  }
+  };
 }
 
 /**
@@ -1018,20 +1025,20 @@ async function callInner(
   pages: string | undefined,
   maxSizeBytes: number,
   maxTokens: number,
-  readFileState: ToolUseContext['readFileState'],
+  readFileState: ToolUseContext["readFileState"],
   context: ToolUseContext,
   messageId: string | undefined,
-  skeletonMode: SkeletonMode = 'off',
+  skeletonMode: SkeletonMode = "off",
 ): Promise<{
-  data: Output
-  newMessages?: ReturnType<typeof createUserMessage>[]
+  data: Output;
+  newMessages?: ReturnType<typeof createUserMessage>[];
 }> {
   // --- Notebook ---
-  if (ext === 'ipynb') {
-    const cells = await readNotebook(resolvedFilePath)
-    const cellsJson = jsonStringify(cells)
+  if (ext === "ipynb") {
+    const cells = await readNotebook(resolvedFilePath);
+    const cellsJson = jsonStringify(cells);
 
-    const cellsJsonBytes = Buffer.byteLength(cellsJson)
+    const cellsJsonBytes = Buffer.byteLength(cellsJson);
     if (cellsJsonBytes > maxSizeBytes) {
       throw new Error(
         `Notebook content (${formatFileSize(cellsJsonBytes)}) exceeds maximum allowed size (${formatFileSize(maxSizeBytes)}). ` +
@@ -1040,53 +1047,53 @@ async function callInner(
           `  cat "${file_path}" | jq '.cells[100:120]' # Cells 100-120\n` +
           `  cat "${file_path}" | jq '.cells | length' # Count total cells\n` +
           `  cat "${file_path}" | jq '.cells[] | select(.cell_type=="code") | .source' # All code sources`,
-      )
+      );
     }
 
-    await validateContentTokens(cellsJson, ext, maxTokens)
+    await validateContentTokens(cellsJson, ext, maxTokens);
 
     // Get mtime via async stat (single call, no prior existence check)
-    const stats = await getFsImplementation().stat(resolvedFilePath)
+    const stats = await getFsImplementation().stat(resolvedFilePath);
     readFileState.set(fullFilePath, {
       content: cellsJson,
       timestamp: Math.floor(stats.mtimeMs),
       offset,
       limit,
-    })
-    context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
+    });
+    context.nestedMemoryAttachmentTriggers?.add(fullFilePath);
 
     const data = {
-      type: 'notebook' as const,
+      type: "notebook" as const,
       file: { filePath: file_path, cells },
-    }
+    };
 
     logFileOperation({
-      operation: 'read',
-      tool: 'FileReadTool',
+      operation: "read",
+      tool: "FileReadTool",
       filePath: fullFilePath,
       content: cellsJson,
-    })
+    });
 
-    return { data }
+    return { data };
   }
 
   // --- Image (single read, no double-read) ---
   if (IMAGE_EXTENSIONS.has(ext)) {
-    // Images have their own size limits (token budget + compression) —
+    // Images have their own size limits (token budget + compression):
     // don't apply the text maxSizeBytes cap.
-    const data = await readImageWithTokenBudget(resolvedFilePath, maxTokens)
-    context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
+    const data = await readImageWithTokenBudget(resolvedFilePath, maxTokens);
+    context.nestedMemoryAttachmentTriggers?.add(fullFilePath);
 
     logFileOperation({
-      operation: 'read',
-      tool: 'FileReadTool',
+      operation: "read",
+      tool: "FileReadTool",
       filePath: fullFilePath,
       content: data.file.base64,
-    })
+    });
 
     const metadataText = data.file.dimensions
       ? createImageMetadataText(data.file.dimensions)
-      : null
+      : null;
 
     return {
       data,
@@ -1095,54 +1102,54 @@ async function callInner(
           createUserMessage({ content: metadataText, isMeta: true }),
         ],
       }),
-    }
+    };
   }
 
   // --- PDF ---
   if (isPDFExtension(ext)) {
     if (pages) {
-      const parsedRange = parsePDFPageRange(pages)
+      const parsedRange = parsePDFPageRange(pages);
       const extractResult = await extractPDFPages(
         resolvedFilePath,
         parsedRange ?? undefined,
-      )
+      );
       if (!extractResult.success) {
-        throw new Error(extractResult.error.message)
+        throw new Error(extractResult.error.message);
       }
-      logEvent('tengu_pdf_page_extraction', {
+      logEvent("tengu_pdf_page_extraction", {
         success: true,
         pageCount: extractResult.data.file.count,
         fileSize: extractResult.data.file.originalSize,
         hasPageRange: true,
-      })
+      });
       logFileOperation({
-        operation: 'read',
-        tool: 'FileReadTool',
+        operation: "read",
+        tool: "FileReadTool",
         filePath: fullFilePath,
         content: `PDF pages ${pages}`,
-      })
-      const entries = await readdir(extractResult.data.file.outputDir)
-      const imageFiles = entries.filter(f => f.endsWith('.jpg')).sort()
+      });
+      const entries = await readdir(extractResult.data.file.outputDir);
+      const imageFiles = entries.filter((f) => f.endsWith(".jpg")).sort();
       const imageBlocks = await Promise.all(
-        imageFiles.map(async f => {
-          const imgPath = path.join(extractResult.data.file.outputDir, f)
-          const imgBuffer = await readFileAsync(imgPath)
+        imageFiles.map(async (f) => {
+          const imgPath = path.join(extractResult.data.file.outputDir, f);
+          const imgBuffer = await readFileAsync(imgPath);
           const resized = await maybeResizeAndDownsampleImageBuffer(
             imgBuffer,
             imgBuffer.length,
-            'jpeg',
-          )
+            "jpeg",
+          );
           return {
-            type: 'image' as const,
+            type: "image" as const,
             source: {
-              type: 'base64' as const,
+              type: "base64" as const,
               media_type:
-                `image/${resized.mediaType}` as Base64ImageSource['media_type'],
-              data: resized.buffer.toString('base64'),
+                `image/${resized.mediaType}` as Base64ImageSource["media_type"],
+              data: resized.buffer.toString("base64"),
             },
-          }
+          };
         }),
-      )
+      );
       return {
         data: extractResult.data,
         ...(imageBlocks.length > 0 && {
@@ -1150,59 +1157,59 @@ async function callInner(
             createUserMessage({ content: imageBlocks, isMeta: true }),
           ],
         }),
-      }
+      };
     }
 
-    const pageCount = await getPDFPageCount(resolvedFilePath)
+    const pageCount = await getPDFPageCount(resolvedFilePath);
     if (pageCount !== null && pageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
       throw new Error(
         `This PDF has ${pageCount} pages, which is too many to read at once. ` +
           `Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). ` +
           `Maximum ${PDF_MAX_PAGES_PER_READ} pages per request.`,
-      )
+      );
     }
 
-    const fs = getFsImplementation()
-    const stats = await fs.stat(resolvedFilePath)
+    const fs = getFsImplementation();
+    const stats = await fs.stat(resolvedFilePath);
     const shouldExtractPages =
-      !isPDFSupported() || stats.size > PDF_EXTRACT_SIZE_THRESHOLD
+      !isPDFSupported() || stats.size > PDF_EXTRACT_SIZE_THRESHOLD;
 
     if (shouldExtractPages) {
-      const extractResult = await extractPDFPages(resolvedFilePath)
+      const extractResult = await extractPDFPages(resolvedFilePath);
       if (extractResult.success) {
-        logEvent('tengu_pdf_page_extraction', {
+        logEvent("tengu_pdf_page_extraction", {
           success: true,
           pageCount: extractResult.data.file.count,
           fileSize: extractResult.data.file.originalSize,
-        })
+        });
       } else {
-        logEvent('tengu_pdf_page_extraction', {
+        logEvent("tengu_pdf_page_extraction", {
           success: false,
-          available: extractResult.error.reason !== 'unavailable',
+          available: extractResult.error.reason !== "unavailable",
           fileSize: stats.size,
-        })
+        });
       }
     }
 
     if (!isPDFSupported()) {
       throw new Error(
-        'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+        "Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), " +
           `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
-          'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
-      )
+          "Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.",
+      );
     }
 
-    const readResult = await readPDF(resolvedFilePath)
+    const readResult = await readPDF(resolvedFilePath);
     if (!readResult.success) {
-      throw new Error(readResult.error.message)
+      throw new Error(readResult.error.message);
     }
-    const pdfData = readResult.data
+    const pdfData = readResult.data;
     logFileOperation({
-      operation: 'read',
-      tool: 'FileReadTool',
+      operation: "read",
+      tool: "FileReadTool",
       filePath: fullFilePath,
       content: pdfData.file.base64,
-    })
+    });
 
     return {
       data: pdfData,
@@ -1210,10 +1217,10 @@ async function callInner(
         createUserMessage({
           content: [
             {
-              type: 'document',
+              type: "document",
               source: {
-                type: 'base64',
-                media_type: 'application/pdf',
+                type: "base64",
+                media_type: "application/pdf",
                 data: pdfData.file.base64,
               },
             },
@@ -1221,7 +1228,7 @@ async function callInner(
           isMeta: true,
         }),
       ],
-    }
+    };
   }
 
   // --- Office document (Word / Excel / OpenDocument) ---
@@ -1296,27 +1303,32 @@ async function callInner(
   // --- Skeleton view (structure with long function bodies elided) ---
   // Only reached for text files: notebook/image/PDF/office branches returned above.
   // Any unsupported/unparseable case falls through to the normal text read.
-  if (skeletonMode !== 'off') {
+  if (skeletonMode !== "off") {
     // Allow larger files than a plain full read: the OUTPUT is what reaches
     // the model and it is dramatically smaller (and still token-validated).
     const skeletonSizeBytes = Math.max(
       maxSizeBytes,
       Math.min(maxSizeBytes * 4, 2_000_000),
-    )
+    );
     const fullRead = await readFileInRange(
       resolvedFilePath,
       0,
       undefined,
       skeletonSizeBytes,
       context.abortController.signal,
-    )
+    );
     const skeletonResult = await buildSkeleton(fullRead.content, ext, (c, s) =>
       addLineNumbers({ content: c, startLine: s }),
-    )
+    );
     if (skeletonResult) {
       // Always skeletonRequested=true here: this content IS a skeleton, so a
       // token overflow must not tell the model to "try skeleton" again.
-      await validateContentTokens(skeletonResult.formatted, ext, maxTokens, true)
+      await validateContentTokens(
+        skeletonResult.formatted,
+        ext,
+        maxTokens,
+        true,
+      );
 
       // Partial view: store RAW disk content for diffing, and flag it so
       // Edit/Write demand a real full-content Read before mutating.
@@ -1326,30 +1338,30 @@ async function callInner(
         offset: undefined,
         limit: undefined,
         isPartialView: true,
-      })
-      context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
+      });
+      context.nestedMemoryAttachmentTriggers?.add(fullFilePath);
 
       logFileOperation({
-        operation: 'read',
-        tool: 'FileReadTool',
+        operation: "read",
+        tool: "FileReadTool",
         filePath: fullFilePath,
         content: skeletonResult.formatted,
-      })
-      const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
-      logEvent('tengu_file_read_skeleton', {
+      });
+      const analyticsExt = getFileExtensionForAnalytics(fullFilePath);
+      logEvent("tengu_file_read_skeleton", {
         totalLines: skeletonResult.totalLines,
         keptLines: skeletonResult.keptLines,
         elidedLines: skeletonResult.elidedLines,
         elidedRegions: skeletonResult.elidedRegions,
         truncatedLines: skeletonResult.truncatedLines,
         truncatedChars: skeletonResult.truncatedChars,
-        auto: skeletonMode === 'auto',
+        auto: skeletonMode === "auto",
         ...(analyticsExt !== undefined && { ext: analyticsExt }),
-      })
+      });
 
       return {
         data: {
-          type: 'skeleton' as const,
+          type: "skeleton" as const,
           file: {
             filePath: file_path,
             formatted: skeletonResult.formatted,
@@ -1362,17 +1374,17 @@ async function callInner(
             language: skeletonResult.language,
             // Set only for auto mode so explicit-skeleton results stay
             // byte-identical to their pre-auto-policy rendering.
-            ...(skeletonMode === 'auto' ? { auto: true } : {}),
+            ...(skeletonMode === "auto" ? { auto: true } : {}),
           },
         },
-      }
+      };
     }
     // Fall through to a normal read below (unsupported language, parse
     // failure, or nothing long enough to elide).
   }
 
   // --- Text file (single async read via readFileInRange) ---
-  const lineOffset = offset === 0 ? 0 : offset - 1
+  const lineOffset = offset === 0 ? 0 : offset - 1;
   const { content, lineCount, totalLines, totalBytes, readBytes, mtimeMs } =
     await readFileInRange(
       resolvedFilePath,
@@ -1380,30 +1392,30 @@ async function callInner(
       limit,
       limit === undefined ? maxSizeBytes : undefined,
       context.abortController.signal,
-    )
+    );
 
   // Pass the requested skeleton flag: when skeleton was asked for (explicit
   // or auto) but produced nothing (no elidable body / unsupported), we fell
   // through to this full read. If it overflows, the error must not loop the
   // model back to skeleton.
-  await validateContentTokens(content, ext, maxTokens, skeletonMode !== 'off')
+  await validateContentTokens(content, ext, maxTokens, skeletonMode !== "off");
 
   readFileState.set(fullFilePath, {
     content,
     timestamp: Math.floor(mtimeMs),
     offset,
     limit,
-  })
-  context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
+  });
+  context.nestedMemoryAttachmentTriggers?.add(fullFilePath);
 
-  // Snapshot before iterating — a listener that unsubscribes mid-callback
+  // Snapshot before iterating: a listener that unsubscribes mid-callback
   // would splice the live array and skip the next listener.
   for (const listener of fileReadListeners.slice()) {
-    listener(resolvedFilePath, content)
+    listener(resolvedFilePath, content);
   }
 
   const data = {
-    type: 'text' as const,
+    type: "text" as const,
     file: {
       filePath: file_path,
       content,
@@ -1411,21 +1423,21 @@ async function callInner(
       startLine: offset,
       totalLines,
     },
-  }
+  };
   if (isAutoMemFile(fullFilePath)) {
-    memoryFileMtimes.set(data, mtimeMs)
+    memoryFileMtimes.set(data, mtimeMs);
   }
 
   logFileOperation({
-    operation: 'read',
-    tool: 'FileReadTool',
+    operation: "read",
+    tool: "FileReadTool",
     filePath: fullFilePath,
     content,
-  })
+  });
 
-  const sessionFileType = detectSessionFileType(fullFilePath)
-  const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
-  logEvent('tengu_session_file_read', {
+  const sessionFileType = detectSessionFileType(fullFilePath);
+  const analyticsExt = getFileExtensionForAnalytics(fullFilePath);
+  logEvent("tengu_session_file_read", {
     totalLines,
     readLines: lineCount,
     totalBytes,
@@ -1437,11 +1449,11 @@ async function callInner(
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     }),
-    is_session_memory: sessionFileType === 'session_memory',
-    is_session_transcript: sessionFileType === 'session_transcript',
-  })
+    is_session_memory: sessionFileType === "session_memory",
+    is_session_transcript: sessionFileType === "session_transcript",
+  });
 
-  return { data }
+  return { data };
 }
 
 /**
@@ -1458,42 +1470,42 @@ export async function readImageWithTokenBudget(
   maxTokens: number = getDefaultFileReadingLimits().maxTokens,
   maxBytes?: number,
 ): Promise<ImageResult> {
-  // Read file ONCE — capped to maxBytes to avoid OOM on huge files
+  // Read file ONCE: capped to maxBytes to avoid OOM on huge files
   const imageBuffer = await getFsImplementation().readFileBytes(
     filePath,
     maxBytes,
-  )
-  const originalSize = imageBuffer.length
+  );
+  const originalSize = imageBuffer.length;
 
   if (originalSize === 0) {
-    throw new Error(`Image file is empty: ${filePath}`)
+    throw new Error(`Image file is empty: ${filePath}`);
   }
 
-  const detectedMediaType = detectImageFormatFromBuffer(imageBuffer)
-  const detectedFormat = detectedMediaType.split('/')[1] || 'png'
+  const detectedMediaType = detectImageFormatFromBuffer(imageBuffer);
+  const detectedFormat = detectedMediaType.split("/")[1] || "png";
 
   // Try standard resize
-  let result: ImageResult
+  let result: ImageResult;
   try {
     const resized = await maybeResizeAndDownsampleImageBuffer(
       imageBuffer,
       originalSize,
       detectedFormat,
-    )
+    );
     result = createImageResponse(
       resized.buffer,
       resized.mediaType,
       originalSize,
       resized.dimensions,
-    )
+    );
   } catch (e) {
-    if (e instanceof ImageResizeError) throw e
-    logError(e)
-    result = createImageResponse(imageBuffer, detectedFormat, originalSize)
+    if (e instanceof ImageResizeError) throw e;
+    logError(e);
+    result = createImageResponse(imageBuffer, detectedFormat, originalSize);
   }
 
   // Check if it fits in token budget
-  const estimatedTokens = Math.ceil(result.file.base64.length * 0.125)
+  const estimatedTokens = Math.ceil(result.file.base64.length * 0.125);
   if (estimatedTokens > maxTokens) {
     // Aggressive compression from the SAME buffer (no re-read)
     try {
@@ -1501,42 +1513,42 @@ export async function readImageWithTokenBudget(
         imageBuffer,
         maxTokens,
         detectedMediaType,
-      )
+      );
       return {
-        type: 'image',
+        type: "image",
         file: {
           base64: compressed.base64,
           type: compressed.mediaType,
           originalSize,
         },
-      }
+      };
     } catch (e) {
-      logError(e)
+      logError(e);
       // Fallback: heavily compressed version from the SAME buffer
       try {
-        const sharpModule = await import('sharp')
+        const sharpModule = await import("sharp");
         const sharp =
           (
             sharpModule as {
-              default?: typeof sharpModule
+              default?: typeof sharpModule;
             } & typeof sharpModule
-          ).default || sharpModule
+          ).default || sharpModule;
 
         const fallbackBuffer = await sharp(imageBuffer)
           .resize(400, 400, {
-            fit: 'inside',
+            fit: "inside",
             withoutEnlargement: true,
           })
           .jpeg({ quality: 20 })
-          .toBuffer()
+          .toBuffer();
 
-        return createImageResponse(fallbackBuffer, 'jpeg', originalSize)
+        return createImageResponse(fallbackBuffer, "jpeg", originalSize);
       } catch (error) {
-        logError(error)
-        return createImageResponse(imageBuffer, detectedFormat, originalSize)
+        logError(error);
+        return createImageResponse(imageBuffer, detectedFormat, originalSize);
       }
     }
   }
 
-  return result
+  return result;
 }

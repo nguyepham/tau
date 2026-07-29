@@ -5,22 +5,22 @@
  * (src/utils/bash/prefix.ts) but uses the PowerShell AST parser instead of
  * tree-sitter. The AST gives us cmd.name and cmd.args already split; for
  * external commands we feed those into the same fig-spec walker bash uses
- * (src/utils/shell/specPrefix.ts) — git/npm/kubectl CLIs are shell-agnostic.
+ * (src/utils/shell/specPrefix.ts): git/npm/kubectl CLIs are shell-agnostic.
  *
  * Feeds the "Yes, and don't ask again for: ___" editable input in the
- * permission dialog — static extractor provides a best-guess prefix, user
+ * permission dialog: static extractor provides a best-guess prefix, user
  * edits it down if needed.
  */
 
-import { getCommandSpec } from '../bash/registry.js'
-import { buildPrefix, DEPTH_RULES } from '../shell/specPrefix.js'
-import { countCharInString } from '../stringUtils.js'
-import { NEVER_SUGGEST } from './dangerousCmdlets.js'
+import { getCommandSpec } from "../bash/registry.js";
+import { buildPrefix, DEPTH_RULES } from "../shell/specPrefix.js";
+import { countCharInString } from "../stringUtils.js";
+import { NEVER_SUGGEST } from "./dangerousCmdlets.js";
 import {
   getAllCommands,
   type ParsedCommandElement,
   parsePowerShellCommand,
-} from './parser.js'
+} from "./parser.js";
 
 /**
  * Extract a static prefix from a single parsed command element.
@@ -31,67 +31,67 @@ async function extractPrefixFromElement(
   cmd: ParsedCommandElement,
 ): Promise<string | null> {
   // nameType === 'application' means the raw name had path chars (./x, x\y,
-  // x.exe) — PowerShell will run a file, not a named cmdlet. Don't suggest.
+  // x.exe): PowerShell will run a file, not a named cmdlet. Don't suggest.
   // Same reasoning as the permission engine's nameType gate (PR #20096).
-  if (cmd.nameType === 'application') {
-    return null
+  if (cmd.nameType === "application") {
+    return null;
   }
 
-  const name = cmd.name
+  const name = cmd.name;
   if (!name) {
-    return null
+    return null;
   }
 
   if (NEVER_SUGGEST.has(name.toLowerCase())) {
-    return null
+    return null;
   }
 
   // Cmdlets (Verb-Noun): the name alone is the right prefix granularity.
   // Get-Process -Name pwsh → Get-Process. There's no subcommand concept.
-  if (cmd.nameType === 'cmdlet') {
-    return name
+  if (cmd.nameType === "cmdlet") {
+    return name;
   }
 
   // External command. Guard the argv before feeding it to buildPrefix.
   //
   // elementTypes[0] (command name) must be a literal. `& $cmd status` has
-  // elementTypes[0]='Variable', name='$cmd' — classifies as 'unknown' (no path
+  // elementTypes[0]='Variable', name='$cmd': classifies as 'unknown' (no path
   // chars), passes NEVER_SUGGEST, getCommandSpec('$cmd')=null → returns bare
   // '$cmd' → dead rule. Cheap to gate here.
   //
   // elementTypes[1..] (args) must all be StringConstant or Parameter. Anything
   // dynamic (Variable/SubExpression/ScriptBlock/ExpandableString) would embed
   // `$foo`/`$(...)` in the prefix → dead rule.
-  if (cmd.elementTypes?.[0] !== 'StringConstant') {
-    return null
+  if (cmd.elementTypes?.[0] !== "StringConstant") {
+    return null;
   }
   for (let i = 0; i < cmd.args.length; i++) {
-    const t = cmd.elementTypes[i + 1]
-    if (t !== 'StringConstant' && t !== 'Parameter') {
-      return null
+    const t = cmd.elementTypes[i + 1];
+    if (t !== "StringConstant" && t !== "Parameter") {
+      return null;
     }
   }
 
-  // Consult the fig spec — same oracle bash uses. If git's spec says -C takes
+  // Consult the fig spec: same oracle bash uses. If git's spec says -C takes
   // a value, buildPrefix skips -C /repo and finds `status` as a subcommand.
   // Lowercase for lookup: fig specs are filesystem paths (git.js), case-
   // sensitive on Linux. PowerShell is case-insensitive (Git === git) so `Git`
   // must resolve to the git spec. macOS hides this bug (case-insensitive fs).
-  // Call buildPrefix unconditionally — calculateDepth consults DEPTH_RULES
+  // Call buildPrefix unconditionally: calculateDepth consults DEPTH_RULES
   // before its own `if (!spec) return 2` fallback, so gcloud/aws/kubectl/az
   // get depth-aware prefixes even without a loaded spec. The old
   // `if (!spec) return name` short-circuit produced bare `gcloud:*` which
   // auto-allows every gcloud subcommand.
-  const nameLower = name.toLowerCase()
-  const spec = await getCommandSpec(nameLower)
-  const prefix = await buildPrefix(name, cmd.args, spec)
+  const nameLower = name.toLowerCase();
+  const spec = await getCommandSpec(nameLower);
+  const prefix = await buildPrefix(name, cmd.args, spec);
 
   // Post-buildPrefix word integrity: buildPrefix space-joins consumed args
   // into the prefix string. parser.ts:685 stores .value (quote-stripped) for
   // single-quoted literals: git 'push origin' → args=['push origin']. If
-  // that arg is consumed, buildPrefix emits 'git push origin' — silently
+  // that arg is consumed, buildPrefix emits 'git push origin': silently
   // promoting 1 argv element to 3 prefix words. Rule PowerShell(git push
-  // origin:*) then matches `git push origin --force` (3-element argv) — not
+  // origin:*) then matches `git push origin --force` (3-element argv): not
   // what the user approved.
   //
   // The old set-membership check (`!cmd.args.includes(word)`) was defeated
@@ -103,56 +103,56 @@ async function extractPrefixFromElement(
   // their values are skipped (buildPrefix skips them too) so
   // `git -C '/my repo' status` and `git commit -m 'fix typo'` still pass.
   // Backslash (C:\repo) rejected: dead over-specific rule.
-  let argIdx = 0
-  for (const word of prefix.split(' ').slice(1)) {
-    if (word.includes('\\')) return null
+  let argIdx = 0;
+  for (const word of prefix.split(" ").slice(1)) {
+    if (word.includes("\\")) return null;
     while (argIdx < cmd.args.length) {
-      const a = cmd.args[argIdx]!
-      if (a === word) break
-      if (a.startsWith('-')) {
-        argIdx++
+      const a = cmd.args[argIdx]!;
+      if (a === word) break;
+      if (a.startsWith("-")) {
+        argIdx++;
         // Only skip the flag's value if the spec says this flag takes a
         // value argument. Without spec info, treat as a switch (no value)
-        // — fail-safe avoids over-skipping positional args. (bug #16)
+        //: fail-safe avoids over-skipping positional args. (bug #16)
         if (
           spec?.options &&
           argIdx < cmd.args.length &&
           cmd.args[argIdx] !== word &&
-          !cmd.args[argIdx]!.startsWith('-')
+          !cmd.args[argIdx]!.startsWith("-")
         ) {
-          const flagLower = a.toLowerCase()
-          const opt = spec.options.find(o =>
+          const flagLower = a.toLowerCase();
+          const opt = spec.options.find((o) =>
             Array.isArray(o.name)
               ? o.name.includes(flagLower)
               : o.name === flagLower,
-          )
+          );
           if (opt?.args) {
-            argIdx++
+            argIdx++;
           }
         }
-        continue
+        continue;
       }
       // Positional arg that isn't the expected word → arg was split.
-      return null
+      return null;
     }
-    if (argIdx >= cmd.args.length) return null
-    argIdx++
+    if (argIdx >= cmd.args.length) return null;
+    argIdx++;
   }
 
   // Bare-root guard: buildPrefix returns 'git' for `git` with no subcommand
-  // found (empty args, or only global flags). That's too broad — would
+  // found (empty args, or only global flags). That's too broad: would
   // auto-allow `git push --force` forever. Bash's extractor doesn't gate this
   // (bash/prefix.ts:363, separate fix). Reject single-word results for
   // commands whose spec declares subcommands OR that have DEPTH_RULES entries
   // (gcloud, aws, kubectl, etc.) which implies subcommand structure even
   // without a loaded spec. (bug #17)
   if (
-    !prefix.includes(' ') &&
+    !prefix.includes(" ") &&
     (spec?.subcommands?.length || DEPTH_RULES[nameLower])
   ) {
-    return null
+    return null;
   }
-  return prefix
+  return prefix;
 }
 
 /**
@@ -166,9 +166,9 @@ async function extractPrefixFromElement(
 export async function getCommandPrefixStatic(
   command: string,
 ): Promise<{ commandPrefix: string | null } | null> {
-  const parsed = await parsePowerShellCommand(command)
+  const parsed = await parsePowerShellCommand(command);
   if (!parsed.valid) {
-    return null
+    return null;
   }
 
   // Find the first actual command (CommandAst). getAllCommands iterates
@@ -176,13 +176,13 @@ export async function getCommandPrefixStatic(
   // Skip synthetic CommandExpressionAst entries (expression pipeline sources,
   // non-PipelineAst statement placeholders).
   const firstCommand = getAllCommands(parsed).find(
-    cmd => cmd.elementType === 'CommandAst',
-  )
+    (cmd) => cmd.elementType === "CommandAst",
+  );
   if (!firstCommand) {
-    return { commandPrefix: null }
+    return { commandPrefix: null };
   }
 
-  return { commandPrefix: await extractPrefixFromElement(firstCommand) }
+  return { commandPrefix: await extractPrefixFromElement(firstCommand) };
 }
 
 /**
@@ -190,14 +190,14 @@ export async function getCommandPrefixStatic(
  *
  * For `Get-Process; git status && npm test`, returns per-subcommand prefixes.
  * Subcommands for which `excludeSubcommand` returns true (e.g. already
- * read-only/auto-allowed) are skipped — no point suggesting a rule for them.
+ * read-only/auto-allowed) are skipped: no point suggesting a rule for them.
  * Prefixes sharing a root are collapsed via word-aligned LCP:
  * `npm run test && npm run lint` → `npm run`.
  *
  * The filter receives the ParsedCommandElement (not cmd.text) because
  * PowerShell's read-only check (isAllowlistedCommand) needs the element's
  * structured fields (nameType, args). Passing text would require reparsing,
- * which spawns pwsh.exe per subcommand — expensive and wasteful since we
+ * which spawns pwsh.exe per subcommand: expensive and wasteful since we
  * already have the parsed elements here. Bash's equivalent passes text
  * because BashTool.isReadOnly works from regex/patterns, not parsed AST.
  */
@@ -205,36 +205,36 @@ export async function getCompoundCommandPrefixesStatic(
   command: string,
   excludeSubcommand?: (element: ParsedCommandElement) => boolean,
 ): Promise<string[]> {
-  const parsed = await parsePowerShellCommand(command)
+  const parsed = await parsePowerShellCommand(command);
   if (!parsed.valid) {
-    return []
+    return [];
   }
 
   const commands = getAllCommands(parsed).filter(
-    cmd => cmd.elementType === 'CommandAst',
-  )
+    (cmd) => cmd.elementType === "CommandAst",
+  );
 
-  // Single command — no compound collapse needed.
+  // Single command: no compound collapse needed.
   if (commands.length <= 1) {
     const prefix = commands[0]
       ? await extractPrefixFromElement(commands[0])
-      : null
-    return prefix ? [prefix] : []
+      : null;
+    return prefix ? [prefix] : [];
   }
 
-  const prefixes: string[] = []
+  const prefixes: string[] = [];
   for (const cmd of commands) {
     if (excludeSubcommand?.(cmd)) {
-      continue
+      continue;
     }
-    const prefix = await extractPrefixFromElement(cmd)
+    const prefix = await extractPrefixFromElement(cmd);
     if (prefix) {
-      prefixes.push(prefix)
+      prefixes.push(prefix);
     }
   }
 
   if (prefixes.length === 0) {
-    return []
+    return [];
   }
 
   // Group by root command (first word) and collapse each group via
@@ -247,40 +247,40 @@ export async function getCompoundCommandPrefixesStatic(
   // rather than suggest either the too-broad root or N un-collapsed rules.
   //
   // Bash's getCompoundCommandPrefixesStatic has this same collapse without
-  // the guard (src/utils/bash/prefix.ts:360-365) — that's a separate fix.
+  // the guard (src/utils/bash/prefix.ts:360-365): that's a separate fix.
   //
   // Grouping and word-comparison are case-insensitive (PowerShell is
   // case-insensitive: Git === git, Get-Process === get-process). The Map key
   // is lowercased; the emitted prefix keeps the first-seen casing.
-  const groups = new Map<string, string[]>()
+  const groups = new Map<string, string[]>();
   for (const prefix of prefixes) {
-    const root = prefix.split(' ')[0]!
-    const key = root.toLowerCase()
-    const group = groups.get(key)
+    const root = prefix.split(" ")[0]!;
+    const key = root.toLowerCase();
+    const group = groups.get(key);
     if (group) {
-      group.push(prefix)
+      group.push(prefix);
     } else {
-      groups.set(key, [prefix])
+      groups.set(key, [prefix]);
     }
   }
 
-  const collapsed: string[] = []
+  const collapsed: string[] = [];
   for (const [rootLower, group] of groups) {
-    const lcp = wordAlignedLCP(group)
-    const lcpWordCount = lcp === '' ? 0 : countCharInString(lcp, ' ') + 1
+    const lcp = wordAlignedLCP(group);
+    const lcpWordCount = lcp === "" ? 0 : countCharInString(lcp, " ") + 1;
     if (lcpWordCount <= 1) {
       // LCP collapsed to a single word. If that root's fig spec declares
       // subcommands, this is the same too-broad case extractPrefixFromElement
       // rejects (bare `git` → allows `git push --force`). Drop the group.
       // getCommandSpec is LRU-memoized; one lookup per distinct root.
-      const rootSpec = await getCommandSpec(rootLower)
+      const rootSpec = await getCommandSpec(rootLower);
       if (rootSpec?.subcommands?.length || DEPTH_RULES[rootLower]) {
-        continue
+        continue;
       }
     }
-    collapsed.push(lcp)
+    collapsed.push(lcp);
   }
-  return collapsed
+  return collapsed;
 }
 
 /**
@@ -292,25 +292,25 @@ export async function getCompoundCommandPrefixesStatic(
  * ["Get-Process"] → "Get-Process"
  */
 function wordAlignedLCP(strings: string[]): string {
-  if (strings.length === 0) return ''
-  if (strings.length === 1) return strings[0]!
+  if (strings.length === 0) return "";
+  if (strings.length === 1) return strings[0]!;
 
-  const firstWords = strings[0]!.split(' ')
-  let commonWordCount = firstWords.length
+  const firstWords = strings[0]!.split(" ");
+  let commonWordCount = firstWords.length;
 
   for (let i = 1; i < strings.length; i++) {
-    const words = strings[i]!.split(' ')
-    let matchCount = 0
+    const words = strings[i]!.split(" ");
+    let matchCount = 0;
     while (
       matchCount < commonWordCount &&
       matchCount < words.length &&
       words[matchCount]!.toLowerCase() === firstWords[matchCount]!.toLowerCase()
     ) {
-      matchCount++
+      matchCount++;
     }
-    commonWordCount = matchCount
-    if (commonWordCount === 0) break
+    commonWordCount = matchCount;
+    if (commonWordCount === 0) break;
   }
 
-  return firstWords.slice(0, commonWordCount).join(' ')
+  return firstWords.slice(0, commonWordCount).join(" ");
 }

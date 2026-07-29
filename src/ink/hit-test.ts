@@ -1,18 +1,18 @@
-import type { DOMElement } from './dom.js'
-import { ClickEvent } from './events/click-event.js'
-import type { EventHandlerProps } from './events/event-handlers.js'
-import { nodeCache } from './node-cache.js'
+import type { DOMElement } from "./dom.js";
+import { ClickEvent } from "./events/click-event.js";
+import type { EventHandlerProps } from "./events/event-handlers.js";
+import { nodeCache } from "./node-cache.js";
 
 /**
  * Find the deepest DOM element whose rendered rect contains (col, row).
  *
- * Uses the nodeCache populated by renderNodeToOutput — rects are in screen
+ * Uses the nodeCache populated by renderNodeToOutput: rects are in screen
  * coordinates with all offsets (including scrollTop translation) already
  * applied. Children are traversed in reverse so later siblings (painted on
  * top) win. Nodes not in nodeCache (not rendered this frame, or lacking a
  * yogaNode) are skipped along with their subtrees.
  *
- * Returns the hit node even if it has no onClick — dispatchClick walks up
+ * Returns the hit node even if it has no onClick: dispatchClick walks up
  * via parentNode to find handlers.
  */
 export function hitTest(
@@ -20,24 +20,24 @@ export function hitTest(
   col: number,
   row: number,
 ): DOMElement | null {
-  const rect = nodeCache.get(node)
-  if (!rect) return null
+  const rect = nodeCache.get(node);
+  if (!rect) return null;
   if (
     col < rect.x ||
     col >= rect.x + rect.width ||
     row < rect.y ||
     row >= rect.y + rect.height
   ) {
-    return null
+    return null;
   }
   // Later siblings paint on top; reversed traversal returns topmost hit.
   for (let i = node.childNodes.length - 1; i >= 0; i--) {
-    const child = node.childNodes[i]!
-    if (child.nodeName === '#text') continue
-    const hit = hitTest(child, col, row)
-    if (hit) return hit
+    const child = node.childNodes[i]!;
+    if (child.nodeName === "#text") continue;
+    const hit = hitTest(child, col, row);
+    if (hit) return hit;
   }
-  return node
+  return node;
 }
 
 /**
@@ -52,45 +52,45 @@ export function dispatchClick(
   row: number,
   cellIsBlank = false,
 ): boolean {
-  let target: DOMElement | undefined = hitTest(root, col, row) ?? undefined
-  if (!target) return false
+  let target: DOMElement | undefined = hitTest(root, col, row) ?? undefined;
+  if (!target) return false;
 
   // Click-to-focus: find the closest focusable ancestor and focus it.
   // root is always ink-root, which owns the FocusManager.
   if (root.focusManager) {
-    let focusTarget: DOMElement | undefined = target
+    let focusTarget: DOMElement | undefined = target;
     while (focusTarget) {
-      if (typeof focusTarget.attributes['tabIndex'] === 'number') {
-        root.focusManager.handleClickFocus(focusTarget)
-        break
+      if (typeof focusTarget.attributes["tabIndex"] === "number") {
+        root.focusManager.handleClickFocus(focusTarget);
+        break;
       }
-      focusTarget = focusTarget.parentNode
+      focusTarget = focusTarget.parentNode;
     }
   }
-  const event = new ClickEvent(col, row, cellIsBlank)
-  let handled = false
+  const event = new ClickEvent(col, row, cellIsBlank);
+  let handled = false;
   while (target) {
     const handler = target._eventHandlers?.onClick as
       | ((event: ClickEvent) => void)
-      | undefined
+      | undefined;
     if (handler) {
-      handled = true
-      const rect = nodeCache.get(target)
+      handled = true;
+      const rect = nodeCache.get(target);
       if (rect) {
-        event.localCol = col - rect.x
-        event.localRow = row - rect.y
+        event.localCol = col - rect.x;
+        event.localRow = row - rect.y;
       }
-      handler(event)
-      if (event.didStopImmediatePropagation()) return true
+      handler(event);
+      if (event.didStopImmediatePropagation()) return true;
     }
-    target = target.parentNode
+    target = target.parentNode;
   }
-  return handled
+  return handled;
 }
 
 /**
  * Fire onMouseEnter/onMouseLeave as the pointer moves. Like DOM
- * mouseenter/mouseleave: does NOT bubble — moving between children does
+ * mouseenter/mouseleave: does NOT bubble: moving between children does
  * not re-fire on the parent. Walks up from the hit node collecting every
  * ancestor with a hover handler; diffs against the previous hovered set;
  * fires leave on the nodes exited, enter on the nodes entered.
@@ -105,26 +105,26 @@ export function dispatchHover(
   row: number,
   hovered: Set<DOMElement>,
 ): void {
-  const next = new Set<DOMElement>()
-  let node: DOMElement | undefined = hitTest(root, col, row) ?? undefined
+  const next = new Set<DOMElement>();
+  let node: DOMElement | undefined = hitTest(root, col, row) ?? undefined;
   while (node) {
-    const h = node._eventHandlers as EventHandlerProps | undefined
-    if (h?.onMouseEnter || h?.onMouseLeave) next.add(node)
-    node = node.parentNode
+    const h = node._eventHandlers as EventHandlerProps | undefined;
+    if (h?.onMouseEnter || h?.onMouseLeave) next.add(node);
+    node = node.parentNode;
   }
   for (const old of hovered) {
     if (!next.has(old)) {
-      hovered.delete(old)
+      hovered.delete(old);
       // Skip handlers on detached nodes (removed between mouse events)
       if (old.parentNode) {
-        ;(old._eventHandlers as EventHandlerProps | undefined)?.onMouseLeave?.()
+        (old._eventHandlers as EventHandlerProps | undefined)?.onMouseLeave?.();
       }
     }
   }
   for (const n of next) {
     if (!hovered.has(n)) {
-      hovered.add(n)
-      ;(n._eventHandlers as EventHandlerProps | undefined)?.onMouseEnter?.()
+      hovered.add(n);
+      (n._eventHandlers as EventHandlerProps | undefined)?.onMouseEnter?.();
     }
   }
 }

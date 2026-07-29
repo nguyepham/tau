@@ -29,55 +29,57 @@ import {
   QWEN_TOOL_USAGE_RULES,
   OPENAI_COMPAT_TOOL_USAGE_RULES,
   appendStrictParamsHint,
-} from './mcp_bridge.js'
+} from "./mcp_bridge.js";
 
-let passed = 0
-let failed = 0
+let passed = 0;
+let failed = 0;
 
 function test(name: string, fn: () => void): void {
   try {
-    fn()
-    passed++
-    console.log(`  ok  ${name}`)
+    fn();
+    passed++;
+    console.log(`  ok  ${name}`);
   } catch (e: any) {
-    failed++
-    console.log(`  FAIL ${name}: ${e?.message ?? String(e)}`)
+    failed++;
+    console.log(`  FAIL ${name}: ${e?.message ?? String(e)}`);
   }
 }
 
 function assert(cond: unknown, hint: string): void {
-  if (!cond) throw new Error(hint)
+  if (!cond) throw new Error(hint);
 }
 
 function main(): void {
-  console.log('cross-lane parity (tool call protections):')
+  console.log("cross-lane parity (tool call protections):");
 
   const preambles: Array<{ lane: string; rules: string }> = [
-    { lane: 'gemini', rules: GEMINI_TOOL_USAGE_RULES },
-    { lane: 'codex', rules: CODEX_TOOL_USAGE_RULES },
-    { lane: 'qwen', rules: QWEN_TOOL_USAGE_RULES },
-    { lane: 'openai-compat', rules: OPENAI_COMPAT_TOOL_USAGE_RULES },
-  ]
+    { lane: "gemini", rules: GEMINI_TOOL_USAGE_RULES },
+    { lane: "codex", rules: CODEX_TOOL_USAGE_RULES },
+    { lane: "qwen", rules: QWEN_TOOL_USAGE_RULES },
+    { lane: "openai-compat", rules: OPENAI_COMPAT_TOOL_USAGE_RULES },
+  ];
 
   // Every lane has a TOOL_USAGE_RULES preamble defined.
   for (const { lane, rules } of preambles) {
     test(`${lane} exports non-empty TOOL_USAGE_RULES`, () => {
-      assert(typeof rules === 'string' && rules.length > 50,
-        `${lane} rules too short: ${rules.length}`)
-    })
+      assert(
+        typeof rules === "string" && rules.length > 50,
+        `${lane} rules too short: ${rules.length}`,
+      );
+    });
   }
 
   // Every preamble carries the three core nudges (wording varies by lane).
   const coreNudges: Array<[RegExp, string]> = [
-    [/required|never send empty|never omit/i, 'required-field nudge'],
-    [/case-sensitive|exactly/i, 'case-sensitivity / exact-name nudge'],
-    [/types exactly|match.*type|array.*object/i, 'type-match nudge'],
-  ]
+    [/required|never send empty|never omit/i, "required-field nudge"],
+    [/case-sensitive|exactly/i, "case-sensitivity / exact-name nudge"],
+    [/types exactly|match.*type|array.*object/i, "type-match nudge"],
+  ];
   for (const { lane, rules } of preambles) {
     for (const [re, label] of coreNudges) {
       test(`${lane} preamble carries ${label}`, () => {
-        assert(re.test(rules), `missing ${label} in ${lane}:\n${rules}`)
-      })
+        assert(re.test(rules), `missing ${label} in ${lane}:\n${rules}`);
+      });
     }
   }
 
@@ -88,57 +90,64 @@ function main(): void {
   // tokens. The exact wording varies; the *intent* must be present in
   // every lane.
   const diagnoseNudges: Array<[RegExp, string]> = [
-    [/diagnose|exit code|error text/i, 'diagnose-the-failure nudge'],
-    [/cosmetic variants|blind retries|don'?t iterate|don'?t retry/i, 'no-blind-retry nudge'],
-    [/--help|docs|documentation/i, 'check-docs-before-guessing nudge'],
-  ]
+    [/diagnose|exit code|error text/i, "diagnose-the-failure nudge"],
+    [
+      /cosmetic variants|blind retries|don'?t iterate|don'?t retry/i,
+      "no-blind-retry nudge",
+    ],
+    [/--help|docs|documentation/i, "check-docs-before-guessing nudge"],
+  ];
   for (const { lane, rules } of preambles) {
     for (const [re, label] of diagnoseNudges) {
       test(`${lane} preamble carries ${label}`, () => {
-        assert(re.test(rules), `missing ${label} in ${lane}:\n${rules}`)
-      })
+        assert(re.test(rules), `missing ${label} in ${lane}:\n${rules}`);
+      });
     }
   }
 
   // Every preamble fits under 1KB so cache cost stays small.
   for (const { lane, rules } of preambles) {
     test(`${lane} preamble under 1024 bytes`, () => {
-      const b = Buffer.byteLength(rules, 'utf-8')
-      assert(b < 1024, `${lane} preamble too long: ${b} bytes`)
-    })
+      const b = Buffer.byteLength(rules, "utf-8");
+      assert(b < 1024, `${lane} preamble too long: ${b} bytes`);
+    });
   }
 
   // appendStrictParamsHint is idempotent across all lanes (same helper).
-  test('appendStrictParamsHint is idempotent (single helper across lanes)', () => {
+  test("appendStrictParamsHint is idempotent (single helper across lanes)", () => {
     const schema = {
-      type: 'object',
-      properties: { x: { type: 'string' } },
-      required: ['x'],
-    }
-    const a = appendStrictParamsHint('desc', schema)
-    const b = appendStrictParamsHint(a, schema)
-    assert(a === b, 'hint double-applied')
-  })
+      type: "object",
+      properties: { x: { type: "string" } },
+      required: ["x"],
+    };
+    const a = appendStrictParamsHint("desc", schema);
+    const b = appendStrictParamsHint(a, schema);
+    assert(a === b, "hint double-applied");
+  });
 
-  test('appendStrictParamsHint names required fields', () => {
-    const hinted = appendStrictParamsHint('Runs command', {
-      type: 'object',
-      properties: { command: { type: 'string' } },
-      required: ['command'],
-    })
-    assert(hinted.includes('command: string REQUIRED'),
-      `REQUIRED marker missing: ${hinted}`)
-  })
+  test("appendStrictParamsHint names required fields", () => {
+    const hinted = appendStrictParamsHint("Runs command", {
+      type: "object",
+      properties: { command: { type: "string" } },
+      required: ["command"],
+    });
+    assert(
+      hinted.includes("command: string REQUIRED"),
+      `REQUIRED marker missing: ${hinted}`,
+    );
+  });
 
-  // Preamble cross-contamination check — each is distinct.
-  test('preambles are distinct strings (no copy-paste)', () => {
-    const set = new Set(preambles.map(p => p.rules))
-    assert(set.size === preambles.length,
-      'two lanes share the same preamble text — each should be tuned natively')
-  })
+  // Preamble cross-contamination check: each is distinct.
+  test("preambles are distinct strings (no copy-paste)", () => {
+    const set = new Set(preambles.map((p) => p.rules));
+    assert(
+      set.size === preambles.length,
+      "two lanes share the same preamble text: each should be tuned natively",
+    );
+  });
 
-  console.log(`\n${passed} passed, ${failed} failed`)
-  if (failed > 0) process.exit(1)
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exit(1);
 }
 
-main()
+main();

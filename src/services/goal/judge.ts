@@ -24,26 +24,26 @@
  * loop; the worst case is exactly today's self-report behavior.
  */
 
-import type { ToolUseContext } from '../../Tool.js'
-import { logForDebugging } from '../../utils/debug.js'
+import type { ToolUseContext } from "../../Tool.js";
+import { logForDebugging } from "../../utils/debug.js";
 import {
   getLastCacheSafeParams,
   runForkedAgent,
-} from '../../utils/forkedAgent.js'
-import { createUserMessage, extractTextContent } from '../../utils/messages.js'
+} from "../../utils/forkedAgent.js";
+import { createUserMessage, extractTextContent } from "../../utils/messages.js";
 import {
   buildGoalJudgePrompt,
   parseJudgeVerdict,
   type GoalVerdict,
-} from './judgePrompt.js'
-import type { GoalState } from './types.js'
+} from "./judgePrompt.js";
+import type { GoalState } from "./types.js";
 
 /**
  * Safety cap on the verifier's loop. It has no tools, so one round-trip is the
  * expected shape; the second is slack for a model that reacts to a tool denial
  * before answering. Client-side only, so it does not touch the cache key.
  */
-const JUDGE_MAX_TURNS = 2
+const JUDGE_MAX_TURNS = 2;
 
 /**
  * Asks the verifier whether the conversation satisfies the goal.
@@ -57,26 +57,26 @@ export async function runGoalJudge(
 ): Promise<GoalVerdict | null> {
   // Written by handleStopHooks each turn; the goal loop runs after stop hooks,
   // so it is populated by the time we get here. Null means no turn has settled
-  // yet — verifying without the parent's prefix would be an uncached re-read of
+  // yet: verifying without the parent's prefix would be an uncached re-read of
   // the whole session, so skip instead.
-  const cacheSafeParams = getLastCacheSafeParams()
+  const cacheSafeParams = getLastCacheSafeParams();
   if (!cacheSafeParams) {
-    logForDebugging('Goal judge skipped: no cache-safe params for this turn')
-    return null
+    logForDebugging("Goal judge skipped: no cache-safe params for this turn");
+    return null;
   }
 
-  if (toolUseContext.abortController.signal.aborted) return null
+  if (toolUseContext.abortController.signal.aborted) return null;
 
-  // Deny via the callback rather than by passing tools: [] — an empty tool list
+  // Deny via the callback rather than by passing tools: []: an empty tool list
   // changes the cache key and costs the whole prefix.
   const canUseTool = async () => ({
-    behavior: 'deny' as const,
-    message: 'The goal verifier does not run tools.',
+    behavior: "deny" as const,
+    message: "The goal verifier does not run tools.",
     decisionReason: {
-      type: 'other' as const,
-      reason: 'goal verification is read-only',
+      type: "other" as const,
+      reason: "goal verification is read-only",
     },
-  })
+  });
 
   try {
     const result = await runForkedAgent({
@@ -90,37 +90,39 @@ export async function runGoalJudge(
       // Deliberately not one of the tracked prefixes in
       // promptCacheBreakDetection (repl_main_thread / sdk / agent:*), so a
       // verification fork never registers as a cache break on the main thread.
-      querySource: 'goal_judge',
-      forkLabel: 'goal_judge',
+      querySource: "goal_judge",
+      forkLabel: "goal_judge",
       maxTurns: JUDGE_MAX_TURNS,
       skipTranscript: true,
       skipCacheWrite: true,
-    })
+    });
 
     // Scan every assistant message, last one first: a model that reacts to the
     // tool denial before answering puts the verdict in its final message.
     for (let i = result.messages.length - 1; i >= 0; i--) {
-      const message = result.messages[i]
-      if (message?.type !== 'assistant') continue
-      const text = extractTextContent(message.message.content, '\n')
-      if (!text) continue
-      const verdict = parseJudgeVerdict(text)
+      const message = result.messages[i];
+      if (message?.type !== "assistant") continue;
+      const text = extractTextContent(message.message.content, "\n");
+      if (!text) continue;
+      const verdict = parseJudgeVerdict(text);
       if (verdict) {
         logForDebugging(
           `Goal judge verdict: passed=${verdict.passed}${
-            verdict.feedback ? ` feedback=${verdict.feedback.slice(0, 120)}` : ''
+            verdict.feedback
+              ? ` feedback=${verdict.feedback.slice(0, 120)}`
+              : ""
           }`,
-        )
-        return verdict
+        );
+        return verdict;
       }
     }
 
-    logForDebugging('Goal judge returned no parseable verdict')
-    return null
+    logForDebugging("Goal judge returned no parseable verdict");
+    return null;
   } catch (error) {
     logForDebugging(
       `Goal judge failed: ${error instanceof Error ? error.message : String(error)}`,
-    )
-    return null
+    );
+    return null;
   }
 }

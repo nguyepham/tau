@@ -1,84 +1,84 @@
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { randomUUID, type UUID } from 'crypto'
-import { getSessionId } from 'src/bootstrap/state.js'
+import type { BetaContentBlock } from "@anthropic-ai/sdk/resources/beta/messages/messages.mjs";
+import { randomUUID, type UUID } from "crypto";
+import { getSessionId } from "src/bootstrap/state.js";
 import {
   LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
-} from 'src/constants/xml.js'
+} from "src/constants/xml.js";
 import type {
   SDKAssistantMessage,
   SDKCompactBoundaryMessage,
   SDKMessage,
   SDKRateLimitInfo,
-} from 'src/entrypoints/agentSdkTypes.js'
-import type { ClaudeAILimits } from 'src/services/claudeAiLimits.js'
-import { EXIT_PLAN_MODE_V2_TOOL_NAME } from 'src/tools/ExitPlanModeTool/constants.js'
+} from "src/entrypoints/agentSdkTypes.js";
+import type { ClaudeAILimits } from "src/services/claudeAiLimits.js";
+import { EXIT_PLAN_MODE_V2_TOOL_NAME } from "src/tools/ExitPlanModeTool/constants.js";
 import type {
   AssistantMessage,
   CompactMetadata,
   Message,
-} from 'src/types/message.js'
-import type { DeepImmutable } from 'src/types/utils.js'
-import stripAnsi from 'strip-ansi'
-import { createAssistantMessage } from '../messages.js'
-import { getPlan } from '../plans.js'
+} from "src/types/message.js";
+import type { DeepImmutable } from "src/types/utils.js";
+import stripAnsi from "strip-ansi";
+import { createAssistantMessage } from "../messages.js";
+import { getPlan } from "../plans.js";
 
 export function toInternalMessages(
   messages: readonly DeepImmutable<SDKMessage>[],
 ): Message[] {
-  return messages.flatMap(message => {
+  return messages.flatMap((message) => {
     switch (message.type) {
-      case 'assistant':
+      case "assistant":
         return [
           {
-            type: 'assistant',
+            type: "assistant",
             message: message.message,
             uuid: message.uuid,
             requestId: undefined,
             timestamp: new Date().toISOString(),
           } as Message,
-        ]
-      case 'user':
+        ];
+      case "user":
         return [
           {
-            type: 'user',
+            type: "user",
             message: message.message,
             uuid: message.uuid ?? randomUUID(),
             timestamp: message.timestamp ?? new Date().toISOString(),
             isMeta: message.isSynthetic,
           } as Message,
-        ]
-      case 'system':
+        ];
+      case "system":
         // Handle compact boundary messages
-        if (message.subtype === 'compact_boundary') {
-          const compactMsg = message
+        if (message.subtype === "compact_boundary") {
+          const compactMsg = message;
           return [
             {
-              type: 'system',
-              content: 'Conversation compacted',
-              level: 'info',
-              subtype: 'compact_boundary',
+              type: "system",
+              content: "Conversation compacted",
+              level: "info",
+              subtype: "compact_boundary",
               compactMetadata: fromSDKCompactMetadata(
                 compactMsg.compact_metadata,
               ),
               uuid: message.uuid,
               timestamp: new Date().toISOString(),
             },
-          ]
+          ];
         }
-        return []
+        return [];
       default:
-        return []
+        return [];
     }
-  })
+  });
 }
 
-type SDKCompactMetadata = SDKCompactBoundaryMessage['compact_metadata']
+type SDKCompactMetadata = SDKCompactBoundaryMessage["compact_metadata"];
 
 export function toSDKCompactMetadata(
   meta: CompactMetadata,
 ): SDKCompactMetadata {
-  const seg = meta.preservedSegment
+  const seg = meta.preservedSegment;
   return {
     trigger: meta.trigger,
     pre_tokens: meta.preTokens,
@@ -89,7 +89,7 @@ export function toSDKCompactMetadata(
         tail_uuid: seg.tailUuid,
       },
     }),
-  }
+  };
 }
 
 /**
@@ -98,7 +98,7 @@ export function toSDKCompactMetadata(
 export function fromSDKCompactMetadata(
   meta: SDKCompactMetadata,
 ): CompactMetadata {
-  const seg = meta.preserved_segment
+  const seg = meta.preserved_segment;
   return {
     trigger: meta.trigger,
     preTokens: meta.pre_tokens,
@@ -109,27 +109,27 @@ export function fromSDKCompactMetadata(
         tailUuid: seg.tail_uuid,
       },
     }),
-  }
+  };
 }
 
 export function toSDKMessages(messages: Message[]): SDKMessage[] {
   return messages.flatMap((message): SDKMessage[] => {
     switch (message.type) {
-      case 'assistant':
+      case "assistant":
         return [
           {
-            type: 'assistant',
+            type: "assistant",
             message: normalizeAssistantMessageForSDK(message),
             session_id: getSessionId(),
             parent_tool_use_id: null,
             uuid: message.uuid,
             error: message.error,
           },
-        ]
-      case 'user':
+        ];
+      case "user":
         return [
           {
-            type: 'user',
+            type: "user",
             message: message.message,
             session_id: getSessionId(),
             parent_tool_use_id: null,
@@ -137,32 +137,32 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
             timestamp: message.timestamp,
             isSynthetic: message.isMeta || message.isVisibleInTranscriptOnly,
             // Structured tool output (not the string content sent to the
-            // model — the full Output object). Rides the protobuf catchall
+            // model: the full Output object). Rides the protobuf catchall
             // so web viewers can read things like BriefTool's file_uuid
             // without it polluting model context.
             ...(message.toolUseResult !== undefined
               ? { tool_use_result: message.toolUseResult }
               : {}),
           },
-        ]
-      case 'system':
-        if (message.subtype === 'compact_boundary' && message.compactMetadata) {
+        ];
+      case "system":
+        if (message.subtype === "compact_boundary" && message.compactMetadata) {
           return [
             {
-              type: 'system',
-              subtype: 'compact_boundary' as const,
+              type: "system",
+              subtype: "compact_boundary" as const,
               session_id: getSessionId(),
               uuid: message.uuid,
               compact_metadata: toSDKCompactMetadata(message.compactMetadata),
             },
-          ]
+          ];
         }
         // Only convert local_command messages that contain actual command
         // output (stdout/stderr). The same subtype is also used for command
         // input metadata (e.g. <command-name>...</command-name>) which must
         // not leak to the RC web UI.
         if (
-          message.subtype === 'local_command' &&
+          message.subtype === "local_command" &&
           (message.content.includes(`<${LOCAL_COMMAND_STDOUT_TAG}>`) ||
             message.content.includes(`<${LOCAL_COMMAND_STDERR_TAG}>`))
         ) {
@@ -171,13 +171,13 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
               message.content,
               message.uuid,
             ),
-          ]
+          ];
         }
-        return []
+        return [];
       default:
-        return []
+        return [];
     }
-  })
+  });
 }
 
 /**
@@ -198,20 +198,20 @@ export function localCommandOutputToSDKAssistantMessage(
   uuid: UUID,
 ): SDKAssistantMessage {
   const cleanContent = stripAnsi(rawContent)
-    .replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/, '$1')
-    .replace(/<local-command-stderr>([\s\S]*?)<\/local-command-stderr>/, '$1')
-    .trim()
+    .replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/, "$1")
+    .replace(/<local-command-stderr>([\s\S]*?)<\/local-command-stderr>/, "$1")
+    .trim();
   // createAssistantMessage builds a complete APIAssistantMessage with id, type,
-  // model: SYNTHETIC_MODEL, role, stop_reason, usage — all fields required by
+  // model: SYNTHETIC_MODEL, role, stop_reason, usage: all fields required by
   // downstream deserializers like Android's SdkAssistantMessage.
-  const synthetic = createAssistantMessage({ content: cleanContent })
+  const synthetic = createAssistantMessage({ content: cleanContent });
   return {
-    type: 'assistant',
+    type: "assistant",
     message: synthetic.message,
     parent_tool_use_id: null,
     session_id: getSessionId(),
     uuid,
-  }
+  };
 }
 
 /**
@@ -222,7 +222,7 @@ export function toSDKRateLimitInfo(
   limits: ClaudeAILimits | undefined,
 ): SDKRateLimitInfo | undefined {
   if (!limits) {
-    return undefined
+    return undefined;
   }
   return {
     status: limits.status,
@@ -248,7 +248,7 @@ export function toSDKRateLimitInfo(
     ...(limits.surpassedThreshold !== undefined && {
       surpassedThreshold: limits.surpassedThreshold,
     }),
-  }
+  };
 }
 
 /**
@@ -259,32 +259,32 @@ export function toSDKRateLimitInfo(
  */
 function normalizeAssistantMessageForSDK(
   message: AssistantMessage,
-): AssistantMessage['message'] {
-  const content = message.message.content
+): AssistantMessage["message"] {
+  const content = message.message.content;
   if (!Array.isArray(content)) {
-    return message.message
+    return message.message;
   }
 
   const normalizedContent = content.map((block): BetaContentBlock => {
-    if (block.type !== 'tool_use') {
-      return block
+    if (block.type !== "tool_use") {
+      return block;
     }
 
     if (block.name === EXIT_PLAN_MODE_V2_TOOL_NAME) {
-      const plan = getPlan()
+      const plan = getPlan();
       if (plan) {
         return {
           ...block,
           input: { ...(block.input as Record<string, unknown>), plan },
-        }
+        };
       }
     }
 
-    return block
-  })
+    return block;
+  });
 
   return {
     ...message.message,
     content: normalizedContent,
-  }
+  };
 }

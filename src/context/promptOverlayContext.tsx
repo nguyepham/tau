@@ -5,22 +5,28 @@ import { c as _c } from "react/compiler-runtime";
  *
  * The clip is load-bearing (CC-668: tall pastes squash the ScrollBox
  * without it), but floating overlays use `position:absolute
- * bottom="100%"` to float above the prompt — and Ink's clip stack
+ * bottom="100%"` to float above the prompt: and Ink's clip stack
  * intersects ALL descendants, so they were clipped to ~1 row.
  *
  * Two channels:
- * - `useSetPromptOverlay` — slash-command suggestion data (structured,
+ * - `useSetPromptOverlay`: slash-command suggestion data (structured,
  *   written by PromptInputFooter)
- * - `useSetPromptOverlayDialog` — arbitrary dialog node (e.g.
+ * - `useSetPromptOverlayDialog`: arbitrary dialog node (e.g.
  *   AutoModeOptInDialog, written by PromptInput)
  *
  * FullscreenLayout reads both and renders them outside the clipped slot.
  *
  * Split into data/setter context pairs so writers never re-render on
- * their own writes — the setter contexts are stable.
+ * their own writes: the setter contexts are stable.
  */
-import React, { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
-import type { SuggestionItem } from '../components/PromptInput/PromptInputFooterSuggestions.js';
+import React, {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import type { SuggestionItem } from "../components/PromptInput/PromptInputFooterSuggestions.js";
 export type PromptOverlayData = {
   suggestions: SuggestionItem[];
   selectedSuggestion: number;
@@ -33,14 +39,14 @@ const DialogContext = createContext<ReactNode>(null);
 const SetDialogContext = createContext<Setter<ReactNode> | null>(null);
 export function PromptOverlayProvider(t0) {
   const $ = _c(6);
-  const {
-    children
-  } = t0;
+  const { children } = t0;
   const [data, setData] = useState(null);
   const [dialog, setDialog] = useState(null);
   let t1;
   if ($[0] !== children || $[1] !== dialog) {
-    t1 = <DialogContext.Provider value={dialog}>{children}</DialogContext.Provider>;
+    t1 = (
+      <DialogContext.Provider value={dialog}>{children}</DialogContext.Provider>
+    );
     $[0] = children;
     $[1] = dialog;
     $[2] = t1;
@@ -49,7 +55,13 @@ export function PromptOverlayProvider(t0) {
   }
   let t2;
   if ($[3] !== data || $[4] !== t1) {
-    t2 = <SetContext.Provider value={setData}><SetDialogContext.Provider value={setDialog}><DataContext.Provider value={data}>{t1}</DataContext.Provider></SetDialogContext.Provider></SetContext.Provider>;
+    t2 = (
+      <SetContext.Provider value={setData}>
+        <SetDialogContext.Provider value={setDialog}>
+          <DataContext.Provider value={data}>{t1}</DataContext.Provider>
+        </SetDialogContext.Provider>
+      </SetContext.Provider>
+    );
     $[3] = data;
     $[4] = t1;
     $[5] = t2;

@@ -1,22 +1,22 @@
-import { getSessionMemoryContent } from '../../services/SessionMemory/sessionMemoryUtils.js'
-import type { Message } from '../../types/message.js'
-import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
-import { registerBundledSkill } from '../bundledSkills.js'
+import { getSessionMemoryContent } from "../../services/SessionMemory/sessionMemoryUtils.js";
+import type { Message } from "../../types/message.js";
+import { getMessagesAfterCompactBoundary } from "../../utils/messages.js";
+import { registerBundledSkill } from "../bundledSkills.js";
 
 function extractUserMessages(messages: Message[]): string[] {
   return messages
-    .filter((m): m is Extract<typeof m, { type: 'user' }> => m.type === 'user')
-    .map(m => {
-      const content = m.message.content
-      if (typeof content === 'string') return content
+    .filter((m): m is Extract<typeof m, { type: "user" }> => m.type === "user")
+    .map((m) => {
+      const content = m.message.content;
+      if (typeof content === "string") return content;
       return content
         .filter(
-          (b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text',
+          (b): b is Extract<typeof b, { type: "text" }> => b.type === "text",
         )
-        .map(b => b.text)
-        .join('\n')
+        .map((b) => b.text)
+        .join("\n");
     })
-    .filter(text => text.trim().length > 0)
+    .filter((text) => text.trim().length > 0);
 }
 
 const SKILLIFY_PROMPT = `# Skillify {{userDescriptionBlock}}
@@ -65,8 +65,8 @@ You will use the AskUserQuestion to understand what the user wants to automate. 
 - If you think the skill will require arguments, suggest arguments based on what you observed. Make sure you understand what someone would need to provide.
 - If it's not clear, ask if this skill should run inline (in the current conversation) or forked (as a sub-agent with its own context). Forked is better for self-contained tasks that don't need mid-process user input; inline is better when the user wants to steer mid-process.
 - Ask where the skill should be saved. Suggest a default based on context (repo-specific workflows → repo, cross-repo personal workflows → user). Options:
-  - **This repo** (\`.claude/skills/<name>/SKILL.md\`) — for workflows specific to this project
-  - **Personal** (\`~/.claude/skills/<name>/SKILL.md\`) — follows you across all repos
+  - **This repo** (\`.claude/skills/<name>/SKILL.md\`): for workflows specific to this project
+  - **Personal** (\`~/.claude/skills/<name>/SKILL.md\`): follows you across all repos
 
 **Round 3: Breaking down each step**
 For each major step, if it's not glaringly obvious, ask:
@@ -147,51 +147,51 @@ IMPORTANT: see the next section below for the per-step annotations you can optio
 
 ### Step 4: Confirm and Save
 
-Before writing the file, output the complete SKILL.md content as a yaml code block in your response so the user can review it with proper syntax highlighting. Then ask for confirmation using AskUserQuestion with a simple question like "Does this SKILL.md look good to save?" — do NOT use the body field, keep the question concise.
+Before writing the file, output the complete SKILL.md content as a yaml code block in your response so the user can review it with proper syntax highlighting. Then ask for confirmation using AskUserQuestion with a simple question like "Does this SKILL.md look good to save?": do NOT use the body field, keep the question concise.
 
 After writing, tell the user:
 - Where the skill was saved
 - How to invoke it: \`/{{skill-name}} [arguments]\`
 - That they can edit the SKILL.md directly to refine it
-`
+`;
 
 export function registerSkillifySkill(): void {
-  if (process.env.USER_TYPE !== 'ant') {
-    return
+  if (process.env.USER_TYPE !== "ant") {
+    return;
   }
 
   registerBundledSkill({
-    name: 'skillify',
+    name: "skillify",
     description:
       "Capture this session's repeatable process into a skill. Call at end of the process you want to capture with an optional description.",
     allowedTools: [
-      'Read',
-      'Write',
-      'Edit',
-      'Glob',
-      'Grep',
-      'AskUserQuestion',
-      'Bash(mkdir:*)',
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "AskUserQuestion",
+      "Bash(mkdir:*)",
     ],
     userInvocable: true,
     disableModelInvocation: true,
-    argumentHint: '[description of the process you want to capture]',
+    argumentHint: "[description of the process you want to capture]",
     async getPromptForCommand(args, context) {
       const sessionMemory =
-        (await getSessionMemoryContent()) ?? 'No session memory available.'
+        (await getSessionMemoryContent()) ?? "No session memory available.";
       const userMessages = extractUserMessages(
         getMessagesAfterCompactBoundary(context.messages),
-      )
+      );
 
       const userDescriptionBlock = args
         ? `The user described this process as: "${args}"`
-        : ''
+        : "";
 
-      const prompt = SKILLIFY_PROMPT.replace('{{sessionMemory}}', sessionMemory)
-        .replace('{{userMessages}}', userMessages.join('\n\n---\n\n'))
-        .replace('{{userDescriptionBlock}}', userDescriptionBlock)
+      const prompt = SKILLIFY_PROMPT.replace("{{sessionMemory}}", sessionMemory)
+        .replace("{{userMessages}}", userMessages.join("\n\n---\n\n"))
+        .replace("{{userDescriptionBlock}}", userDescriptionBlock);
 
-      return [{ type: 'text', text: prompt }]
+      return [{ type: "text", text: prompt }];
     },
-  })
+  });
 }

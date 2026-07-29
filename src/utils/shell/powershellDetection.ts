@@ -1,12 +1,12 @@
-import { realpath, stat } from 'fs/promises'
-import { getPlatform } from '../platform.js'
-import { which } from '../which.js'
+import { realpath, stat } from "fs/promises";
+import { getPlatform } from "../platform.js";
+import { which } from "../which.js";
 
 async function probePath(p: string): Promise<string | null> {
   try {
-    return (await stat(p)).isFile() ? p : null
+    return (await stat(p)).isFile() ? p : null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -14,49 +14,49 @@ async function probePath(p: string): Promise<string | null> {
  * Attempts to find PowerShell on the system via PATH.
  * Prefers pwsh (PowerShell Core 7+), falls back to powershell (5.1).
  *
- * On Linux, if PATH resolves to a snap launcher (/snap/…) — directly or
- * via a symlink chain like /usr/bin/pwsh → /snap/bin/pwsh — probe known
+ * On Linux, if PATH resolves to a snap launcher (/snap/…): directly or
+ * via a symlink chain like /usr/bin/pwsh → /snap/bin/pwsh: probe known
  * apt/rpm install locations instead: the snap launcher can hang in
  * subprocesses while snapd initializes confinement, but the underlying
  * binary at /opt/microsoft/powershell/7/pwsh is reliable. On
  * Windows/macOS, PATH is sufficient.
  */
 export async function findPowerShell(): Promise<string | null> {
-  const pwshPath = await which('pwsh')
+  const pwshPath = await which("pwsh");
   if (pwshPath) {
     // Snap launcher hangs in subprocesses. Prefer the direct binary.
     // Check both the resolved PATH entry and its symlink target: on
     // some distros /usr/bin/pwsh is a symlink to /snap/bin/pwsh, which
     // would bypass a naive startsWith('/snap/') on the which() result.
-    if (getPlatform() === 'linux') {
-      const resolved = await realpath(pwshPath).catch(() => pwshPath)
-      if (pwshPath.startsWith('/snap/') || resolved.startsWith('/snap/')) {
+    if (getPlatform() === "linux") {
+      const resolved = await realpath(pwshPath).catch(() => pwshPath);
+      if (pwshPath.startsWith("/snap/") || resolved.startsWith("/snap/")) {
         const direct =
-          (await probePath('/opt/microsoft/powershell/7/pwsh')) ??
-          (await probePath('/usr/bin/pwsh'))
+          (await probePath("/opt/microsoft/powershell/7/pwsh")) ??
+          (await probePath("/usr/bin/pwsh"));
         if (direct) {
-          const directResolved = await realpath(direct).catch(() => direct)
+          const directResolved = await realpath(direct).catch(() => direct);
           if (
-            !direct.startsWith('/snap/') &&
-            !directResolved.startsWith('/snap/')
+            !direct.startsWith("/snap/") &&
+            !directResolved.startsWith("/snap/")
           ) {
-            return direct
+            return direct;
           }
         }
       }
     }
-    return pwshPath
+    return pwshPath;
   }
 
-  const powershellPath = await which('powershell')
+  const powershellPath = await which("powershell");
   if (powershellPath) {
-    return powershellPath
+    return powershellPath;
   }
 
-  return null
+  return null;
 }
 
-let cachedPowerShellPath: Promise<string | null> | null = null
+let cachedPowerShellPath: Promise<string | null> | null = null;
 
 /**
  * Gets the cached PowerShell path. Returns a memoized promise that
@@ -64,12 +64,12 @@ let cachedPowerShellPath: Promise<string | null> | null = null
  */
 export function getCachedPowerShellPath(): Promise<string | null> {
   if (!cachedPowerShellPath) {
-    cachedPowerShellPath = findPowerShell()
+    cachedPowerShellPath = findPowerShell();
   }
-  return cachedPowerShellPath
+  return cachedPowerShellPath;
 }
 
-export type PowerShellEdition = 'core' | 'desktop'
+export type PowerShellEdition = "core" | "desktop";
 
 /**
  * Infers the PowerShell edition from the binary name without spawning.
@@ -85,8 +85,8 @@ export type PowerShellEdition = 'core' | 'desktop'
  * `&&` on 7+ where it's the correct short-circuiting operator.
  */
 export async function getPowerShellEdition(): Promise<PowerShellEdition | null> {
-  const p = await getCachedPowerShellPath()
-  if (!p) return null
+  const p = await getCachedPowerShellPath();
+  if (!p) return null;
   // basename without extension, case-insensitive. Covers:
   //   C:\Program Files\PowerShell\7\pwsh.exe
   //   /opt/microsoft/powershell/7/pwsh
@@ -95,13 +95,13 @@ export async function getPowerShellEdition(): Promise<PowerShellEdition | null> 
     .split(/[/\\]/)
     .pop()!
     .toLowerCase()
-    .replace(/\.exe$/, '')
-  return base === 'pwsh' ? 'core' : 'desktop'
+    .replace(/\.exe$/, "");
+  return base === "pwsh" ? "core" : "desktop";
 }
 
 /**
  * Resets the cached PowerShell path. Only for testing.
  */
 export function resetPowerShellCache(): void {
-  cachedPowerShellPath = null
+  cachedPowerShellPath = null;
 }

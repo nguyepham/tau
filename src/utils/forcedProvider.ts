@@ -9,7 +9,7 @@
  *
  *   runWithForcedProvider({ provider: 'kiro' }, () => runAgent(...))
  *       └─ Agent loop calls getAnthropicClient(...)
- *           └─ Reads getAPIProvider() — returns 'kiro' (forced)
+ *           └─ Reads getAPIProvider(): returns 'kiro' (forced)
  *               └─ createProvider('kiro') builds a LaneBackedProvider
  *                   └─ All model calls land on the Kiro lane
  *
@@ -22,14 +22,14 @@
  * tasks. The agent loop runs entirely inside the callback so this is fine.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks'
-import type { APIProvider } from './model/providers.js'
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { APIProvider } from "./model/providers.js";
 
 export interface ForcedProviderContext {
-  provider: APIProvider
+  provider: APIProvider;
 }
 
-const _forcedProvider = new AsyncLocalStorage<ForcedProviderContext>()
+const _forcedProvider = new AsyncLocalStorage<ForcedProviderContext>();
 
 /**
  * Run `fn` with `provider` pinned as the active APIProvider for every
@@ -39,7 +39,7 @@ export function runWithForcedProvider<T>(
   ctx: ForcedProviderContext,
   fn: () => T,
 ): T {
-  return _forcedProvider.run(ctx, fn)
+  return _forcedProvider.run(ctx, fn);
 }
 
 /**
@@ -47,5 +47,5 @@ export function runWithForcedProvider<T>(
  * call is happening outside a runWithForcedProvider() scope.
  */
 export function getForcedProvider(): APIProvider | undefined {
-  return _forcedProvider.getStore()?.provider
+  return _forcedProvider.getStore()?.provider;
 }

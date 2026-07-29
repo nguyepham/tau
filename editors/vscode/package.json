@@ -1,7 +1,7 @@
 {
   "name": "tau-vscode",
   "displayName": "Tau",
-  "description": "Tau agent in a native chat panel — powered by ACP.",
+  "description": "Tau agent in a native chat panel: powered by ACP.",
   "version": "0.1.0",
   "publisher": "tau",
   "private": true,
@@ -76,8 +76,12 @@
         },
         "tau.args": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["acp"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
           "description": "Arguments passed to the Tau command to start the ACP server."
         },
         "tau.cwd": {

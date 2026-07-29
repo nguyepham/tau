@@ -1,9 +1,9 @@
 import { c as _c } from "react/compiler-runtime";
-import React from 'react';
-import { useIsInsideModal } from '../../context/modalContext.js';
-import { Box } from '../../ink.js';
-import type { Theme } from '../../utils/theme.js';
-import { Divider } from './Divider.js';
+import React from "react";
+import { useIsInsideModal } from "../../context/modalContext.js";
+import { Box } from "../../ink.js";
+import type { Theme } from "../../utils/theme.js";
+import { Divider } from "./Divider.js";
 type PaneProps = {
   children: React.ReactNode;
   /**
@@ -13,13 +13,13 @@ type PaneProps = {
 };
 
 /**
- * A pane — a region of the terminal that appears below the REPL prompt,
+ * A pane: a region of the terminal that appears below the REPL prompt,
  * bounded by a colored top line with a one-row gap above and horizontal
  * padding. Used by all slash-command screens: /config, /help, /plugins,
  * /sandbox, /stats, /permissions.
  *
  * For confirm/cancel dialogs (Esc to dismiss, Enter to confirm), use
- * `<Dialog>` instead — it registers its own keybindings. For a full
+ * `<Dialog>` instead: it registers its own keybindings. For a full
  * rounded-border card, use `<Panel>`.
  *
  * Submenus rendered inside a Pane should use `hideBorder` on their Dialog
@@ -32,14 +32,15 @@ type PaneProps = {
  */
 export function Pane(t0) {
   const $ = _c(9);
-  const {
-    children,
-    color
-  } = t0;
+  const { children, color } = t0;
   if (useIsInsideModal()) {
     let t1;
     if ($[0] !== children) {
-      t1 = <Box flexDirection="column" paddingX={1} flexShrink={0}>{children}</Box>;
+      t1 = (
+        <Box flexDirection="column" paddingX={1} flexShrink={0}>
+          {children}
+        </Box>
+      );
       $[0] = children;
       $[1] = t1;
     } else {
@@ -57,7 +58,11 @@ export function Pane(t0) {
   }
   let t2;
   if ($[4] !== children) {
-    t2 = <Box flexDirection="column" paddingX={2}>{children}</Box>;
+    t2 = (
+      <Box flexDirection="column" paddingX={2}>
+        {children}
+      </Box>
+    );
     $[4] = children;
     $[5] = t2;
   } else {
@@ -65,7 +70,12 @@ export function Pane(t0) {
   }
   let t3;
   if ($[6] !== t1 || $[7] !== t2) {
-    t3 = <Box flexDirection="column" paddingTop={1}>{t1}{t2}</Box>;
+    t3 = (
+      <Box flexDirection="column" paddingTop={1}>
+        {t1}
+        {t2}
+      </Box>
+    );
     $[6] = t1;
     $[7] = t2;
     $[8] = t3;

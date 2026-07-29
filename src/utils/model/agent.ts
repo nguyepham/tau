@@ -11,21 +11,21 @@ import {
 import { getAPIProvider } from './providers.js'
 import { getForcedProvider } from '../forcedProvider.js'
 
-export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
-export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
+export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, "inherit"] as const;
+export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number];
 
 export type AgentModelOption = {
-  value: AgentModelAlias
-  label: string
-  description: string
-}
+  value: AgentModelAlias;
+  label: string;
+  description: string;
+};
 
 /**
  * Get the default subagent model. Returns 'inherit' so subagents inherit
  * the model from the parent thread.
  */
 export function getDefaultSubagentModel(): string {
-  return 'inherit'
+  return "inherit";
 }
 
 /**
@@ -45,7 +45,7 @@ export function getAgentModel(
   // Extract Bedrock region prefix from parent model to inherit for subagents.
   // This ensures subagents use the same cross-region inference profile (e.g., "eu.", "us.")
   // as the parent, which is required when IAM permissions only allow specific regions.
-  const parentRegionPrefix = getBedrockRegionPrefix(parentModel)
+  const parentRegionPrefix = getBedrockRegionPrefix(parentModel);
 
   // Helper to apply parent region prefix for Bedrock models.
   // `originalSpec` is the raw model string before resolution (alias or full ID).
@@ -57,12 +57,12 @@ export function getAgentModel(
     resolvedModel: string,
     originalSpec: string,
   ): string => {
-    if (parentRegionPrefix && getAPIProvider() === 'bedrock') {
-      if (getBedrockRegionPrefix(originalSpec)) return resolvedModel
-      return applyBedrockRegionPrefix(resolvedModel, parentRegionPrefix)
+    if (parentRegionPrefix && getAPIProvider() === "bedrock") {
+      if (getBedrockRegionPrefix(originalSpec)) return resolvedModel;
+      return applyBedrockRegionPrefix(resolvedModel, parentRegionPrefix);
     }
-    return resolvedModel
-  }
+    return resolvedModel;
+  };
 
   // A tool-level selection wins over CLAUDE_CODE_SUBAGENT_MODEL and other
   // session-wide defaults. Concrete IDs pass through unchanged; tier aliases
@@ -75,15 +75,15 @@ export function getAgentModel(
     )
     if (policyModel) return policyModel
     if (aliasMatchesParentTier(toolSpecifiedModel, parentModel)) {
-      return parentModel
+      return parentModel;
     }
-    const model = parseUserSpecifiedModel(toolSpecifiedModel)
-    return applyParentRegionPrefix(model, toolSpecifiedModel)
+    const model = parseUserSpecifiedModel(toolSpecifiedModel);
+    return applyParentRegionPrefix(model, toolSpecifiedModel);
   }
 
   // CLAUDE_CODE_SUBAGENT_MODEL is a session-wide override for "all subagents
   // use this model". It must NOT fire when a team-mode role pinned the
-  // provider for this spawn — the env var would silently replace the role's
+  // provider for this spawn: the env var would silently replace the role's
   // model with whatever default this var holds, exactly the cross-binding
   // contamination we shipped v0.9.3-v0.9.4 to prevent.
   if (process.env.CLAUDE_CODE_SUBAGENT_MODEL && getForcedProvider() === undefined) {
@@ -96,16 +96,16 @@ export function getAgentModel(
     return parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
   }
 
-  const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
+  const agentModelWithExp = agentModel ?? getDefaultSubagentModel();
 
   if (agentModelWithExp === 'inherit') {
     // Apply runtime model resolution for inherit to get the effective model
     // This ensures agents using 'inherit' get opusplan→Opus resolution in plan mode
     return getRuntimeMainLoopModel({
-      permissionMode: permissionMode ?? 'default',
+      permissionMode: permissionMode ?? "default",
       mainLoopModel: parentModel,
       exceeds200kTokens: false,
-    })
+    });
   }
 
   const policyModel = resolveAgentAliasPolicy(
@@ -116,10 +116,10 @@ export function getAgentModel(
   if (policyModel) return policyModel
 
   if (aliasMatchesParentTier(agentModelWithExp, parentModel)) {
-    return parentModel
+    return parentModel;
   }
-  const model = parseUserSpecifiedModel(agentModelWithExp)
-  return applyParentRegionPrefix(model, agentModelWithExp)
+  const model = parseUserSpecifiedModel(agentModelWithExp);
+  return applyParentRegionPrefix(model, agentModelWithExp);
 }
 
 /**
@@ -136,7 +136,7 @@ export function getAgentModel(
  * since they carry semantics beyond "same tier as parent".
  */
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
-  const canonical = getCanonicalName(parentModel)
+  const canonical = getCanonicalName(parentModel);
   switch (alias.toLowerCase()) {
     case 'opus':
       return canonical.includes('opus')
@@ -145,15 +145,15 @@ function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
     case 'haiku':
       return canonical.includes('haiku')
     default:
-      return false
+      return false;
   }
 }
 
 export function getAgentModelDisplay(model: string | undefined): string {
   // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime
-  if (!model) return 'Inherit from parent (default)'
-  if (model === 'inherit') return 'Inherit from parent'
-  return capitalize(model)
+  if (!model) return "Inherit from parent (default)";
+  if (model === "inherit") return "Inherit from parent";
+  return capitalize(model);
 }
 
 /**
@@ -162,24 +162,24 @@ export function getAgentModelDisplay(model: string | undefined): string {
 export function getAgentModelOptions(): AgentModelOption[] {
   return [
     {
-      value: 'sonnet',
-      label: 'Sonnet',
-      description: 'Balanced performance - best for most agents',
+      value: "sonnet",
+      label: "Sonnet",
+      description: "Balanced performance - best for most agents",
     },
     {
-      value: 'opus',
-      label: 'Opus',
-      description: 'Most capable for complex reasoning tasks',
+      value: "opus",
+      label: "Opus",
+      description: "Most capable for complex reasoning tasks",
     },
     {
-      value: 'haiku',
-      label: 'Haiku',
-      description: 'Fast and efficient for simple tasks',
+      value: "haiku",
+      label: "Haiku",
+      description: "Fast and efficient for simple tasks",
     },
     {
-      value: 'inherit',
-      label: 'Inherit from parent',
-      description: 'Use the same model as the main conversation',
+      value: "inherit",
+      label: "Inherit from parent",
+      description: "Use the same model as the main conversation",
     },
-  ]
+  ];
 }

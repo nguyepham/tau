@@ -11,12 +11,12 @@ function containsHeredoc(command: string): boolean {
     /\[\[\s*\d+\s*<<\s*\d+\s*\]\]/.test(command) ||
     /\$\(\(.*<<.*\)\)/.test(command)
   ) {
-    return false
+    return false;
   }
 
   // Now check for heredoc patterns
-  const heredocRegex = /<<-?\s*(?:(['"]?)(\w+)\1|\\(\w+))/
-  return heredocRegex.test(command)
+  const heredocRegex = /<<-?\s*(?:(['"]?)(\w+)\1|\\(\w+))/;
+  return heredocRegex.test(command);
 }
 
 /**
@@ -29,11 +29,11 @@ export function quoteShellCommand(
   command: string,
   addStdinRedirect: boolean = true,
 ): string {
-  const quoted = singleQuoteForEval(command)
+  const quoted = singleQuoteForEval(command);
   if (!addStdinRedirect || containsHeredoc(command)) {
-    return quoted
+    return quoted;
   }
-  return `${quoted} < /dev/null`
+  return `${quoted} < /dev/null`;
 }
 
 /**
@@ -43,7 +43,7 @@ export function quoteShellCommand(
  * whole command, for example turning `!=` inside jq filters into `\!=`.
  */
 function singleQuoteForEval(command: string): string {
-  return "'" + command.replace(/'/g, `'"'"'`) + "'"
+  return "'" + command.replace(/'/g, `'"'"'`) + "'";
 }
 
 /**
@@ -55,7 +55,7 @@ export function hasStdinRedirect(command: string): boolean {
   // Look for < followed by whitespace and a filename/path
   // Negative lookahead to exclude: <<, <(
   // Must be preceded by whitespace or command separator or start of string
-  return /(?:^|[\s;&|])<(?![<(])\s*\S+/.test(command)
+  return /(?:^|[\s;&|])<(?![<(])\s*\S+/.test(command);
 }
 
 /**
@@ -66,16 +66,16 @@ export function hasStdinRedirect(command: string): boolean {
 export function shouldAddStdinRedirect(command: string): boolean {
   // Don't add stdin redirect for heredocs as it interferes with the heredoc terminator
   if (containsHeredoc(command)) {
-    return false
+    return false;
   }
 
   // Don't add stdin redirect if command already has one
   if (hasStdinRedirect(command)) {
-    return false
+    return false;
   }
 
   // For other commands, stdin redirect is generally safe
-  return true
+  return true;
 }
 
 /**
@@ -83,7 +83,7 @@ export function shouldAddStdinRedirect(command: string): boolean {
  *
  * The model occasionally hallucinates Windows CMD syntax (e.g., `ls 2>nul`)
  * even though our bash shell is always POSIX (Git Bash / WSL on Windows).
- * When Git Bash sees `2>nul`, it creates a literal file named `nul` — a
+ * When Git Bash sees `2>nul`, it creates a literal file named `nul`: a
  * Windows reserved device name that is extremely hard to delete and breaks
  * `git add .` and `git clone`. See anthropics/claude-code#4928.
  *
@@ -91,11 +91,11 @@ export function shouldAddStdinRedirect(command: string): boolean {
  * Does NOT match: `>null`, `>nullable`, `>nul.txt`, `cat nul.txt`
  *
  * Limitation: this regex does not parse shell quoting, so `echo ">nul"`
- * will also be rewritten. This is acceptable collateral — it's extremely
+ * will also be rewritten. This is acceptable collateral: it's extremely
  * rare and rewriting to `/dev/null` inside a string is harmless.
  */
-const NUL_REDIRECT_REGEX = /(\d?&?>+\s*)[Nn][Uu][Ll](?=\s|$|[|&;)\n])/g
+const NUL_REDIRECT_REGEX = /(\d?&?>+\s*)[Nn][Uu][Ll](?=\s|$|[|&;)\n])/g;
 
 export function rewriteWindowsNullRedirect(command: string): string {
-  return command.replace(NUL_REDIRECT_REGEX, '$1/dev/null')
+  return command.replace(NUL_REDIRECT_REGEX, "$1/dev/null");
 }
