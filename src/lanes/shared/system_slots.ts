@@ -1,5 +1,5 @@
 /**
- * System-prompt slot boundary — shared cache discipline for every lane.
+ * System-prompt slot boundary: shared cache discipline for every lane.
  *
  * Cache keys (Anthropic `cache_control`, Gemini `cachedContents`, OpenAI
  * `prompt_cache_key`) are byte-identity hashes over the stable section
@@ -9,13 +9,13 @@
  *
  * This module enforces the split at the type level:
  *
- *   - Stable slot   — cross-turn identical content: preamble, core
+ *   - Stable slot  : cross-turn identical content: preamble, core
  *                     mandates, workflow descriptions, tool usage
  *                     guidelines, skills context, MCP intro. Feeds the
  *                     cache key.
- *   - Volatile slot — per-turn content: memory (CLAUDE.md etc.),
+ *   - Volatile slot: per-turn content: memory (CLAUDE.md etc.),
  *                     environment block, git status, date. Lives
- *                     AFTER the cache boundary — inline in the first
+ *                     AFTER the cache boundary: inline in the first
  *                     user message, or in a trailing system block past
  *                     the last cache_control breakpoint.
  *
@@ -25,15 +25,17 @@
  * compile-time error, not a production cache-miss.
  */
 
-import type { SystemPromptParts } from '../types.js'
+import type { SystemPromptParts } from "../types.js";
 
 // ─── Branded types ───────────────────────────────────────────────
 
-declare const __stableSlotBrand: unique symbol
-declare const __volatileSlotBrand: unique symbol
+declare const __stableSlotBrand: unique symbol;
+declare const __volatileSlotBrand: unique symbol;
 
-export type StableSlot = string & { readonly [__stableSlotBrand]: 'stable' }
-export type VolatileSlot = string & { readonly [__volatileSlotBrand]: 'volatile' }
+export type StableSlot = string & { readonly [__stableSlotBrand]: "stable" };
+export type VolatileSlot = string & {
+  readonly [__volatileSlotBrand]: "volatile";
+};
 
 // ─── Stable rendering ────────────────────────────────────────────
 
@@ -49,46 +51,46 @@ export type VolatileSlot = string & { readonly [__volatileSlotBrand]: 'volatile'
  * Each lane pre-pends its own preamble / core-mandates / workflow /
  * tool-usage / operational-guidelines to this string. Those are also
  * stable (they depend only on model family) and belong in the cache
- * key too — lanes call `stableFrom(laneSpecificPreamble, parts)` to
+ * key too: lanes call `stableFrom(laneSpecificPreamble, parts)` to
  * get the composed stable slot.
  */
 export function renderStableSlot(parts: SystemPromptParts): StableSlot {
-  const sections: string[] = []
+  const sections: string[] = [];
   if (parts.customInstructions) {
-    sections.push(`## Additional Instructions\n\n${parts.customInstructions}`)
+    sections.push(`## Additional Instructions\n\n${parts.customInstructions}`);
   }
   if (parts.toolsAddendum) {
-    sections.push(`## Tool Configuration\n\n${parts.toolsAddendum}`)
+    sections.push(`## Tool Configuration\n\n${parts.toolsAddendum}`);
   }
   if (parts.mcpIntro) {
-    sections.push(`## MCP Tools\n\n${parts.mcpIntro}`)
+    sections.push(`## MCP Tools\n\n${parts.mcpIntro}`);
   }
   if (parts.skillsContext) {
     sections.push(
       `## Available Skills\n\n<available_skills>\n${parts.skillsContext}\n</available_skills>`,
-    )
+    );
   }
-  return sections.join('\n\n') as StableSlot
+  return sections.join("\n\n") as StableSlot;
 }
 
 /**
  * Compose a lane-specific stable preamble with the user/project
  * instructions. The first argument is the lane's hand-written static
- * block (preamble + mandates + workflow + tool-usage + guidelines —
+ * block (preamble + mandates + workflow + tool-usage + guidelines:
  * same every turn). The second is the user-derived stable content.
  */
 export function stableFrom(
   lanePreamble: string,
   parts: SystemPromptParts,
 ): StableSlot {
-  const user = renderStableSlot(parts)
-  return (user ? `${lanePreamble}\n\n${user}` : lanePreamble) as StableSlot
+  const user = renderStableSlot(parts);
+  return (user ? `${lanePreamble}\n\n${user}` : lanePreamble) as StableSlot;
 }
 
 // ─── Volatile rendering ──────────────────────────────────────────
 
 /**
- * Render the volatile portion — content that changes turn-to-turn.
+ * Render the volatile portion: content that changes turn-to-turn.
  *
  * Volatile sections:
  *   - memory (CLAUDE.md / GEMINI.md / AGENTS.md / QWEN.md merged)
@@ -106,17 +108,19 @@ export function stableFrom(
  *              `role: 'system'` message AFTER the cached system block
  */
 export function renderVolatileSlot(parts: SystemPromptParts): VolatileSlot {
-  const sections: string[] = []
+  const sections: string[] = [];
   if (parts.memory) {
-    sections.push(`## Context\n\n<loaded_context>\n${parts.memory}\n</loaded_context>`)
+    sections.push(
+      `## Context\n\n<loaded_context>\n${parts.memory}\n</loaded_context>`,
+    );
   }
   if (parts.environment || parts.gitStatus) {
-    const envParts: string[] = []
-    if (parts.environment) envParts.push(parts.environment)
-    if (parts.gitStatus) envParts.push(`Git status:\n${parts.gitStatus}`)
-    sections.push(`## Environment\n\n${envParts.join('\n\n')}`)
+    const envParts: string[] = [];
+    if (parts.environment) envParts.push(parts.environment);
+    if (parts.gitStatus) envParts.push(`Git status:\n${parts.gitStatus}`);
+    sections.push(`## Environment\n\n${envParts.join("\n\n")}`);
   }
-  return sections.join('\n\n') as VolatileSlot
+  return sections.join("\n\n") as VolatileSlot;
 }
 
 // ─── Cache key derivation ────────────────────────────────────────
@@ -131,12 +135,12 @@ export function renderVolatileSlot(parts: SystemPromptParts): VolatileSlot {
  * ever cross-indexes.
  */
 export function cacheKeyOf(slot: StableSlot | string): string {
-  // Lazy require — keeps the module tree-shakable for contexts that
+  // Lazy require: keeps the module tree-shakable for contexts that
   // only need the branded types.
   // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-  const { createHash } = require('crypto') as typeof import('crypto')
-  const h = createHash('sha256').update(slot).digest('hex')
-  return `claudex:${h.slice(0, 32)}`
+  const { createHash } = require("crypto") as typeof import("crypto");
+  const h = createHash("sha256").update(slot).digest("hex");
+  return `claudex:${h.slice(0, 32)}`;
 }
 
 // ─── Convenience ─────────────────────────────────────────────────
@@ -144,11 +148,11 @@ export function cacheKeyOf(slot: StableSlot | string): string {
 /**
  * Glue both slots into one string for lanes that need a single system
  * prompt and don't support a separate cache surface (Ollama, xAI, etc).
- * The caller loses cache benefit when using this path — intended only
+ * The caller loses cache benefit when using this path: intended only
  * for lanes that can't carry the split natively.
  */
 export function flatten(stable: StableSlot, volatile: VolatileSlot): string {
-  if (!volatile) return stable
-  if (!stable) return volatile
-  return `${stable}\n\n${volatile}`
+  if (!volatile) return stable;
+  if (!stable) return volatile;
+  return `${stable}\n\n${volatile}`;
 }

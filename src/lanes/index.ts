@@ -1,5 +1,5 @@
 /**
- * Lane Architecture — Entry Point
+ * Lane Architecture: Entry Point
  *
  * Bootstraps all lanes and the dispatcher. Call initLanes() once at
  * startup after provider auth is resolved.
@@ -15,7 +15,7 @@ export {
   dispatch,
   resolveRoute,
   getLaneStatus,
-} from './dispatcher.js'
+} from "./dispatcher.js";
 
 export type {
   Lane,
@@ -27,20 +27,20 @@ export type {
   SharedTool,
   ToolResult,
   LaneEvent,
-} from './types.js'
+} from "./types.js";
 
-export { shouldUseNativeLane, runNativeLane } from './bridge.js'
-export { LaneBackedProvider } from './provider-bridge.js'
+export { shouldUseNativeLane, runNativeLane } from "./bridge.js";
+export { LaneBackedProvider } from "./provider-bridge.js";
 
-import { initGeminiLane } from './gemini/index.js'
-import { initCodexLane } from './codex/index.js'
-import { initOpenAICompatLane } from './openai-compat/index.js'
-import { initQwenLane } from './qwen/index.js'
-import { initClaudeLane } from './claude/index.js'
-import { initKiroLane } from './kiro/index.js'
-import { initCursorLane } from './cursor/index.js'
-import { initClineLane } from './cline/index.js'
-import { initKiloLane } from './kilo/index.js'
+import { initGeminiLane } from "./gemini/index.js";
+import { initCodexLane } from "./codex/index.js";
+import { initOpenAICompatLane } from "./openai-compat/index.js";
+import { initQwenLane } from "./qwen/index.js";
+import { initClaudeLane } from "./claude/index.js";
+import { initKiroLane } from "./kiro/index.js";
+import { initCursorLane } from "./cursor/index.js";
+import { initClineLane } from "./cline/index.js";
+import { initKiloLane } from "./kilo/index.js";
 
 /**
  * Initialize all lanes with available auth credentials.
@@ -48,102 +48,102 @@ import { initKiloLane } from './kilo/index.js'
  * Auth resolution: each lane reads from the opts parameter first,
  * then falls back to environment variables, then to stored credentials
  * from /login. If no auth is available, the lane registers but marks
- * itself unhealthy — models that need it fall through to the existing
+ * itself unhealthy: models that need it fall through to the existing
  * shim path until the user authenticates.
  *
  * Call this once at startup.
  */
 export function initLanes(opts?: {
   // Gemini
-  geminiApiKey?: string
-  geminiOAuthToken?: string
+  geminiApiKey?: string;
+  geminiOAuthToken?: string;
   /** Dual-OAuth: token for the Gemini CLI executor (free tier). */
-  geminiCliOAuthToken?: string
+  geminiCliOAuthToken?: string;
   /** Dual-OAuth: token for the Antigravity executor (3.x pro/flash). */
-  geminiAntigravityOAuthToken?: string
+  geminiAntigravityOAuthToken?: string;
   // OpenAI / Codex
-  openaiApiKey?: string
-  openaiBaseUrl?: string
-  openaiChatgptAccessToken?: string
-  openaiChatgptAccountId?: string
-  openaiChatgptIdToken?: string
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  openaiChatgptAccessToken?: string;
+  openaiChatgptAccountId?: string;
+  openaiChatgptIdToken?: string;
   // DeepSeek
-  deepseekApiKey?: string
-  deepseekBaseUrl?: string
+  deepseekApiKey?: string;
+  deepseekBaseUrl?: string;
   // GLM / BigModel
-  glmApiKey?: string
-  glmBaseUrl?: string
+  glmApiKey?: string;
+  glmBaseUrl?: string;
   // Moonshot AI / Kimi
-  moonshotApiKey?: string
-  moonshotBaseUrl?: string
+  moonshotApiKey?: string;
+  moonshotBaseUrl?: string;
   // MiniMax AI
-  minimaxApiKey?: string
-  minimaxBaseUrl?: string
+  minimaxApiKey?: string;
+  minimaxBaseUrl?: string;
   // Groq
-  groqApiKey?: string
+  groqApiKey?: string;
   // Mistral
-  mistralApiKey?: string
-  mistralBaseUrl?: string
+  mistralApiKey?: string;
+  mistralBaseUrl?: string;
   // NVIDIA NIM
-  nimApiKey?: string
+  nimApiKey?: string;
   // Ollama
-  ollamaApiKey?: string
-  ollamaBaseUrl?: string
+  ollamaApiKey?: string;
+  ollamaBaseUrl?: string;
   // LM Studio
-  lmstudioApiKey?: string
-  lmstudioBaseUrl?: string
+  lmstudioApiKey?: string;
+  lmstudioBaseUrl?: string;
   // OpenRouter
-  openrouterApiKey?: string
+  openrouterApiKey?: string;
   // AgentRouter (independent OpenRouter-style gateway)
-  agentrouterApiKey?: string
+  agentrouterApiKey?: string;
   // Model Router (lxg2it)
-  modelrouterApiKey?: string
-  modelrouterBaseUrl?: string
+  modelrouterApiKey?: string;
+  modelrouterBaseUrl?: string;
   // Vercel AI Gateway
-  vercelApiKey?: string
-  vercelBaseUrl?: string
+  vercelApiKey?: string;
+  vercelBaseUrl?: string;
   // Requesty router
-  requestyApiKey?: string
-  requestyBaseUrl?: string
+  requestyApiKey?: string;
+  requestyBaseUrl?: string;
   // OpenCode Zen gateway
-  opencodeApiKey?: string
-  opencodeBaseUrl?: string
+  opencodeApiKey?: string;
+  opencodeBaseUrl?: string;
   // OpenCode Go subscription (shares the OpenCode credential)
-  opencodegoApiKey?: string
-  opencodegoBaseUrl?: string
+  opencodegoApiKey?: string;
+  opencodegoBaseUrl?: string;
   // Fireworks AI
-  fireworksApiKey?: string
-  fireworksBaseUrl?: string
+  fireworksApiKey?: string;
+  fireworksBaseUrl?: string;
   // Cloudflare Workers AI
-  cloudflareApiKey?: string
-  cloudflareBaseUrl?: string
+  cloudflareApiKey?: string;
+  cloudflareBaseUrl?: string;
   // Qwen (DashScope)
-  qwenApiKey?: string
+  qwenApiKey?: string;
   // OAuth-backed providers on the shared compat transport. iFlow uses a
   // derived apiKey pulled from the userinfo endpoint during OAuth.
-  iflowApiKey?: string
-  kilocodeApiKey?: string
+  iflowApiKey?: string;
+  kilocodeApiKey?: string;
   /** Kilo organization id (stored alongside the OAuth token in
    *  provider-keys.json:kilocode_oauth.meta.orgId). Scopes model
    *  discovery and attribution headers. */
-  kilocodeOrgId?: string | null
-  /** GitHub Copilot internal token (NOT the GH OAuth access token — see
+  kilocodeOrgId?: string | null;
+  /** GitHub Copilot internal token (NOT the GH OAuth access token: see
    *  oauth_services.ts::completeCopilotOAuth). */
-  copilotApiKey?: string
+  copilotApiKey?: string;
   /** Kiro OAuth access token (AWS SSO OIDC). */
-  kiroApiKey?: string
-  /** Kiro profileArn (optional — social-login users have one, Builder-ID
+  kiroApiKey?: string;
+  /** Kiro profileArn (optional: social-login users have one, Builder-ID
    *  users don't; the lane falls back to a public default when unset). */
-  kiroProfileArn?: string
+  kiroProfileArn?: string;
   /** Cursor access token (manual paste from Cursor IDE state.vscdb). */
-  cursorApiKey?: string
-  /** Cursor machineId (optional — derived from the token when absent). */
-  cursorMachineId?: string
+  cursorApiKey?: string;
+  /** Cursor machineId (optional: derived from the token when absent). */
+  cursorMachineId?: string;
 }): void {
   // ── Claude lane (registration-only: Anthropic traffic uses
-  //    services/api/claude.ts directly — this lane exists for /lane
+  //    services/api/claude.ts directly: this lane exists for /lane
   //    and /models UX symmetry + smallFastModel lookup). ──
-  initClaudeLane()
+  initClaudeLane();
 
   // ── Gemini lane (Gemini models) ──
   initGeminiLane({
@@ -151,7 +151,7 @@ export function initLanes(opts?: {
     oauthToken: opts?.geminiOAuthToken,
     cliOAuthToken: opts?.geminiCliOAuthToken,
     antigravityOAuthToken: opts?.geminiAntigravityOAuthToken,
-  })
+  });
 
   // ── Codex lane (OpenAI GPT-5, Codex, o-series) ──
   initCodexLane({
@@ -160,7 +160,7 @@ export function initLanes(opts?: {
     chatgptAccessToken: opts?.openaiChatgptAccessToken,
     chatgptAccountId: opts?.openaiChatgptAccountId,
     chatgptIdToken: opts?.openaiChatgptIdToken,
-  })
+  });
 
   // ── Qwen lane (native OAuth + DashScope) ──
   // Must register BEFORE openai-compat so the dispatcher picks the
@@ -168,7 +168,7 @@ export function initLanes(opts?: {
   // keeps no qwen provider after Phase 2B.
   initQwenLane({
     apiKey: opts?.qwenApiKey,
-  })
+  });
 
   // ── Kiro lane (AWS CodeWhisperer via EventStream binary frames) ──
   // Registered before openai-compat so its dispatcher-scoped
@@ -179,7 +179,7 @@ export function initLanes(opts?: {
   initKiroLane({
     accessToken: opts?.kiroApiKey,
     profileArn: opts?.kiroProfileArn,
-  })
+  });
 
   // ── Cursor lane (ConnectRPC protobuf to api2.cursor.sh) ──
   // Dotted catalog ids (`claude-4.5-sonnet`, `gpt-5.2-codex`) don't
@@ -188,10 +188,10 @@ export function initLanes(opts?: {
   initCursorLane({
     accessToken: opts?.cursorApiKey,
     machineId: opts?.cursorMachineId,
-  })
+  });
 
   // ── Cline lane (native Cline gateway via OAuth) ──
-  initClineLane()
+  initClineLane();
 
   // ── Kilo lane (native Kilo Gateway via OAuth bearer) ──
   // Registered before openai-compat so provider-scoped routing for the
@@ -202,35 +202,67 @@ export function initLanes(opts?: {
   initKiloLane({
     accessToken: opts?.kilocodeApiKey,
     orgId: opts?.kilocodeOrgId ?? null,
-  })
+  });
 
   // ── OpenAI-compat lane (DeepSeek, GLM, Moonshot, Groq, Mistral,
   //    NIM, Ollama, OpenRouter, iFlow, KiloCode, Copilot) ──
   initOpenAICompatLane({
-    deepseek: opts?.deepseekApiKey ? { apiKey: opts.deepseekApiKey, baseUrl: opts.deepseekBaseUrl } : undefined,
-    glm: opts?.glmApiKey ? { apiKey: opts.glmApiKey, baseUrl: opts.glmBaseUrl } : undefined,
-    moonshot: opts?.moonshotApiKey ? { apiKey: opts.moonshotApiKey, baseUrl: opts.moonshotBaseUrl } : undefined,
-    minimax: opts?.minimaxApiKey ? { apiKey: opts.minimaxApiKey, baseUrl: opts.minimaxBaseUrl } : undefined,
+    deepseek: opts?.deepseekApiKey
+      ? { apiKey: opts.deepseekApiKey, baseUrl: opts.deepseekBaseUrl }
+      : undefined,
+    glm: opts?.glmApiKey
+      ? { apiKey: opts.glmApiKey, baseUrl: opts.glmBaseUrl }
+      : undefined,
+    moonshot: opts?.moonshotApiKey
+      ? { apiKey: opts.moonshotApiKey, baseUrl: opts.moonshotBaseUrl }
+      : undefined,
+    minimax: opts?.minimaxApiKey
+      ? { apiKey: opts.minimaxApiKey, baseUrl: opts.minimaxBaseUrl }
+      : undefined,
     groq: opts?.groqApiKey ? { apiKey: opts.groqApiKey } : undefined,
-    mistral: opts?.mistralApiKey ? { apiKey: opts.mistralApiKey, baseUrl: opts.mistralBaseUrl } : undefined,
+    mistral: opts?.mistralApiKey
+      ? { apiKey: opts.mistralApiKey, baseUrl: opts.mistralBaseUrl }
+      : undefined,
     nim: opts?.nimApiKey ? { apiKey: opts.nimApiKey } : undefined,
-    ollama: opts?.ollamaApiKey || opts?.ollamaBaseUrl
-      ? { apiKey: opts?.ollamaApiKey ?? '', baseUrl: opts?.ollamaBaseUrl }
+    ollama:
+      opts?.ollamaApiKey || opts?.ollamaBaseUrl
+        ? { apiKey: opts?.ollamaApiKey ?? "", baseUrl: opts?.ollamaBaseUrl }
+        : undefined,
+    lmstudio:
+      opts?.lmstudioApiKey || opts?.lmstudioBaseUrl
+        ? { apiKey: opts?.lmstudioApiKey ?? "", baseUrl: opts?.lmstudioBaseUrl }
+        : undefined,
+    openrouter: opts?.openrouterApiKey
+      ? { apiKey: opts.openrouterApiKey }
       : undefined,
-    lmstudio: opts?.lmstudioApiKey || opts?.lmstudioBaseUrl
-      ? { apiKey: opts?.lmstudioApiKey ?? '', baseUrl: opts?.lmstudioBaseUrl }
+    agentrouter: opts?.agentrouterApiKey
+      ? { apiKey: opts.agentrouterApiKey }
       : undefined,
-    openrouter: opts?.openrouterApiKey ? { apiKey: opts.openrouterApiKey } : undefined,
-    agentrouter: opts?.agentrouterApiKey ? { apiKey: opts.agentrouterApiKey } : undefined,
-    modelrouter: opts?.modelrouterApiKey ? { apiKey: opts.modelrouterApiKey, baseUrl: opts.modelrouterBaseUrl } : undefined,
-    vercel: opts?.vercelApiKey ? { apiKey: opts.vercelApiKey, baseUrl: opts.vercelBaseUrl } : undefined,
-    requesty: opts?.requestyApiKey ? { apiKey: opts.requestyApiKey, baseUrl: opts.requestyBaseUrl } : undefined,
-    opencode: opts?.opencodeApiKey ? { apiKey: opts.opencodeApiKey, baseUrl: opts.opencodeBaseUrl } : undefined,
-    opencodego: opts?.opencodegoApiKey ? { apiKey: opts.opencodegoApiKey, baseUrl: opts.opencodegoBaseUrl } : undefined,
-    fireworks: opts?.fireworksApiKey ? { apiKey: opts.fireworksApiKey, baseUrl: opts.fireworksBaseUrl } : undefined,
-    cloudflare: opts?.cloudflareApiKey ? { apiKey: opts.cloudflareApiKey, baseUrl: opts.cloudflareBaseUrl } : undefined,
+    modelrouter: opts?.modelrouterApiKey
+      ? { apiKey: opts.modelrouterApiKey, baseUrl: opts.modelrouterBaseUrl }
+      : undefined,
+    vercel: opts?.vercelApiKey
+      ? { apiKey: opts.vercelApiKey, baseUrl: opts.vercelBaseUrl }
+      : undefined,
+    requesty: opts?.requestyApiKey
+      ? { apiKey: opts.requestyApiKey, baseUrl: opts.requestyBaseUrl }
+      : undefined,
+    opencode: opts?.opencodeApiKey
+      ? { apiKey: opts.opencodeApiKey, baseUrl: opts.opencodeBaseUrl }
+      : undefined,
+    opencodego: opts?.opencodegoApiKey
+      ? { apiKey: opts.opencodegoApiKey, baseUrl: opts.opencodegoBaseUrl }
+      : undefined,
+    fireworks: opts?.fireworksApiKey
+      ? { apiKey: opts.fireworksApiKey, baseUrl: opts.fireworksBaseUrl }
+      : undefined,
+    cloudflare: opts?.cloudflareApiKey
+      ? { apiKey: opts.cloudflareApiKey, baseUrl: opts.cloudflareBaseUrl }
+      : undefined,
     iflow: opts?.iflowApiKey ? { apiKey: opts.iflowApiKey } : undefined,
-    kilocode: opts?.kilocodeApiKey ? { apiKey: opts.kilocodeApiKey } : undefined,
+    kilocode: opts?.kilocodeApiKey
+      ? { apiKey: opts.kilocodeApiKey }
+      : undefined,
     copilot: opts?.copilotApiKey ? { apiKey: opts.copilotApiKey } : undefined,
-  })
+  });
 }

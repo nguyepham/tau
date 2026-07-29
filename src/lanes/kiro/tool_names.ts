@@ -13,51 +13,51 @@
  *
  * NOTE: Only 1:1 mappings are listed here. Tools that would create
  * duplicates (e.g. PowerShell → shell when Bash → shell already exists)
- * are excluded — the dedup logic in _buildToolSpecs handles those.
+ * are excluded: the dedup logic in _buildToolSpecs handles those.
  * Edit is kept as-is because Kiro has no equivalent (Kiro's "write"
  * covers both create and edit, but Tau separates them).
  */
 
 /** Tau tool name → Kiro native tool name */
 const CLAUDEX_TO_KIRO: Record<string, string> = {
-  // Shell — Bash on Unix, PowerShell on Windows; only one is active
-  Bash:        'shell',
-  PowerShell:  'shell',
+  // Shell: Bash on Unix, PowerShell on Windows; only one is active
+  Bash: "shell",
+  PowerShell: "shell",
   // File operations
-  Read:        'read',
-  Write:       'write',
-  // Edit has NO direct Kiro equivalent — keep as 'Edit'
+  Read: "read",
+  Write: "write",
+  // Edit has NO direct Kiro equivalent: keep as 'Edit'
   // Search
-  Grep:        'grep',
-  Glob:        'glob',
+  Grep: "grep",
+  Glob: "glob",
   // Web
-  WebSearch:   'web_search',
-  WebFetch:    'web_fetch',
+  WebSearch: "web_search",
+  WebFetch: "web_fetch",
   // Productivity
-  TodoWrite:   'todo_list',
+  TodoWrite: "todo_list",
   // Agents
-  Agent:       'subagent',
-}
+  Agent: "subagent",
+};
 
-const SHELL_TOOL_NAMES = new Set(['Bash', 'PowerShell'])
+const SHELL_TOOL_NAMES = new Set(["Bash", "PowerShell"]);
 
 /** Kiro native tool name → Tau tool name (reverse map) */
-const KIRO_TO_CLAUDEX: Record<string, string> = {}
+const KIRO_TO_CLAUDEX: Record<string, string> = {};
 for (const [claudex, kiro] of Object.entries(CLAUDEX_TO_KIRO)) {
   // First Tau name wins (Bash beats PowerShell for 'shell')
   if (!(kiro in KIRO_TO_CLAUDEX)) {
-    KIRO_TO_CLAUDEX[kiro] = claudex
+    KIRO_TO_CLAUDEX[kiro] = claudex;
   }
 }
 
-const KIRO_TOOL_NAME_MAX_LENGTH = 64
+const KIRO_TOOL_NAME_MAX_LENGTH = 64;
 
 function djb2Hash(value: string): string {
-  let hash = 5381
+  let hash = 5381;
   for (let i = 0; i < value.length; i++) {
-    hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0
+    hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;
   }
-  return hash.toString(36)
+  return hash.toString(36);
 }
 
 /**
@@ -67,16 +67,16 @@ function djb2Hash(value: string): string {
  * (`mcp__server__tool`) can carry dots, slashes, spaces, or exceed 64 chars, so
  * map any out-of-set character to `_` and cap the length with a stable hash
  * suffix so distinct long names don't collide. No-op for the built-in mapped
- * names (read, shell, …) and for already-valid names — so normal MCP tools like
+ * names (read, shell, …) and for already-valid names: so normal MCP tools like
  * `mcp__context7__resolve-library-id` pass through unchanged.
  */
 export function sanitizeKiroToolName(name: string): string {
-  let safe = name.replace(/[^A-Za-z0-9_-]/g, '_')
+  let safe = name.replace(/[^A-Za-z0-9_-]/g, "_");
   if (safe.length > KIRO_TOOL_NAME_MAX_LENGTH) {
-    const suffix = `_${djb2Hash(name)}`
-    safe = safe.slice(0, KIRO_TOOL_NAME_MAX_LENGTH - suffix.length) + suffix
+    const suffix = `_${djb2Hash(name)}`;
+    safe = safe.slice(0, KIRO_TOOL_NAME_MAX_LENGTH - suffix.length) + suffix;
   }
-  return safe || 'tool'
+  return safe || "tool";
 }
 
 /**
@@ -85,7 +85,7 @@ export function sanitizeKiroToolName(name: string): string {
  * name if no mapping exists (e.g. MCP tools, Edit which has no Kiro equivalent).
  */
 export function toKiroToolName(claudexName: string): string {
-  return sanitizeKiroToolName(CLAUDEX_TO_KIRO[claudexName] ?? claudexName)
+  return sanitizeKiroToolName(CLAUDEX_TO_KIRO[claudexName] ?? claudexName);
 }
 
 /**
@@ -97,12 +97,12 @@ export function toKiroToolName(claudexName: string): string {
 export function buildKiroToolNameReverseMap(
   claudexToolNames: readonly string[],
 ): Map<string, string> {
-  const reverse = new Map<string, string>()
+  const reverse = new Map<string, string>();
   for (const name of claudexToolNames) {
-    const kiroName = toKiroToolName(name)
-    if (!reverse.has(kiroName)) reverse.set(kiroName, name)
+    const kiroName = toKiroToolName(name);
+    if (!reverse.has(kiroName)) reverse.set(kiroName, name);
   }
-  return reverse
+  return reverse;
 }
 
 /**
@@ -115,23 +115,23 @@ export function buildKiroToolNameReverseMap(
  */
 export function resolvePreferredKiroShellToolName(
   toolNames: readonly string[],
-): 'Bash' | 'PowerShell' | null {
-  const hasBash = toolNames.includes('Bash')
-  const hasPowerShell = toolNames.includes('PowerShell')
+): "Bash" | "PowerShell" | null {
+  const hasBash = toolNames.includes("Bash");
+  const hasPowerShell = toolNames.includes("PowerShell");
 
-  if (process.platform === 'win32') {
-    if (hasPowerShell) return 'PowerShell'
-    if (hasBash) return 'Bash'
+  if (process.platform === "win32") {
+    if (hasPowerShell) return "PowerShell";
+    if (hasBash) return "Bash";
   } else {
-    if (hasBash) return 'Bash'
-    if (hasPowerShell) return 'PowerShell'
+    if (hasBash) return "Bash";
+    if (hasPowerShell) return "PowerShell";
   }
 
-  return null
+  return null;
 }
 
 export function isKiroShellCandidate(claudexName: string): boolean {
-  return SHELL_TOOL_NAMES.has(claudexName)
+  return SHELL_TOOL_NAMES.has(claudexName);
 }
 
 /**
@@ -143,8 +143,8 @@ export function toClaudexToolName(
   preferredShellToolName?: string | null,
   reverseMap?: Map<string, string>,
 ): string {
-  if (kiroName === 'shell' && preferredShellToolName) {
-    return preferredShellToolName
+  if (kiroName === "shell" && preferredShellToolName) {
+    return preferredShellToolName;
   }
-  return reverseMap?.get(kiroName) ?? KIRO_TO_CLAUDEX[kiroName] ?? kiroName
+  return reverseMap?.get(kiroName) ?? KIRO_TO_CLAUDEX[kiroName] ?? kiroName;
 }

@@ -1,26 +1,61 @@
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources';
-import { getRemoteSessionUrl } from '../../constants/product.js';
-import { OUTPUT_FILE_TAG, REMOTE_REVIEW_PROGRESS_TAG, REMOTE_REVIEW_TAG, STATUS_TAG, SUMMARY_TAG, TASK_ID_TAG, TASK_NOTIFICATION_TAG, TASK_TYPE_TAG, TOOL_USE_ID_TAG, ULTRAPLAN_TAG } from '../../constants/xml.js';
-import type { SDKAssistantMessage, SDKMessage } from '../../entrypoints/agentSdkTypes.js';
-import type { SetAppState, Task, TaskContext, TaskStateBase } from '../../Task.js';
-import { createTaskStateBase, generateTaskId } from '../../Task.js';
-import { TodoWriteTool } from '../../tools/TodoWriteTool/TodoWriteTool.js';
-import { type BackgroundRemoteSessionPrecondition, checkBackgroundRemoteSessionEligibility } from '../../utils/background/remote/remoteSession.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { logError } from '../../utils/log.js';
-import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
-import { extractTag, extractTextContent } from '../../utils/messages.js';
-import { emitTaskTerminatedSdk } from '../../utils/sdkEventQueue.js';
-import { deleteRemoteAgentMetadata, listRemoteAgentMetadata, type RemoteAgentMetadata, writeRemoteAgentMetadata } from '../../utils/sessionStorage.js';
-import { jsonStringify } from '../../utils/slowOperations.js';
-import { appendTaskOutput, evictTaskOutput, getTaskOutputPath, initTaskOutput } from '../../utils/task/diskOutput.js';
-import { registerTask, updateTaskState } from '../../utils/task/framework.js';
-import { fetchSession } from '../../utils/teleport/api.js';
-import { archiveRemoteSession, pollRemoteSessionEvents } from '../../utils/teleport.js';
-import type { TodoList } from '../../utils/todo/types.js';
-import type { UltraplanPhase } from '../../utils/ultraplan/ccrSession.js';
+import type { ToolUseBlock } from "@anthropic-ai/sdk/resources";
+import { getRemoteSessionUrl } from "../../constants/product.js";
+import {
+  OUTPUT_FILE_TAG,
+  REMOTE_REVIEW_PROGRESS_TAG,
+  REMOTE_REVIEW_TAG,
+  STATUS_TAG,
+  SUMMARY_TAG,
+  TASK_ID_TAG,
+  TASK_NOTIFICATION_TAG,
+  TASK_TYPE_TAG,
+  TOOL_USE_ID_TAG,
+  ULTRAPLAN_TAG,
+} from "../../constants/xml.js";
+import type {
+  SDKAssistantMessage,
+  SDKMessage,
+} from "../../entrypoints/agentSdkTypes.js";
+import type {
+  SetAppState,
+  Task,
+  TaskContext,
+  TaskStateBase,
+} from "../../Task.js";
+import { createTaskStateBase, generateTaskId } from "../../Task.js";
+import { TodoWriteTool } from "../../tools/TodoWriteTool/TodoWriteTool.js";
+import {
+  type BackgroundRemoteSessionPrecondition,
+  checkBackgroundRemoteSessionEligibility,
+} from "../../utils/background/remote/remoteSession.js";
+import { logForDebugging } from "../../utils/debug.js";
+import { logError } from "../../utils/log.js";
+import { enqueuePendingNotification } from "../../utils/messageQueueManager.js";
+import { extractTag, extractTextContent } from "../../utils/messages.js";
+import { emitTaskTerminatedSdk } from "../../utils/sdkEventQueue.js";
+import {
+  deleteRemoteAgentMetadata,
+  listRemoteAgentMetadata,
+  type RemoteAgentMetadata,
+  writeRemoteAgentMetadata,
+} from "../../utils/sessionStorage.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
+import {
+  appendTaskOutput,
+  evictTaskOutput,
+  getTaskOutputPath,
+  initTaskOutput,
+} from "../../utils/task/diskOutput.js";
+import { registerTask, updateTaskState } from "../../utils/task/framework.js";
+import { fetchSession } from "../../utils/teleport/api.js";
+import {
+  archiveRemoteSession,
+  pollRemoteSessionEvents,
+} from "../../utils/teleport.js";
+import type { TodoList } from "../../utils/todo/types.js";
+import type { UltraplanPhase } from "../../utils/ultraplan/ccrSession.js";
 export type RemoteAgentTaskState = TaskStateBase & {
-  type: 'remote_agent';
+  type: "remote_agent";
   remoteTaskType: RemoteTaskType;
   /** Task-specific metadata (PR number, repo, etc.). */
   remoteTaskMetadata?: RemoteTaskMetadata;
@@ -43,7 +78,7 @@ export type RemoteAgentTaskState = TaskStateBase & {
   isRemoteReview?: boolean;
   /** Parsed from the orchestrator's <remote-review-progress> heartbeat echoes. */
   reviewProgress?: {
-    stage?: 'finding' | 'verifying' | 'synthesizing';
+    stage?: "finding" | "verifying" | "synthesizing";
     bugsFound: number;
     bugsVerified: number;
     bugsRefuted: number;
@@ -55,12 +90,18 @@ export type RemoteAgentTaskState = TaskStateBase & {
    * ExitPlanMode is awaiting browser approval. Surfaced in the pill badge
    * and detail dialog status line.
    */
-  ultraplanPhase?: Exclude<UltraplanPhase, 'running'>;
+  ultraplanPhase?: Exclude<UltraplanPhase, "running">;
 };
-const REMOTE_TASK_TYPES = ['remote-agent', 'ultraplan', 'ultrareview', 'autofix-pr', 'background-pr'] as const;
+const REMOTE_TASK_TYPES = [
+  "remote-agent",
+  "ultraplan",
+  "ultrareview",
+  "autofix-pr",
+  "background-pr",
+] as const;
 export type RemoteTaskType = (typeof REMOTE_TASK_TYPES)[number];
 function isRemoteTaskType(v: string | undefined): v is RemoteTaskType {
-  return (REMOTE_TASK_TYPES as readonly string[]).includes(v ?? '');
+  return (REMOTE_TASK_TYPES as readonly string[]).includes(v ?? "");
 }
 export type AutofixPrRemoteTaskMetadata = {
   owner: string;
@@ -74,22 +115,32 @@ export type RemoteTaskMetadata = AutofixPrRemoteTaskMetadata;
  * non-null string to complete the task (string becomes the notification text),
  * or null to keep polling. Checkers that hit external APIs should self-throttle.
  */
-export type RemoteTaskCompletionChecker = (remoteTaskMetadata: RemoteTaskMetadata | undefined) => Promise<string | null>;
-const completionCheckers = new Map<RemoteTaskType, RemoteTaskCompletionChecker>();
+export type RemoteTaskCompletionChecker = (
+  remoteTaskMetadata: RemoteTaskMetadata | undefined,
+) => Promise<string | null>;
+const completionCheckers = new Map<
+  RemoteTaskType,
+  RemoteTaskCompletionChecker
+>();
 
 /**
  * Register a completion checker for a remote task type. Invoked on every poll
  * tick; survives --resume via the sidecar's remoteTaskType + remoteTaskMetadata.
  */
-export function registerCompletionChecker(remoteTaskType: RemoteTaskType, checker: RemoteTaskCompletionChecker): void {
+export function registerCompletionChecker(
+  remoteTaskType: RemoteTaskType,
+  checker: RemoteTaskCompletionChecker,
+): void {
   completionCheckers.set(remoteTaskType, checker);
 }
 
 /**
  * Persist a remote-agent metadata entry to the session sidecar.
- * Fire-and-forget — persistence failures must not block task registration.
+ * Fire-and-forget: persistence failures must not block task registration.
  */
-async function persistRemoteAgentMetadata(meta: RemoteAgentMetadata): Promise<void> {
+async function persistRemoteAgentMetadata(
+  meta: RemoteAgentMetadata,
+): Promise<void> {
   try {
     await writeRemoteAgentMetadata(meta.taskId, meta);
   } catch (e) {
@@ -111,51 +162,55 @@ async function removeRemoteAgentMetadata(taskId: string): Promise<void> {
 }
 
 // Precondition error result
-export type RemoteAgentPreconditionResult = {
-  eligible: true;
-} | {
-  eligible: false;
-  errors: BackgroundRemoteSessionPrecondition[];
-};
+export type RemoteAgentPreconditionResult =
+  | {
+      eligible: true;
+    }
+  | {
+      eligible: false;
+      errors: BackgroundRemoteSessionPrecondition[];
+    };
 
 /**
  * Check eligibility for creating a remote agent session.
  */
 export async function checkRemoteAgentEligibility({
-  skipBundle = false
+  skipBundle = false,
 }: {
   skipBundle?: boolean;
 } = {}): Promise<RemoteAgentPreconditionResult> {
   const errors = await checkBackgroundRemoteSessionEligibility({
-    skipBundle
+    skipBundle,
   });
   if (errors.length > 0) {
     return {
       eligible: false,
-      errors
+      errors,
     };
   }
   return {
-    eligible: true
+    eligible: true,
   };
 }
 
 /**
  * Format precondition error for display.
  */
-export function formatPreconditionError(error: BackgroundRemoteSessionPrecondition): string {
+export function formatPreconditionError(
+  error: BackgroundRemoteSessionPrecondition,
+): string {
   switch (error.type) {
-    case 'not_logged_in':
-      return 'Please run /login and sign in with your Claude.ai account (not Console).';
-    case 'no_remote_environment':
-      return 'No cloud environment available. Set one up at https://claude.ai/code/onboarding?magic=env-setup';
-    case 'not_in_git_repo':
-      return 'Background tasks require a git repository. Initialize git or run from a git repository.';
-    case 'no_git_remote':
-      return 'Background tasks require a GitHub remote. Add one with `git remote add origin REPO_URL`.';
-    case 'github_app_not_installed':
-      return 'The Claude GitHub app must be installed on this repository first.\nhttps://github.com/apps/claude/installations/new';
-    case 'policy_blocked':
+    case "not_logged_in":
+      return "Please run /login and sign in with your Claude.ai account (not Console).";
+    case "no_remote_environment":
+      return "No cloud environment available. Set one up at https://claude.ai/code/onboarding?magic=env-setup";
+    case "not_in_git_repo":
+      return "Background tasks require a git repository. Initialize git or run from a git repository.";
+    case "no_git_remote":
+      return "Background tasks require a GitHub remote. Add one with `git remote add origin REPO_URL`.";
+    case "github_app_not_installed":
+      return "The Claude GitHub app must be installed on this repository first.\nhttps://github.com/apps/claude/installations/new";
+    case "policy_blocked":
       return "Remote sessions are disabled by your organization's policy. Contact your organization admin to enable them.";
   }
 }
@@ -163,11 +218,24 @@ export function formatPreconditionError(error: BackgroundRemoteSessionPreconditi
 /**
  * Enqueue a remote task notification to the message queue.
  */
-function enqueueRemoteNotification(taskId: string, title: string, status: 'completed' | 'failed' | 'killed', setAppState: SetAppState, toolUseId?: string): void {
+function enqueueRemoteNotification(
+  taskId: string,
+  title: string,
+  status: "completed" | "failed" | "killed",
+  setAppState: SetAppState,
+  toolUseId?: string,
+): void {
   // Atomically check and set notified flag to prevent duplicate notifications.
   if (!markTaskNotified(taskId, setAppState)) return;
-  const statusText = status === 'completed' ? 'completed successfully' : status === 'failed' ? 'failed' : 'was stopped';
-  const toolUseIdLine = toolUseId ? `\n<${TOOL_USE_ID_TAG}>${toolUseId}</${TOOL_USE_ID_TAG}>` : '';
+  const statusText =
+    status === "completed"
+      ? "completed successfully"
+      : status === "failed"
+        ? "failed"
+        : "was stopped";
+  const toolUseIdLine = toolUseId
+    ? `\n<${TOOL_USE_ID_TAG}>${toolUseId}</${TOOL_USE_ID_TAG}>`
+    : "";
   const outputPath = getTaskOutputPath(taskId);
   const message = `<${TASK_NOTIFICATION_TAG}>
 <${TASK_ID_TAG}>${taskId}</${TASK_ID_TAG}>${toolUseIdLine}
@@ -178,7 +246,7 @@ function enqueueRemoteNotification(taskId: string, title: string, status: 'compl
 </${TASK_NOTIFICATION_TAG}>`;
   enqueuePendingNotification({
     value: message,
-    mode: 'task-notification'
+    mode: "task-notification",
   });
 }
 
@@ -188,14 +256,14 @@ function enqueueRemoteNotification(taskId: string, title: string, status: 'compl
  */
 function markTaskNotified(taskId: string, setAppState: SetAppState): boolean {
   let shouldEnqueue = false;
-  updateTaskState(taskId, setAppState, task => {
+  updateTaskState(taskId, setAppState, (task) => {
     if (task.notified) {
       return task;
     }
     shouldEnqueue = true;
     return {
       ...task,
-      notified: true
+      notified: true,
     };
   });
   return shouldEnqueue;
@@ -209,8 +277,8 @@ export function extractPlanFromLog(log: SDKMessage[]): string | null {
   // Walk backwards through assistant messages to find <ultraplan> content
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i];
-    if (msg?.type !== 'assistant') continue;
-    const fullText = extractTextContent(msg.message.content, '\n');
+    if (msg?.type !== "assistant") continue;
+    const fullText = extractTextContent(msg.message.content, "\n");
     const plan = extractTag(fullText, ULTRAPLAN_TAG);
     if (plan?.trim()) return plan.trim();
   }
@@ -222,7 +290,12 @@ export function extractPlanFromLog(log: SDKMessage[]): string | null {
  * this does NOT instruct the model to read the raw output file (a JSONL dump that is
  * useless for plan extraction).
  */
-export function enqueueUltraplanFailureNotification(taskId: string, sessionId: string, reason: string, setAppState: SetAppState): void {
+export function enqueueUltraplanFailureNotification(
+  taskId: string,
+  sessionId: string,
+  reason: string,
+  setAppState: SetAppState,
+): void {
   if (!markTaskNotified(taskId, setAppState)) return;
   const sessionUrl = getRemoteTaskSessionUrl(sessionId);
   const message = `<${TASK_NOTIFICATION_TAG}>
@@ -234,7 +307,7 @@ export function enqueueUltraplanFailureNotification(taskId: string, sessionId: s
 The remote Ultraplan session did not produce a plan (${reason}). Inspect the session at ${sessionUrl} and tell the user to retry locally with plan mode.`;
   enqueuePendingNotification({
     value: message,
-    mode: 'task-notification'
+    mode: "task-notification",
   });
 }
 
@@ -248,7 +321,7 @@ The remote Ultraplan session did not produce a plan (${reason}). Inspect the ses
  * - prompt mode: a real assistant turn wraps the review in the tag.
  *
  * Scans hook_progress first since bughunter is the intended production path
- * and prompt mode is the dev/fallback. Newest-first in both cases — the tag
+ * and prompt mode is the dev/fallback. Newest-first in both cases: the tag
  * appears once at the end of the run so reverse iteration short-circuits.
  */
 function extractReviewFromLog(log: SDKMessage[]): string | null {
@@ -257,15 +330,18 @@ function extractReviewFromLog(log: SDKMessage[]): string | null {
     // The final echo before hook exit may land in either the last
     // hook_progress or the terminal hook_response depending on buffering;
     // both have flat stdout.
-    if (msg?.type === 'system' && (msg.subtype === 'hook_progress' || msg.subtype === 'hook_response')) {
+    if (
+      msg?.type === "system" &&
+      (msg.subtype === "hook_progress" || msg.subtype === "hook_response")
+    ) {
       const tagged = extractTag(msg.stdout, REMOTE_REVIEW_TAG);
       if (tagged?.trim()) return tagged.trim();
     }
   }
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i];
-    if (msg?.type !== 'assistant') continue;
-    const fullText = extractTextContent(msg.message.content, '\n');
+    if (msg?.type !== "assistant") continue;
+    const fullText = extractTextContent(msg.message.content, "\n");
     const tagged = extractTag(fullText, REMOTE_REVIEW_TAG);
     if (tagged?.trim()) return tagged.trim();
   }
@@ -273,12 +349,23 @@ function extractReviewFromLog(log: SDKMessage[]): string | null {
   // Hook-stdout concat fallback: a single echo should land in one event, but
   // large JSON payloads can flush across two if the pipe buffer fills
   // mid-write. Per-message scan above misses a tag split across events.
-  const hookStdout = log.filter(msg => msg.type === 'system' && (msg.subtype === 'hook_progress' || msg.subtype === 'hook_response')).map(msg => msg.stdout).join('');
+  const hookStdout = log
+    .filter(
+      (msg) =>
+        msg.type === "system" &&
+        (msg.subtype === "hook_progress" || msg.subtype === "hook_response"),
+    )
+    .map((msg) => msg.stdout)
+    .join("");
   const hookTagged = extractTag(hookStdout, REMOTE_REVIEW_TAG);
   if (hookTagged?.trim()) return hookTagged.trim();
 
   // Fallback: concatenate all assistant text in chronological order.
-  const allText = log.filter((msg): msg is SDKAssistantMessage => msg.type === 'assistant').map(msg => extractTextContent(msg.message.content, '\n')).join('\n').trim();
+  const allText = log
+    .filter((msg): msg is SDKAssistantMessage => msg.type === "assistant")
+    .map((msg) => extractTextContent(msg.message.content, "\n"))
+    .join("\n")
+    .trim();
   return allText || null;
 }
 
@@ -296,7 +383,10 @@ function extractReviewTagFromLog(log: SDKMessage[]): string | null {
   // hook_progress / hook_response per-message scan (bughunter path)
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i];
-    if (msg?.type === 'system' && (msg.subtype === 'hook_progress' || msg.subtype === 'hook_response')) {
+    if (
+      msg?.type === "system" &&
+      (msg.subtype === "hook_progress" || msg.subtype === "hook_response")
+    ) {
       const tagged = extractTag(msg.stdout, REMOTE_REVIEW_TAG);
       if (tagged?.trim()) return tagged.trim();
     }
@@ -305,14 +395,21 @@ function extractReviewTagFromLog(log: SDKMessage[]): string | null {
   // assistant text per-message scan (prompt mode)
   for (let i = log.length - 1; i >= 0; i--) {
     const msg = log[i];
-    if (msg?.type !== 'assistant') continue;
-    const fullText = extractTextContent(msg.message.content, '\n');
+    if (msg?.type !== "assistant") continue;
+    const fullText = extractTextContent(msg.message.content, "\n");
     const tagged = extractTag(fullText, REMOTE_REVIEW_TAG);
     if (tagged?.trim()) return tagged.trim();
   }
 
   // Hook-stdout concat fallback for split tags
-  const hookStdout = log.filter(msg => msg.type === 'system' && (msg.subtype === 'hook_progress' || msg.subtype === 'hook_response')).map(msg => msg.stdout).join('');
+  const hookStdout = log
+    .filter(
+      (msg) =>
+        msg.type === "system" &&
+        (msg.subtype === "hook_progress" || msg.subtype === "hook_response"),
+    )
+    .map((msg) => msg.stdout)
+    .join("");
   const hookTagged = extractTag(hookStdout, REMOTE_REVIEW_TAG);
   if (hookTagged?.trim()) return hookTagged.trim();
   return null;
@@ -321,10 +418,14 @@ function extractReviewTagFromLog(log: SDKMessage[]): string | null {
 /**
  * Enqueue a remote-review completion notification. Injects the review text
  * directly into the message queue so the local model receives it on the next
- * turn — no file indirection, no mode change. Session is kept alive so the
+ * turn: no file indirection, no mode change. Session is kept alive so the
  * claude.ai URL stays a durable record the user can revisit; TTL handles cleanup.
  */
-function enqueueRemoteReviewNotification(taskId: string, reviewContent: string, setAppState: SetAppState): void {
+function enqueueRemoteReviewNotification(
+  taskId: string,
+  reviewContent: string,
+  setAppState: SetAppState,
+): void {
   if (!markTaskNotified(taskId, setAppState)) return;
   const message = `<${TASK_NOTIFICATION_TAG}>
 <${TASK_ID_TAG}>${taskId}</${TASK_ID_TAG}>
@@ -337,14 +438,18 @@ The remote review produced the following findings:
 ${reviewContent}`;
   enqueuePendingNotification({
     value: message,
-    mode: 'task-notification'
+    mode: "task-notification",
   });
 }
 
 /**
  * Enqueue a remote-review failure notification.
  */
-function enqueueRemoteReviewFailureNotification(taskId: string, reason: string, setAppState: SetAppState): void {
+function enqueueRemoteReviewFailureNotification(
+  taskId: string,
+  reason: string,
+  setAppState: SetAppState,
+): void {
   if (!markTaskNotified(taskId, setAppState)) return;
   const message = `<${TASK_NOTIFICATION_TAG}>
 <${TASK_ID_TAG}>${taskId}</${TASK_ID_TAG}>
@@ -355,7 +460,7 @@ function enqueueRemoteReviewFailureNotification(taskId: string, reason: string, 
 Remote review did not produce output (${reason}). Tell the user to retry /ultrareview, or use /review for a local review instead.`;
   enqueuePendingNotification({
     value: message,
-    mode: 'task-notification'
+    mode: "task-notification",
   });
 }
 
@@ -363,11 +468,21 @@ Remote review did not produce output (${reason}). Tell the user to retry /ultrar
  * Extract todo list from SDK messages (finds last TodoWrite tool use).
  */
 function extractTodoListFromLog(log: SDKMessage[]): TodoList {
-  const todoListMessage = log.findLast((msg): msg is SDKAssistantMessage => msg.type === 'assistant' && msg.message.content.some(block => block.type === 'tool_use' && block.name === TodoWriteTool.name));
+  const todoListMessage = log.findLast(
+    (msg): msg is SDKAssistantMessage =>
+      msg.type === "assistant" &&
+      msg.message.content.some(
+        (block) =>
+          block.type === "tool_use" && block.name === TodoWriteTool.name,
+      ),
+  );
   if (!todoListMessage) {
     return [];
   }
-  const input = todoListMessage.message.content.find((block): block is ToolUseBlock => block.type === 'tool_use' && block.name === TodoWriteTool.name)?.input;
+  const input = todoListMessage.message.content.find(
+    (block): block is ToolUseBlock =>
+      block.type === "tool_use" && block.name === TodoWriteTool.name,
+  )?.input;
   if (!input) {
     return [];
   }
@@ -410,19 +525,19 @@ export function registerRemoteAgentTask(options: {
     isRemoteReview,
     isUltraplan,
     isLongRunning,
-    remoteTaskMetadata
+    remoteTaskMetadata,
   } = options;
-  const taskId = generateTaskId('remote_agent');
+  const taskId = generateTaskId("remote_agent");
 
   // Create the output file before registering the task.
   // RemoteAgentTask uses appendTaskOutput() (not TaskOutput), so
   // the file must exist for readers before any output arrives.
   void initTaskOutput(taskId);
   const taskState: RemoteAgentTaskState = {
-    ...createTaskStateBase(taskId, 'remote_agent', session.title, toolUseId),
-    type: 'remote_agent',
+    ...createTaskStateBase(taskId, "remote_agent", session.title, toolUseId),
+    type: "remote_agent",
     remoteTaskType,
-    status: 'running',
+    status: "running",
     sessionId: session.id,
     command,
     title: session.title,
@@ -432,12 +547,12 @@ export function registerRemoteAgentTask(options: {
     isUltraplan,
     isLongRunning,
     pollStartedAt: Date.now(),
-    remoteTaskMetadata
+    remoteTaskMetadata,
   };
   registerTask(taskState, context.setAppState);
 
   // Persist identity to the session sidecar so --resume can reconnect to
-  // still-running remote sessions. Status is not stored — it's fetched
+  // still-running remote sessions. Status is not stored: it's fetched
   // fresh from CCR on restore.
   void persistRemoteAgentMetadata({
     taskId,
@@ -450,7 +565,7 @@ export function registerRemoteAgentTask(options: {
     isUltraplan,
     isRemoteReview,
     isLongRunning,
-    remoteTaskMetadata
+    remoteTaskMetadata,
   });
 
   // Ultraplan lifecycle is owned by startDetachedPoll in ultraplan.tsx. Generic
@@ -461,7 +576,7 @@ export function registerRemoteAgentTask(options: {
   return {
     taskId,
     sessionId: session.id,
-    cleanup: stopPolling
+    cleanup: stopPolling,
   };
 }
 
@@ -474,14 +589,18 @@ export function registerRemoteAgentTask(options: {
  * removed. Must run after switchSession() so getSessionId() points at the
  * resumed session's sidecar directory.
  */
-export async function restoreRemoteAgentTasks(context: TaskContext): Promise<void> {
+export async function restoreRemoteAgentTasks(
+  context: TaskContext,
+): Promise<void> {
   try {
     await restoreRemoteAgentTasksImpl(context);
   } catch (e) {
     logForDebugging(`restoreRemoteAgentTasks failed: ${String(e)}`);
   }
 }
-async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> {
+async function restoreRemoteAgentTasksImpl(
+  context: TaskContext,
+): Promise<void> {
   const persisted = await listRemoteAgentMetadata();
   if (persisted.length === 0) return;
   for (const meta of persisted) {
@@ -491,28 +610,39 @@ async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> 
       remoteStatus = session.session_status;
     } catch (e) {
       // Only 404 means the CCR session is truly gone. Auth errors (401,
-      // missing OAuth token) are recoverable via /login — the remote
+      // missing OAuth token) are recoverable via /login: the remote
       // session is still running. fetchSession throws plain Error for all
       // 4xx (validateStatus treats <500 as success), so isTransientNetworkError
       // can't distinguish them; match the 404 message instead.
-      if (e instanceof Error && e.message.startsWith('Session not found:')) {
-        logForDebugging(`restoreRemoteAgentTasks: dropping ${meta.taskId} (404: ${String(e)})`);
+      if (e instanceof Error && e.message.startsWith("Session not found:")) {
+        logForDebugging(
+          `restoreRemoteAgentTasks: dropping ${meta.taskId} (404: ${String(e)})`,
+        );
         void removeRemoteAgentMetadata(meta.taskId);
       } else {
-        logForDebugging(`restoreRemoteAgentTasks: skipping ${meta.taskId} (recoverable: ${String(e)})`);
+        logForDebugging(
+          `restoreRemoteAgentTasks: skipping ${meta.taskId} (recoverable: ${String(e)})`,
+        );
       }
       continue;
     }
-    if (remoteStatus === 'archived') {
+    if (remoteStatus === "archived") {
       // Session ended while the local client was offline. Don't resurrect.
       void removeRemoteAgentMetadata(meta.taskId);
       continue;
     }
     const taskState: RemoteAgentTaskState = {
-      ...createTaskStateBase(meta.taskId, 'remote_agent', meta.title, meta.toolUseId),
-      type: 'remote_agent',
-      remoteTaskType: isRemoteTaskType(meta.remoteTaskType) ? meta.remoteTaskType : 'remote-agent',
-      status: 'running',
+      ...createTaskStateBase(
+        meta.taskId,
+        "remote_agent",
+        meta.title,
+        meta.toolUseId,
+      ),
+      type: "remote_agent",
+      remoteTaskType: isRemoteTaskType(meta.remoteTaskType)
+        ? meta.remoteTaskType
+        : "remote-agent",
+      status: "running",
       sessionId: meta.sessionId,
       command: meta.command,
       title: meta.title,
@@ -523,7 +653,9 @@ async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> 
       isLongRunning: meta.isLongRunning,
       startTime: meta.spawnedAt,
       pollStartedAt: Date.now(),
-      remoteTaskMetadata: meta.remoteTaskMetadata as RemoteTaskMetadata | undefined
+      remoteTaskMetadata: meta.remoteTaskMetadata as
+        | RemoteTaskMetadata
+        | undefined,
     };
     registerTask(taskState, context.setAppState);
     void initTaskOutput(meta.taskId);
@@ -535,7 +667,10 @@ async function restoreRemoteAgentTasksImpl(context: TaskContext): Promise<void> 
  * Start polling for remote session updates.
  * Returns a cleanup function to stop polling.
  */
-function startRemoteSessionPolling(taskId: string, context: TaskContext): () => void {
+function startRemoteSessionPolling(
+  taskId: string,
+  context: TaskContext,
+): () => void {
   let isRunning = true;
   const POLL_INTERVAL_MS = 1000;
   const REMOTE_REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
@@ -554,35 +689,56 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
     try {
       const appState = context.getAppState();
       const task = appState.tasks?.[taskId] as RemoteAgentTaskState | undefined;
-      if (!task || task.status !== 'running') {
+      if (!task || task.status !== "running") {
         // Task was killed externally (TaskStopTool) or already terminal.
-        // Session left alive so the claude.ai URL stays valid — the run_hunt.sh
+        // Session left alive so the claude.ai URL stays valid: the run_hunt.sh
         // post_stage() calls land as assistant events there, and the user may
         // want to revisit them after closing the terminal. TTL reaps it.
         return;
       }
-      const response = await pollRemoteSessionEvents(task.sessionId, lastEventId);
+      const response = await pollRemoteSessionEvents(
+        task.sessionId,
+        lastEventId,
+      );
       lastEventId = response.lastEventId;
       const logGrew = response.newEvents.length > 0;
       if (logGrew) {
         accumulatedLog = [...accumulatedLog, ...response.newEvents];
-        const deltaText = response.newEvents.map(msg => {
-          if (msg.type === 'assistant') {
-            return msg.message.content.filter(block => block.type === 'text').map(block => 'text' in block ? block.text : '').join('\n');
-          }
-          return jsonStringify(msg);
-        }).join('\n');
+        const deltaText = response.newEvents
+          .map((msg) => {
+            if (msg.type === "assistant") {
+              return msg.message.content
+                .filter((block) => block.type === "text")
+                .map((block) => ("text" in block ? block.text : ""))
+                .join("\n");
+            }
+            return jsonStringify(msg);
+          })
+          .join("\n");
         if (deltaText) {
-          appendTaskOutput(taskId, deltaText + '\n');
+          appendTaskOutput(taskId, deltaText + "\n");
         }
       }
-      if (response.sessionStatus === 'archived') {
-        updateTaskState<RemoteAgentTaskState>(taskId, context.setAppState, t => t.status === 'running' ? {
-          ...t,
-          status: 'completed',
-          endTime: Date.now()
-        } : t);
-        enqueueRemoteNotification(taskId, task.title, 'completed', context.setAppState, task.toolUseId);
+      if (response.sessionStatus === "archived") {
+        updateTaskState<RemoteAgentTaskState>(
+          taskId,
+          context.setAppState,
+          (t) =>
+            t.status === "running"
+              ? {
+                  ...t,
+                  status: "completed",
+                  endTime: Date.now(),
+                }
+              : t,
+        );
+        enqueueRemoteNotification(
+          taskId,
+          task.title,
+          "completed",
+          context.setAppState,
+          task.toolUseId,
+        );
         void evictTaskOutput(taskId);
         void removeRemoteAgentMetadata(taskId);
         return;
@@ -591,12 +747,25 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       if (checker) {
         const completionResult = await checker(task.remoteTaskMetadata);
         if (completionResult !== null) {
-          updateTaskState<RemoteAgentTaskState>(taskId, context.setAppState, t => t.status === 'running' ? {
-            ...t,
-            status: 'completed',
-            endTime: Date.now()
-          } : t);
-          enqueueRemoteNotification(taskId, completionResult, 'completed', context.setAppState, task.toolUseId);
+          updateTaskState<RemoteAgentTaskState>(
+            taskId,
+            context.setAppState,
+            (t) =>
+              t.status === "running"
+                ? {
+                    ...t,
+                    status: "completed",
+                    endTime: Date.now(),
+                  }
+                : t,
+          );
+          enqueueRemoteNotification(
+            taskId,
+            completionResult,
+            "completed",
+            context.setAppState,
+            task.toolUseId,
+          );
           void evictTaskOutput(taskId);
           void removeRemoteAgentMetadata(taskId);
           return;
@@ -604,10 +773,13 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       }
 
       // Ultraplan: result(success) fires after every CCR turn, so it must not
-      // drive completion — startDetachedPoll owns that via ExitPlanMode scan.
+      // drive completion: startDetachedPoll owns that via ExitPlanMode scan.
       // Long-running monitors (autofix-pr) emit result per notification cycle,
       // so the same skip applies.
-      const result = task.isUltraplan || task.isLongRunning ? undefined : accumulatedLog.findLast(msg => msg.type === 'result');
+      const result =
+        task.isUltraplan || task.isLongRunning
+          ? undefined
+          : accumulatedLog.findLast((msg) => msg.type === "result");
 
       // For remote-review: <remote-review> in hook_progress stdout is the
       // bughunter path's completion signal. Scan only the delta to stay O(new);
@@ -621,22 +793,27 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       }
       // Parse live progress counts from the orchestrator's heartbeat echoes.
       // hook_progress stdout is cumulative (every echo since hook start), so
-      // each event contains all progress tags. Grab the LAST occurrence —
+      // each event contains all progress tags. Grab the LAST occurrence:
       // extractTag returns the first match which would always be the earliest
       // value (0/0).
-      let newProgress: RemoteAgentTaskState['reviewProgress'];
+      let newProgress: RemoteAgentTaskState["reviewProgress"];
       if (task.isRemoteReview && logGrew) {
         const open = `<${REMOTE_REVIEW_PROGRESS_TAG}>`;
         const close = `</${REMOTE_REVIEW_PROGRESS_TAG}>`;
         for (const ev of response.newEvents) {
-          if (ev.type === 'system' && (ev.subtype === 'hook_progress' || ev.subtype === 'hook_response')) {
+          if (
+            ev.type === "system" &&
+            (ev.subtype === "hook_progress" || ev.subtype === "hook_response")
+          ) {
             const s = ev.stdout;
             const closeAt = s.lastIndexOf(close);
             const openAt = closeAt === -1 ? -1 : s.lastIndexOf(open, closeAt);
             if (openAt !== -1 && closeAt > openAt) {
               try {
-                const p = JSON.parse(s.slice(openAt + open.length, closeAt)) as {
-                  stage?: 'finding' | 'verifying' | 'synthesizing';
+                const p = JSON.parse(
+                  s.slice(openAt + open.length, closeAt),
+                ) as {
+                  stage?: "finding" | "verifying" | "synthesizing";
                   bugs_found?: number;
                   bugs_verified?: number;
                   bugs_refuted?: number;
@@ -645,7 +822,7 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
                   stage: p.stage,
                   bugsFound: p.bugs_found ?? 0,
                   bugsVerified: p.bugs_verified ?? 0,
-                  bugsRefuted: p.bugs_refuted ?? 0
+                  bugsRefuted: p.bugs_refuted ?? 0,
                 };
               } catch {
                 // ignore malformed progress
@@ -654,11 +831,18 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
           }
         }
       }
-      // Hook events count as output only for remote-review — bughunter's
+      // Hook events count as output only for remote-review: bughunter's
       // SessionStart hook produces zero assistant turns so stableIdle would
       // never arm without this.
-      const hasAnyOutput = accumulatedLog.some(msg => msg.type === 'assistant' || task.isRemoteReview && msg.type === 'system' && (msg.subtype === 'hook_progress' || msg.subtype === 'hook_response'));
-      if (response.sessionStatus === 'idle' && !logGrew && hasAnyOutput) {
+      const hasAnyOutput = accumulatedLog.some(
+        (msg) =>
+          msg.type === "assistant" ||
+          (task.isRemoteReview &&
+            msg.type === "system" &&
+            (msg.subtype === "hook_progress" ||
+              msg.subtype === "hook_response")),
+      );
+      if (response.sessionStatus === "idle" && !logGrew && hasAnyOutput) {
         consecutiveIdlePolls++;
       } else {
         consecutiveIdlePolls = 0;
@@ -670,89 +854,142 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       // hasAssistantEvents as a prompt-mode proxy, but post_stage() now
       // writes assistant events in bughunter mode too, so that check
       // misfires between heartbeats. Presence of a SessionStart hook event
-      // is the discriminator — bughunter mode always has one (run_hunt.sh),
-      // prompt mode never does — and it arrives before the kickoff
+      // is the discriminator: bughunter mode always has one (run_hunt.sh),
+      // prompt mode never does: and it arrives before the kickoff
       // post_stage so there's no race. When the hook is running, only the
       // <remote-review> tag or the 30min timeout complete the task.
       // Filtering on hook_event avoids a (theoretical) non-SessionStart hook
-      // in prompt mode from blocking stableIdle — the code_review container
+      // in prompt mode from blocking stableIdle: the code_review container
       // only registers SessionStart, but the 30min-hang failure mode is
       // worth defending against.
-      const hasSessionStartHook = accumulatedLog.some(m => m.type === 'system' && (m.subtype === 'hook_started' || m.subtype === 'hook_progress' || m.subtype === 'hook_response') && (m as {
-        hook_event?: string;
-      }).hook_event === 'SessionStart');
-      const hasAssistantEvents = accumulatedLog.some(m => m.type === 'assistant');
-      const sessionDone = task.isRemoteReview && (cachedReviewContent !== null || !hasSessionStartHook && stableIdle && hasAssistantEvents);
-      const reviewTimedOut = task.isRemoteReview && Date.now() - task.pollStartedAt > REMOTE_REVIEW_TIMEOUT_MS;
-      const newStatus = result ? result.subtype === 'success' ? 'completed' as const : 'failed' as const : sessionDone || reviewTimedOut ? 'completed' as const : accumulatedLog.length > 0 ? 'running' as const : 'starting' as const;
+      const hasSessionStartHook = accumulatedLog.some(
+        (m) =>
+          m.type === "system" &&
+          (m.subtype === "hook_started" ||
+            m.subtype === "hook_progress" ||
+            m.subtype === "hook_response") &&
+          (
+            m as {
+              hook_event?: string;
+            }
+          ).hook_event === "SessionStart",
+      );
+      const hasAssistantEvents = accumulatedLog.some(
+        (m) => m.type === "assistant",
+      );
+      const sessionDone =
+        task.isRemoteReview &&
+        (cachedReviewContent !== null ||
+          (!hasSessionStartHook && stableIdle && hasAssistantEvents));
+      const reviewTimedOut =
+        task.isRemoteReview &&
+        Date.now() - task.pollStartedAt > REMOTE_REVIEW_TIMEOUT_MS;
+      const newStatus = result
+        ? result.subtype === "success"
+          ? ("completed" as const)
+          : ("failed" as const)
+        : sessionDone || reviewTimedOut
+          ? ("completed" as const)
+          : accumulatedLog.length > 0
+            ? ("running" as const)
+            : ("starting" as const);
 
-      // Update task state. Guard against terminal states — if stopTask raced
+      // Update task state. Guard against terminal states: if stopTask raced
       // while pollRemoteSessionEvents was in-flight (status set to 'killed',
       // notified set to true), bail without overwriting status or proceeding to
       // side effects (notification, permission-mode flip).
       let raceTerminated = false;
-      updateTaskState<RemoteAgentTaskState>(taskId, context.setAppState, prevTask => {
-        if (prevTask.status !== 'running') {
-          raceTerminated = true;
-          return prevTask;
-        }
-        // No log growth and status unchanged → nothing to report. Return
-        // same ref so updateTaskState skips the spread and 18 s.tasks
-        // subscribers (REPL, Spinner, PromptInput, ...) don't re-render.
-        // newProgress only arrives via log growth (heartbeat echo is a
-        // hook_progress event), so !logGrew already covers no-update.
-        const statusUnchanged = newStatus === 'running' || newStatus === 'starting';
-        if (!logGrew && statusUnchanged) {
-          return prevTask;
-        }
-        return {
-          ...prevTask,
-          status: newStatus === 'starting' ? 'running' : newStatus,
-          log: accumulatedLog,
-          // Only re-scan for TodoWrite when log grew — log is append-only,
-          // so no growth means no new tool_use blocks. Avoids findLast +
-          // some + find + safeParse every second when idle.
-          todoList: logGrew ? extractTodoListFromLog(accumulatedLog) : prevTask.todoList,
-          reviewProgress: newProgress ?? prevTask.reviewProgress,
-          endTime: result || sessionDone || reviewTimedOut ? Date.now() : undefined
-        };
-      });
+      updateTaskState<RemoteAgentTaskState>(
+        taskId,
+        context.setAppState,
+        (prevTask) => {
+          if (prevTask.status !== "running") {
+            raceTerminated = true;
+            return prevTask;
+          }
+          // No log growth and status unchanged → nothing to report. Return
+          // same ref so updateTaskState skips the spread and 18 s.tasks
+          // subscribers (REPL, Spinner, PromptInput, ...) don't re-render.
+          // newProgress only arrives via log growth (heartbeat echo is a
+          // hook_progress event), so !logGrew already covers no-update.
+          const statusUnchanged =
+            newStatus === "running" || newStatus === "starting";
+          if (!logGrew && statusUnchanged) {
+            return prevTask;
+          }
+          return {
+            ...prevTask,
+            status: newStatus === "starting" ? "running" : newStatus,
+            log: accumulatedLog,
+            // Only re-scan for TodoWrite when log grew: log is append-only,
+            // so no growth means no new tool_use blocks. Avoids findLast +
+            // some + find + safeParse every second when idle.
+            todoList: logGrew
+              ? extractTodoListFromLog(accumulatedLog)
+              : prevTask.todoList,
+            reviewProgress: newProgress ?? prevTask.reviewProgress,
+            endTime:
+              result || sessionDone || reviewTimedOut ? Date.now() : undefined,
+          };
+        },
+      );
       if (raceTerminated) return;
 
       // Send notification if task completed or timed out
       if (result || sessionDone || reviewTimedOut) {
-        const finalStatus = result && result.subtype !== 'success' ? 'failed' : 'completed';
+        const finalStatus =
+          result && result.subtype !== "success" ? "failed" : "completed";
 
         // For remote-review tasks: inject the review text directly into the
-        // message queue. No mode change, no file indirection — the local model
+        // message queue. No mode change, no file indirection: the local model
         // just sees the review appear as a task-notification on its next turn.
-        // Session kept alive — run_hunt.sh's post_stage() has already written
+        // Session kept alive: run_hunt.sh's post_stage() has already written
         // the formatted findings as an assistant event, so the claude.ai URL
         // stays a durable record the user can revisit. TTL handles cleanup.
         if (task.isRemoteReview) {
           // cachedReviewContent hit the tag in the delta scan. Full-log scan
           // catches the stableIdle path where the tag arrived in an earlier
           // tick but the delta scan wasn't wired yet (first poll after resume).
-          const reviewContent = cachedReviewContent ?? extractReviewFromLog(accumulatedLog);
-          if (reviewContent && finalStatus === 'completed') {
-            enqueueRemoteReviewNotification(taskId, reviewContent, context.setAppState);
+          const reviewContent =
+            cachedReviewContent ?? extractReviewFromLog(accumulatedLog);
+          if (reviewContent && finalStatus === "completed") {
+            enqueueRemoteReviewNotification(
+              taskId,
+              reviewContent,
+              context.setAppState,
+            );
             void evictTaskOutput(taskId);
             void removeRemoteAgentMetadata(taskId);
             return; // Stop polling
           }
 
-          // No output or remote error — mark failed with a review-specific message.
-          updateTaskState(taskId, context.setAppState, t => ({
+          // No output or remote error: mark failed with a review-specific message.
+          updateTaskState(taskId, context.setAppState, (t) => ({
             ...t,
-            status: 'failed'
+            status: "failed",
           }));
-          const reason = result && result.subtype !== 'success' ? 'remote session returned an error' : reviewTimedOut && !sessionDone ? 'remote session exceeded 30 minutes' : 'no review output — orchestrator may have exited early';
-          enqueueRemoteReviewFailureNotification(taskId, reason, context.setAppState);
+          const reason =
+            result && result.subtype !== "success"
+              ? "remote session returned an error"
+              : reviewTimedOut && !sessionDone
+                ? "remote session exceeded 30 minutes"
+                : "no review output: orchestrator may have exited early";
+          enqueueRemoteReviewFailureNotification(
+            taskId,
+            reason,
+            context.setAppState,
+          );
           void evictTaskOutput(taskId);
           void removeRemoteAgentMetadata(taskId);
           return; // Stop polling
         }
-        enqueueRemoteNotification(taskId, task.title, finalStatus, context.setAppState, task.toolUseId);
+        enqueueRemoteNotification(
+          taskId,
+          task.title,
+          finalStatus,
+          context.setAppState,
+          task.toolUseId,
+        );
         void evictTaskOutput(taskId);
         void removeRemoteAgentMetadata(taskId);
         return; // Stop polling
@@ -762,24 +999,34 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
       // Reset so an API error doesn't let non-consecutive idle polls accumulate.
       consecutiveIdlePolls = 0;
 
-      // Check review timeout even when the API call fails — without this,
+      // Check review timeout even when the API call fails: without this,
       // persistent API errors skip the timeout check and poll forever.
       try {
         const appState = context.getAppState();
-        const task = appState.tasks?.[taskId] as RemoteAgentTaskState | undefined;
-        if (task?.isRemoteReview && task.status === 'running' && Date.now() - task.pollStartedAt > REMOTE_REVIEW_TIMEOUT_MS) {
-          updateTaskState(taskId, context.setAppState, t => ({
+        const task = appState.tasks?.[taskId] as
+          | RemoteAgentTaskState
+          | undefined;
+        if (
+          task?.isRemoteReview &&
+          task.status === "running" &&
+          Date.now() - task.pollStartedAt > REMOTE_REVIEW_TIMEOUT_MS
+        ) {
+          updateTaskState(taskId, context.setAppState, (t) => ({
             ...t,
-            status: 'failed',
-            endTime: Date.now()
+            status: "failed",
+            endTime: Date.now(),
           }));
-          enqueueRemoteReviewFailureNotification(taskId, 'remote session exceeded 30 minutes', context.setAppState);
+          enqueueRemoteReviewFailureNotification(
+            taskId,
+            "remote session exceeded 30 minutes",
+            context.setAppState,
+          );
           void evictTaskOutput(taskId);
           void removeRemoteAgentMetadata(taskId);
           return; // Stop polling
         }
       } catch {
-        // Best effort — if getAppState fails, continue polling
+        // Best effort: if getAppState fails, continue polling
       }
     }
 
@@ -806,15 +1053,15 @@ function startRemoteSessionPolling(taskId: string, context: TaskContext): () => 
  * - src/components/tasks/BackgroundTaskStatus.tsx (polling logic)
  */
 export const RemoteAgentTask: Task = {
-  name: 'RemoteAgentTask',
-  type: 'remote_agent',
+  name: "RemoteAgentTask",
+  type: "remote_agent",
   async kill(taskId, setAppState) {
     let toolUseId: string | undefined;
     let description: string | undefined;
     let sessionId: string | undefined;
     let killed = false;
-    updateTaskState<RemoteAgentTaskState>(taskId, setAppState, task => {
-      if (task.status !== 'running') {
+    updateTaskState<RemoteAgentTaskState>(taskId, setAppState, (task) => {
+      if (task.status !== "running") {
         return task;
       }
       toolUseId = task.toolUseId;
@@ -823,28 +1070,32 @@ export const RemoteAgentTask: Task = {
       killed = true;
       return {
         ...task,
-        status: 'killed',
+        status: "killed",
         notified: true,
-        endTime: Date.now()
+        endTime: Date.now(),
       };
     });
 
     // Close the task_started bookend for SDK consumers. The poll loop's
     // early-return when status!=='running' won't emit a notification.
     if (killed) {
-      emitTaskTerminatedSdk(taskId, 'stopped', {
+      emitTaskTerminatedSdk(taskId, "stopped", {
         toolUseId,
-        summary: description
+        summary: description,
       });
       // Archive the remote session so it stops consuming cloud resources.
       if (sessionId) {
-        void archiveRemoteSession(sessionId).catch(e => logForDebugging(`RemoteAgentTask archive failed: ${String(e)}`));
+        void archiveRemoteSession(sessionId).catch((e) =>
+          logForDebugging(`RemoteAgentTask archive failed: ${String(e)}`),
+        );
       }
     }
     void evictTaskOutput(taskId);
     void removeRemoteAgentMetadata(taskId);
-    logForDebugging(`RemoteAgentTask ${taskId} killed, archiving session ${sessionId ?? 'unknown'}`);
-  }
+    logForDebugging(
+      `RemoteAgentTask ${taskId} killed, archiving session ${sessionId ?? "unknown"}`,
+    );
+  },
 };
 
 /**

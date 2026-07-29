@@ -1,5 +1,5 @@
 /**
- * Surf — smart phase router state.
+ * Surf: smart phase router state.
  *
  * /surf auto-switches the main-loop model based on what phase of work the
  * user is in (planning, building, reviewing, background). This module
@@ -11,69 +11,69 @@
  * the user's picks persist across sessions, but the toggle and stats
  * reset on restart.
  *
- * This module is intentionally non-React — the /surf command flow and
+ * This module is intentionally non-React: the /surf command flow and
  * phase-switch side effects never need to drive re-renders. The status
  * UI reads the snapshot on-demand when the user runs `/surf status`.
  */
 
-import type { APIProvider } from '../model/providers.js'
+import type { APIProvider } from "../model/providers.js";
 
 export type SurfPhase =
-  | 'planning'
-  | 'building'
-  | 'reviewing'
-  | 'thinking'
-  | 'subagent'
-  | 'longContext'
-  | 'background'
+  | "planning"
+  | "building"
+  | "reviewing"
+  | "thinking"
+  | "subagent"
+  | "longContext"
+  | "background";
 
 /** All phases the user can configure via the /surf wizard, in display order. */
 export const SURF_PHASES: readonly SurfPhase[] = [
-  'planning',
-  'building',
-  'reviewing',
-  'thinking',
-  'subagent',
-  'longContext',
-  'background',
-] as const
+  "planning",
+  "building",
+  "reviewing",
+  "thinking",
+  "subagent",
+  "longContext",
+  "background",
+] as const;
 
 /** Phases the per-turn detector can return. `subagent` is applied at
- * AgentTool spawn time (runAgent.ts), never by detectPhase — separating
+ * AgentTool spawn time (runAgent.ts), never by detectPhase: separating
  * the two keeps detection pure and makes the routing path explicit. */
-export type MainLoopSurfPhase = Exclude<SurfPhase, 'subagent'>
+export type MainLoopSurfPhase = Exclude<SurfPhase, "subagent">;
 
 export const SURF_MAIN_LOOP_PHASES: readonly MainLoopSurfPhase[] = [
-  'planning',
-  'building',
-  'reviewing',
-  'thinking',
-  'longContext',
-  'background',
-] as const
+  "planning",
+  "building",
+  "reviewing",
+  "thinking",
+  "longContext",
+  "background",
+] as const;
 
 /** Provider-native effort/reasoning value. String for level enums
  * (Anthropic low/medium/high/max, OpenAI low/medium/high/xhigh), number for
  * Gemini/ant numeric budgets. undefined = "use model default". */
-export type PhaseEffort = string | number
+export type PhaseEffort = string | number;
 
 export interface PhaseTarget {
-  provider: APIProvider
-  model: string
-  effort?: PhaseEffort
+  provider: APIProvider;
+  model: string;
+  effort?: PhaseEffort;
 }
 
 export interface PhaseStats {
   /** Number of assistant turns executed while in this phase. */
-  turns: number
+  turns: number;
   /** Total input tokens (including cache reads). */
-  inputTokens: number
+  inputTokens: number;
   /** Total output tokens. */
-  outputTokens: number
+  outputTokens: number;
   /** Tokens served from the provider's context cache. */
-  cacheReadTokens: number
+  cacheReadTokens: number;
   /** Tokens written into the provider's context cache. */
-  cacheCreationTokens: number
+  cacheCreationTokens: number;
 }
 
 function emptyStats(): PhaseStats {
@@ -83,14 +83,14 @@ function emptyStats(): PhaseStats {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
-  }
+  };
 }
 
 export interface TurnUsage {
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
 }
 
 function emptyTurnUsage(): TurnUsage {
@@ -99,24 +99,24 @@ function emptyTurnUsage(): TurnUsage {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
-  }
+  };
 }
 
 interface SurfState {
-  enabled: boolean
-  currentPhase: SurfPhase | null
-  /** Phase that was active at the start of the current turn — used by the
+  enabled: boolean;
+  currentPhase: SurfPhase | null;
+  /** Phase that was active at the start of the current turn: used by the
    * after-turn accounting hook to attribute usage correctly. */
-  pendingTurnPhase: SurfPhase | null
+  pendingTurnPhase: SurfPhase | null;
   /** Last phase detectPhase returned (regardless of whether we switched).
    * Powers the 2-turn debounce: we only commit a switch when the current
    * detection matches the prior detection, so a one-off keyword ("review
    * this") can't thrash the cache by flipping providers every turn. */
-  lastDetectedPhase: MainLoopSurfPhase | null
-  stats: Record<SurfPhase, PhaseStats>
-  /** Per-turn usage delta — resets at recordSurfTurnStart, accumulates on
+  lastDetectedPhase: MainLoopSurfPhase | null;
+  stats: Record<SurfPhase, PhaseStats>;
+  /** Per-turn usage delta: resets at recordSurfTurnStart, accumulates on
    * recordSurfUsage. Consumed by the post-turn cache-hit-rate banner. */
-  lastTurnUsage: TurnUsage
+  lastTurnUsage: TurnUsage;
 }
 
 const _state: SurfState = {
@@ -134,60 +134,60 @@ const _state: SurfState = {
     background: emptyStats(),
   },
   lastTurnUsage: emptyTurnUsage(),
-}
+};
 
 // ─── Enabled / disabled ──────────────────────────────────────────────
 
 export function isSurfEnabled(): boolean {
-  return _state.enabled
+  return _state.enabled;
 }
 
 export function setSurfEnabled(value: boolean): void {
-  _state.enabled = value
+  _state.enabled = value;
   if (!value) {
-    _state.currentPhase = null
-    _state.pendingTurnPhase = null
-    _state.lastDetectedPhase = null
+    _state.currentPhase = null;
+    _state.pendingTurnPhase = null;
+    _state.lastDetectedPhase = null;
   }
 }
 
 // ─── Debounce ────────────────────────────────────────────────────────
 
 export function getLastDetectedPhase(): MainLoopSurfPhase | null {
-  return _state.lastDetectedPhase
+  return _state.lastDetectedPhase;
 }
 
 export function setLastDetectedPhase(phase: MainLoopSurfPhase | null): void {
-  _state.lastDetectedPhase = phase
+  _state.lastDetectedPhase = phase;
 }
 
 // ─── Current phase ───────────────────────────────────────────────────
 
 export function getCurrentSurfPhase(): SurfPhase | null {
-  return _state.currentPhase
+  return _state.currentPhase;
 }
 
 export function setCurrentSurfPhase(phase: SurfPhase | null): void {
-  _state.currentPhase = phase
+  _state.currentPhase = phase;
 }
 
 export function getPendingTurnPhase(): SurfPhase | null {
-  return _state.pendingTurnPhase
+  return _state.pendingTurnPhase;
 }
 
 export function setPendingTurnPhase(phase: SurfPhase | null): void {
-  _state.pendingTurnPhase = phase
+  _state.pendingTurnPhase = phase;
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────
 
 export function getSurfStats(): Readonly<Record<SurfPhase, PhaseStats>> {
-  return _state.stats
+  return _state.stats;
 }
 
 /**
  * Increment the turn count for a phase. Call once when the phase for
- * the upcoming turn is picked — turn count stays 1-per-logical-turn
+ * the upcoming turn is picked: turn count stays 1-per-logical-turn
  * even if the turn makes multiple API calls (e.g., advisor recursion,
  * streaming retries).
  *
@@ -195,42 +195,42 @@ export function getSurfStats(): Readonly<Record<SurfPhase, PhaseStats>> {
  * shows only what THIS turn used, not accumulated session totals.
  */
 export function recordSurfTurnStart(phase: SurfPhase): void {
-  _state.stats[phase].turns += 1
-  _state.lastTurnUsage = emptyTurnUsage()
+  _state.stats[phase].turns += 1;
+  _state.lastTurnUsage = emptyTurnUsage();
 }
 
 /** Snapshot of the current turn's accumulated usage delta. */
 export function getLastTurnUsage(): Readonly<TurnUsage> {
-  return _state.lastTurnUsage
+  return _state.lastTurnUsage;
 }
 
 /**
  * Accumulate token usage for a phase. Called from the cost-tracker
  * every time an API response lands; may fire multiple times per
  * logical turn (advisor recursion, multi-step agents). Tokens are
- * additive so over-counting is impossible — just count each response.
+ * additive so over-counting is impossible: just count each response.
  */
 export function recordSurfUsage(
   phase: SurfPhase,
   usage: {
-    inputTokens?: number
-    outputTokens?: number
-    cacheReadTokens?: number
-    cacheCreationTokens?: number
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   },
 ): void {
-  const s = _state.stats[phase]
-  s.inputTokens += usage.inputTokens ?? 0
-  s.outputTokens += usage.outputTokens ?? 0
-  s.cacheReadTokens += usage.cacheReadTokens ?? 0
-  s.cacheCreationTokens += usage.cacheCreationTokens ?? 0
+  const s = _state.stats[phase];
+  s.inputTokens += usage.inputTokens ?? 0;
+  s.outputTokens += usage.outputTokens ?? 0;
+  s.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  s.cacheCreationTokens += usage.cacheCreationTokens ?? 0;
 
   // Also bump the per-turn delta so the post-turn banner can read it.
-  const l = _state.lastTurnUsage
-  l.inputTokens += usage.inputTokens ?? 0
-  l.outputTokens += usage.outputTokens ?? 0
-  l.cacheReadTokens += usage.cacheReadTokens ?? 0
-  l.cacheCreationTokens += usage.cacheCreationTokens ?? 0
+  const l = _state.lastTurnUsage;
+  l.inputTokens += usage.inputTokens ?? 0;
+  l.outputTokens += usage.outputTokens ?? 0;
+  l.cacheReadTokens += usage.cacheReadTokens ?? 0;
+  l.cacheCreationTokens += usage.cacheCreationTokens ?? 0;
 }
 
 /**
@@ -241,21 +241,21 @@ export function recordSurfUsage(
 export function recordSurfTurn(
   phase: SurfPhase,
   usage: {
-    inputTokens?: number
-    outputTokens?: number
-    cacheReadTokens?: number
-    cacheCreationTokens?: number
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   },
 ): void {
-  recordSurfTurnStart(phase)
-  recordSurfUsage(phase, usage)
+  recordSurfTurnStart(phase);
+  recordSurfUsage(phase, usage);
 }
 
 export function resetSurfStats(): void {
   for (const phase of SURF_PHASES) {
-    _state.stats[phase] = emptyStats()
+    _state.stats[phase] = emptyStats();
   }
-  _state.lastTurnUsage = emptyTurnUsage()
+  _state.lastTurnUsage = emptyTurnUsage();
 }
 
 /**
@@ -263,22 +263,22 @@ export function resetSurfStats(): void {
  * have run yet. Used by the post-turn cache hit rate line.
  */
 export function getOverallCacheHitRate(): number {
-  let cached = 0
-  let total = 0
+  let cached = 0;
+  let total = 0;
   for (const phase of SURF_PHASES) {
-    const s = _state.stats[phase]
-    cached += s.cacheReadTokens
-    total += s.inputTokens
+    const s = _state.stats[phase];
+    cached += s.cacheReadTokens;
+    total += s.inputTokens;
   }
-  if (total === 0) return 0
-  return cached / total
+  if (total === 0) return 0;
+  return cached / total;
 }
 
-/** Test hook — wipe all state. Not used in prod. */
+/** Test hook: wipe all state. Not used in prod. */
 export function _resetSurfStateForTests(): void {
-  _state.enabled = false
-  _state.currentPhase = null
-  _state.pendingTurnPhase = null
-  _state.lastDetectedPhase = null
-  resetSurfStats()
+  _state.enabled = false;
+  _state.currentPhase = null;
+  _state.pendingTurnPhase = null;
+  _state.lastDetectedPhase = null;
+  resetSurfStats();
 }

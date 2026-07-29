@@ -1,6 +1,6 @@
-import { open, readFile, stat } from 'fs/promises'
-import * as path from 'path'
-import { pathToFileURL } from 'url'
+import { open, readFile, stat } from "fs/promises";
+import * as path from "path";
+import { pathToFileURL } from "url";
 import type {
   CallHierarchyIncomingCall,
   CallHierarchyItem,
@@ -10,28 +10,33 @@ import type {
   Location,
   LocationLink,
   SymbolInformation,
-} from 'vscode-languageserver-types'
-import { z } from 'zod/v4'
+} from "vscode-languageserver-types";
+import { z } from "zod/v4";
 import {
   getInitializationStatus,
   getLspServerManager,
   isLspConnected,
   waitForInitialization,
-} from '../../services/lsp/manager.js'
-import type { ValidationResult } from '../../Tool.js'
-import { buildTool, toolMatchesName, type ToolDef, type Tools } from '../../Tool.js'
-import { uniq } from '../../utils/array.js'
-import { getCwd } from '../../utils/cwd.js'
-import { logForDebugging } from '../../utils/debug.js'
-import { isENOENT, toError } from '../../utils/errors.js'
-import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
-import { getFsImplementation } from '../../utils/fsOperations.js'
-import { lazySchema } from '../../utils/lazySchema.js'
-import { logError } from '../../utils/log.js'
-import { expandPath } from '../../utils/path.js'
-import { checkReadPermissionForTool } from '../../utils/permissions/filesystem.js'
-import { escapeRegExp } from '../../utils/stringUtils.js'
-import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
+} from "../../services/lsp/manager.js";
+import type { ValidationResult } from "../../Tool.js";
+import {
+  buildTool,
+  toolMatchesName,
+  type ToolDef,
+  type Tools,
+} from "../../Tool.js";
+import { uniq } from "../../utils/array.js";
+import { getCwd } from "../../utils/cwd.js";
+import { logForDebugging } from "../../utils/debug.js";
+import { isENOENT, toError } from "../../utils/errors.js";
+import { execFileNoThrowWithCwd } from "../../utils/execFileNoThrow.js";
+import { getFsImplementation } from "../../utils/fsOperations.js";
+import { lazySchema } from "../../utils/lazySchema.js";
+import { logError } from "../../utils/log.js";
+import { expandPath } from "../../utils/path.js";
+import { checkReadPermissionForTool } from "../../utils/permissions/filesystem.js";
+import { escapeRegExp } from "../../utils/stringUtils.js";
+import type { PermissionDecision } from "../../utils/permissions/PermissionResult.js";
 import {
   formatDocumentSymbolResult,
   formatFindReferencesResult,
@@ -41,9 +46,9 @@ import {
   formatOutgoingCallsResult,
   formatPrepareCallHierarchyResult,
   formatWorkspaceSymbolResult,
-} from './formatters.js'
-import { DESCRIPTION, LSP_TOOL_NAME } from './prompt.js'
-import { LSP_POSITION_OPERATIONS, lspToolInputSchema } from './schemas.js'
+} from "./formatters.js";
+import { DESCRIPTION, LSP_TOOL_NAME } from "./prompt.js";
+import { LSP_POSITION_OPERATIONS, lspToolInputSchema } from "./schemas.js";
 
 /**
  * Maps each operation to the ServerCapabilities key that must be advertised for
@@ -53,29 +58,29 @@ import { LSP_POSITION_OPERATIONS, lspToolInputSchema } from './schemas.js'
  * implementationProvider).
  */
 const OPERATION_CAPABILITY: Record<string, string> = {
-  goToDefinition: 'definitionProvider',
-  findReferences: 'referencesProvider',
-  hover: 'hoverProvider',
-  documentSymbol: 'documentSymbolProvider',
-  workspaceSymbol: 'workspaceSymbolProvider',
-  goToImplementation: 'implementationProvider',
-  prepareCallHierarchy: 'callHierarchyProvider',
-  incomingCalls: 'callHierarchyProvider',
-  outgoingCalls: 'callHierarchyProvider',
-}
+  goToDefinition: "definitionProvider",
+  findReferences: "referencesProvider",
+  hover: "hoverProvider",
+  documentSymbol: "documentSymbolProvider",
+  workspaceSymbol: "workspaceSymbolProvider",
+  goToImplementation: "implementationProvider",
+  prepareCallHierarchy: "callHierarchyProvider",
+  incomingCalls: "callHierarchyProvider",
+  outgoingCalls: "callHierarchyProvider",
+};
 import {
   renderToolResultMessage,
   renderToolUseErrorMessage,
   renderToolUseMessage,
   userFacingName,
-} from './UI.js'
+} from "./UI.js";
 import {
   AFT_AST_SEARCH_TOOL_NAME,
   AFT_DIAGNOSTICS_TOOL_NAME,
   AFT_NAVIGATE_TOOL_NAME,
   AFT_OUTLINE_TOOL_NAME,
   AFT_ZOOM_TOOL_NAME,
-} from '../AFTTool/constants.js'
+} from "../AFTTool/constants.js";
 
 const AFT_TOOL_NAMES = [
   AFT_OUTLINE_TOOL_NAME,
@@ -83,25 +88,25 @@ const AFT_TOOL_NAMES = [
   AFT_AST_SEARCH_TOOL_NAME,
   AFT_NAVIGATE_TOOL_NAME,
   AFT_DIAGNOSTICS_TOOL_NAME,
-]
+];
 
 function hasAftTool(tools: Tools): boolean {
-  return tools.some(tool =>
-    AFT_TOOL_NAMES.some(name => toolMatchesName(tool, name)),
-  )
+  return tools.some((tool) =>
+    AFT_TOOL_NAMES.some((name) => toolMatchesName(tool, name)),
+  );
 }
 
 function lspDescription(tools: Tools): string {
   return hasAftTool(tools)
     ? DESCRIPTION
-    : DESCRIPTION.replace('fall back to AFT or Grep', 'fall back to Grep')
+    : DESCRIPTION.replace("fall back to AFT or Grep", "fall back to Grep");
 }
 
 function unsupportedFallbackText(tools: Tools): string {
-  return hasAftTool(tools) ? 'AFT or Grep' : 'Grep'
+  return hasAftTool(tools) ? "AFT or Grep" : "Grep";
 }
 
-const MAX_LSP_FILE_SIZE_BYTES = 10_000_000
+const MAX_LSP_FILE_SIZE_BYTES = 10_000_000;
 
 /**
  * Tool-compatible input schema (regular ZodObject instead of discriminated union)
@@ -111,20 +116,20 @@ const inputSchema = lazySchema(() =>
   z.strictObject({
     operation: z
       .enum([
-        'goToDefinition',
-        'findReferences',
-        'hover',
-        'documentSymbol',
-        'workspaceSymbol',
-        'goToImplementation',
-        'prepareCallHierarchy',
-        'incomingCalls',
-        'outgoingCalls',
+        "goToDefinition",
+        "findReferences",
+        "hover",
+        "documentSymbol",
+        "workspaceSymbol",
+        "goToImplementation",
+        "prepareCallHierarchy",
+        "incomingCalls",
+        "outgoingCalls",
       ])
       .describe(
-        'The LSP operation to perform. Must be exactly one of the 9 enum values. "diagnostics" is NOT a valid operation — errors/warnings are published automatically by the language server, not requested through this tool.',
+        'The LSP operation to perform. Must be exactly one of the 9 enum values. "diagnostics" is NOT a valid operation: errors/warnings are published automatically by the language server, not requested through this tool.',
       ),
-    filePath: z.string().describe('The absolute or relative path to the file'),
+    filePath: z.string().describe("The absolute or relative path to the file"),
     symbol: z
       .string()
       .optional()
@@ -137,7 +142,7 @@ const inputSchema = lazySchema(() =>
       .positive()
       .optional()
       .describe(
-        'The line number (1-based). Optional — only when you already have an exact editor position; otherwise prefer "symbol".',
+        'The line number (1-based). Optional: only when you already have an exact editor position; otherwise prefer "symbol".',
       ),
     character: z
       .number()
@@ -145,57 +150,57 @@ const inputSchema = lazySchema(() =>
       .positive()
       .optional()
       .describe(
-        'The character offset (1-based) on the FIRST letter of the identifier — never on keywords like function/const/export. Optional — prefer "symbol".',
+        'The character offset (1-based) on the FIRST letter of the identifier: never on keywords like function/const/export. Optional: prefer "symbol".',
       ),
   }),
-)
-type InputSchema = ReturnType<typeof inputSchema>
+);
+type InputSchema = ReturnType<typeof inputSchema>;
 
 const outputSchema = lazySchema(() =>
   z.object({
     operation: z
       .enum([
-        'goToDefinition',
-        'findReferences',
-        'hover',
-        'documentSymbol',
-        'workspaceSymbol',
-        'goToImplementation',
-        'prepareCallHierarchy',
-        'incomingCalls',
-        'outgoingCalls',
+        "goToDefinition",
+        "findReferences",
+        "hover",
+        "documentSymbol",
+        "workspaceSymbol",
+        "goToImplementation",
+        "prepareCallHierarchy",
+        "incomingCalls",
+        "outgoingCalls",
       ])
-      .describe('The LSP operation that was performed'),
-    result: z.string().describe('The formatted result of the LSP operation'),
+      .describe("The LSP operation that was performed"),
+    result: z.string().describe("The formatted result of the LSP operation"),
     filePath: z
       .string()
-      .describe('The file path the operation was performed on'),
+      .describe("The file path the operation was performed on"),
     resultCount: z
       .number()
       .int()
       .nonnegative()
       .optional()
-      .describe('Number of results (definitions, references, symbols)'),
+      .describe("Number of results (definitions, references, symbols)"),
     fileCount: z
       .number()
       .int()
       .nonnegative()
       .optional()
-      .describe('Number of files containing results'),
+      .describe("Number of files containing results"),
   }),
-)
-type OutputSchema = ReturnType<typeof outputSchema>
+);
+type OutputSchema = ReturnType<typeof outputSchema>;
 
-export type Output = z.infer<OutputSchema>
-export type Input = z.infer<InputSchema>
+export type Output = z.infer<OutputSchema>;
+export type Input = z.infer<InputSchema>;
 
 export const LSPTool = buildTool({
   name: LSP_TOOL_NAME,
-  searchHint: 'code intelligence (definitions, references, symbols, hover)',
+  searchHint: "code intelligence (definitions, references, symbols, hover)",
   maxResultSizeChars: 100_000,
   isLsp: true,
   async description() {
-    return DESCRIPTION
+    return DESCRIPTION;
   },
   userFacingName,
   // NOT statically deferred. Static shouldDefer would hide LSP behind a
@@ -205,193 +210,199 @@ export const LSPTool = buildTool({
   // the language servers are still initializing. Once they're ready, LSP loads
   // inline with its full schema like Read/Grep/AFT so the model uses it directly.
   isEnabled() {
-    return isLspConnected()
+    return isLspConnected();
   },
   get inputSchema(): InputSchema {
-    return inputSchema()
+    return inputSchema();
   },
   get outputSchema(): OutputSchema {
-    return outputSchema()
+    return outputSchema();
   },
   isConcurrencySafe() {
-    return true
+    return true;
   },
   isReadOnly() {
-    return true
+    return true;
   },
   getPath({ filePath }): string {
-    return expandPath(filePath)
+    return expandPath(filePath);
   },
   async validateInput(input: Input): Promise<ValidationResult> {
     // First validate against the discriminated union for better type safety
-    const parseResult = lspToolInputSchema().safeParse(input)
+    const parseResult = lspToolInputSchema().safeParse(input);
     if (!parseResult.success) {
       return {
         result: false,
         message: `Invalid input: ${parseResult.error.message}`,
         errorCode: 3,
-      }
+      };
     }
 
     // Validate file exists and is a regular file
-    const fs = getFsImplementation()
-    const absolutePath = expandPath(input.filePath)
+    const fs = getFsImplementation();
+    const absolutePath = expandPath(input.filePath);
 
     // SECURITY: Skip filesystem operations for UNC paths to prevent NTLM credential leaks.
-    if (absolutePath.startsWith('\\\\') || absolutePath.startsWith('//')) {
-      return { result: true }
+    if (absolutePath.startsWith("\\\\") || absolutePath.startsWith("//")) {
+      return { result: true };
     }
 
-    let stats
+    let stats;
     try {
-      stats = await fs.stat(absolutePath)
+      stats = await fs.stat(absolutePath);
     } catch (error) {
       if (isENOENT(error)) {
         return {
           result: false,
           message: `File does not exist: ${input.filePath}`,
           errorCode: 1,
-        }
+        };
       }
-      const err = toError(error)
+      const err = toError(error);
       // Log filesystem access errors for tracking
       logError(
         new Error(
           `Failed to access file stats for LSP operation on ${input.filePath}: ${err.message}`,
         ),
-      )
+      );
       return {
         result: false,
         message: `Cannot access file: ${input.filePath}. ${err.message}`,
         errorCode: 4,
-      }
+      };
     }
 
     if (!stats.isFile()) {
       // workspaceSymbol is workspace-wide and only needs a file to choose the
-      // language server, so a directory (e.g. the project root) is acceptable —
+      // language server, so a directory (e.g. the project root) is acceptable:
       // call() resolves it to a representative source file. Other operations act
       // on a specific file, so a directory stays invalid for them.
-      if (input.operation === 'workspaceSymbol' && stats.isDirectory()) {
-        return { result: true }
+      if (input.operation === "workspaceSymbol" && stats.isDirectory()) {
+        return { result: true };
       }
       return {
         result: false,
         message: `Path is not a file: ${input.filePath}`,
         errorCode: 2,
-      }
+      };
     }
 
-    return { result: true }
+    return { result: true };
   },
   async checkPermissions(input, context): Promise<PermissionDecision> {
-    const appState = context.getAppState()
+    const appState = context.getAppState();
     return checkReadPermissionForTool(
       LSPTool,
       input,
       appState.toolPermissionContext,
-    )
+    );
   },
   async prompt(options) {
-    return lspDescription(options.tools)
+    return lspDescription(options.tools);
   },
   renderToolUseMessage,
   renderToolUseErrorMessage,
   renderToolResultMessage,
   async call(input: Input, context) {
-    let absolutePath = expandPath(input.filePath)
-    const cwd = getCwd()
+    let absolutePath = expandPath(input.filePath);
+    const cwd = getCwd();
 
     // Wait for initialization if it's still pending
     // This prevents returning "no server available" before init completes
-    const status = getInitializationStatus()
-    if (status.status === 'pending') {
-      await waitForInitialization()
+    const status = getInitializationStatus();
+    if (status.status === "pending") {
+      await waitForInitialization();
     }
 
     // Get the LSP server manager
-    const manager = getLspServerManager()
+    const manager = getLspServerManager();
     if (!manager) {
       // Log this system-level failure for tracking
       logError(
-        new Error('LSP server manager not initialized when tool was called'),
-      )
+        new Error("LSP server manager not initialized when tool was called"),
+      );
 
       const output: Output = {
         operation: input.operation,
         result:
-          'LSP server manager not initialized. This may indicate a startup issue.',
+          "LSP server manager not initialized. This may indicate a startup issue.",
         filePath: input.filePath,
-      }
+      };
       return {
         data: output,
-      }
+      };
     }
 
     // workspaceSymbol is workspace-wide; if a directory (e.g. the project root)
     // was passed, resolve a representative source file so we can pick the right
-    // language server. Graceful — no hard "not a file" rejection.
-    if (input.operation === 'workspaceSymbol') {
-      const pathStat = await stat(absolutePath).catch(() => undefined)
+    // language server. Graceful: no hard "not a file" rejection.
+    if (input.operation === "workspaceSymbol") {
+      const pathStat = await stat(absolutePath).catch(() => undefined);
       if (pathStat?.isDirectory()) {
-        // Route to a file whose server actually supports workspace/symbol — not
+        // Route to a file whose server actually supports workspace/symbol: not
         // just the first file with any server (a directory often resolves to an
         // html/css/json file whose server has no workspaceSymbol, which looked
         // like "not supported").
         const routable = await manager.findRoutableFile(
           absolutePath,
-          'workspaceSymbolProvider',
-        )
+          "workspaceSymbolProvider",
+        );
         if (!routable) {
           const output: Output = {
             operation: input.operation,
             result: `No source file with a language server was found under ${input.filePath} to route the search. Pass a specific source file instead.`,
             filePath: input.filePath,
-          }
-          return { data: output }
+          };
+          return { data: output };
         }
-        absolutePath = routable
+        absolutePath = routable;
       }
     }
 
     // Resolve the target position for operations that need one. Accept a
-    // symbol name (preferred — we locate it so the model never computes
+    // symbol name (preferred: we locate it so the model never computes
     // coordinates) or explicit 1-based line/character.
-    let position1Based: { line: number; character: number } | undefined
+    let position1Based: { line: number; character: number } | undefined;
     if (LSP_POSITION_OPERATIONS.has(input.operation)) {
       if (input.symbol) {
-        const resolved = await resolveSymbolPosition(absolutePath, input.symbol)
+        const resolved = await resolveSymbolPosition(
+          absolutePath,
+          input.symbol,
+        );
         if (!resolved) {
           const output: Output = {
             operation: input.operation,
             result: `Could not locate symbol "${input.symbol}" in ${input.filePath}. Check the name, or pass explicit line and character.`,
             filePath: input.filePath,
-          }
-          return { data: output }
+          };
+          return { data: output };
         }
-        position1Based = resolved
-      } else if (typeof input.line === 'number' && typeof input.character === 'number') {
-        position1Based = { line: input.line, character: input.character }
+        position1Based = resolved;
+      } else if (
+        typeof input.line === "number" &&
+        typeof input.character === "number"
+      ) {
+        position1Based = { line: input.line, character: input.character };
       } else {
         const output: Output = {
           operation: input.operation,
           result: `Operation ${input.operation} needs a target: pass a "symbol" name (preferred) or line and character.`,
           filePath: input.filePath,
-        }
-        return { data: output }
+        };
+        return { data: output };
       }
     }
 
     // workspaceSymbol needs a search term: an empty query returns nothing on
     // some servers (Pyright) and everything on others (vtsls). Require one.
-    if (input.operation === 'workspaceSymbol' && !input.symbol?.trim()) {
+    if (input.operation === "workspaceSymbol" && !input.symbol?.trim()) {
       const output: Output = {
         operation: input.operation,
         result:
           'workspaceSymbol needs a search term: pass symbol: "<name>" (the name or partial name to find across the project).',
         filePath: input.filePath,
-      }
-      return { data: output }
+      };
+      return { data: output };
     }
 
     // Map operation to LSP method and prepare params
@@ -399,46 +410,46 @@ export const LSPTool = buildTool({
       input,
       absolutePath,
       position1Based,
-    )
-    let method = methodAndParams.method
-    const { params } = methodAndParams
+    );
+    let method = methodAndParams.method;
+    const { params } = methodAndParams;
 
     try {
       // Ensure file is open in LSP server before making requests
       // Most LSP servers require textDocument/didOpen before operations
       // Only read the file if it's not already open to avoid unnecessary I/O
       if (!manager.isFileOpen(absolutePath)) {
-        const handle = await open(absolutePath, 'r')
+        const handle = await open(absolutePath, "r");
         try {
-          const stats = await handle.stat()
+          const stats = await handle.stat();
           if (stats.size > MAX_LSP_FILE_SIZE_BYTES) {
             const output: Output = {
               operation: input.operation,
               result: `File too large for LSP analysis (${Math.ceil(stats.size / 1_000_000)}MB exceeds 10MB limit)`,
               filePath: input.filePath,
-            }
-            return { data: output }
+            };
+            return { data: output };
           }
-          const fileContent = await handle.readFile({ encoding: 'utf-8' })
-          await manager.openFile(absolutePath, fileContent)
+          const fileContent = await handle.readFile({ encoding: "utf-8" });
+          await manager.openFile(absolutePath, fileContent);
         } finally {
-          await handle.close()
+          await handle.close();
         }
       }
 
       // Opening the file above triggers the server to load the containing
       // project. Wait for that initial index to finish before querying, so
       // cross-file results (references/definitions) are complete instead of
-      // racing the index on large repos — the cause of spurious "0 references".
-      await manager.waitForFileServerReady(absolutePath)
+      // racing the index on large repos: the cause of spurious "0 references".
+      await manager.waitForFileServerReady(absolutePath);
 
       // Skip operations the server doesn't advertise (LSP spec: check
       // ServerCapabilities before sending). Returns a clean message instead of
-      // firing a request the server can't handle — e.g. Pyright has no
+      // firing a request the server can't handle: e.g. Pyright has no
       // implementationProvider, so goToImplementation is reported unsupported.
-      const capabilityKey = OPERATION_CAPABILITY[input.operation]
+      const capabilityKey = OPERATION_CAPABILITY[input.operation];
       if (capabilityKey) {
-        const capabilities = await manager.getServerCapabilities(absolutePath)
+        const capabilities = await manager.getServerCapabilities(absolutePath);
         if (
           capabilities &&
           !(capabilities as Record<string, unknown>)[capabilityKey]
@@ -448,73 +459,73 @@ export const LSPTool = buildTool({
           // definition IS the implementation, so this still returns a useful
           // result instead of reporting "unsupported".
           if (
-            input.operation === 'goToImplementation' &&
+            input.operation === "goToImplementation" &&
             (capabilities as Record<string, unknown>).definitionProvider
           ) {
-            method = 'textDocument/definition'
+            method = "textDocument/definition";
           } else {
             const output: Output = {
               operation: input.operation,
               result: `The language server for this file does not support ${input.operation}. Use ${unsupportedFallbackText(context.options.tools)} for this instead.`,
               filePath: input.filePath,
-            }
-            return { data: output }
+            };
+            return { data: output };
           }
         }
       }
 
       // Send request to LSP server
-      let result = await manager.sendRequest(absolutePath, method, params)
+      let result = await manager.sendRequest(absolutePath, method, params);
 
       if (result === undefined) {
         // Log for diagnostic purposes - helps track usage patterns and potential bugs
         logForDebugging(
           `No LSP server available for file type ${path.extname(absolutePath)} for operation ${input.operation} on file ${input.filePath}`,
-        )
+        );
 
         const output: Output = {
           operation: input.operation,
           result: `No LSP server available for file type: ${path.extname(absolutePath)}`,
           filePath: input.filePath,
-        }
+        };
         return {
           data: output,
-        }
+        };
       }
 
       // For incomingCalls and outgoingCalls, we need a two-step process:
       // 1. First get CallHierarchyItem(s) from prepareCallHierarchy
       // 2. Then request the actual calls using that item
       if (
-        input.operation === 'incomingCalls' ||
-        input.operation === 'outgoingCalls'
+        input.operation === "incomingCalls" ||
+        input.operation === "outgoingCalls"
       ) {
-        const callItems = result as CallHierarchyItem[]
+        const callItems = result as CallHierarchyItem[];
         if (!callItems || callItems.length === 0) {
           const output: Output = {
             operation: input.operation,
-            result: 'No call hierarchy item found at this position',
+            result: "No call hierarchy item found at this position",
             filePath: input.filePath,
             resultCount: 0,
             fileCount: 0,
-          }
-          return { data: output }
+          };
+          return { data: output };
         }
 
         // Use the first call hierarchy item to request calls
         const callMethod =
-          input.operation === 'incomingCalls'
-            ? 'callHierarchy/incomingCalls'
-            : 'callHierarchy/outgoingCalls'
+          input.operation === "incomingCalls"
+            ? "callHierarchy/incomingCalls"
+            : "callHierarchy/outgoingCalls";
 
         result = await manager.sendRequest(absolutePath, callMethod, {
           item: callItems[0],
-        })
+        });
 
         if (result === undefined) {
           logForDebugging(
             `LSP server returned undefined for ${callMethod} on ${input.filePath}`,
-          )
+          );
           // Continue to formatter which will handle empty/null gracefully
         }
       }
@@ -523,39 +534,39 @@ export const LSPTool = buildTool({
       if (
         result &&
         Array.isArray(result) &&
-        (input.operation === 'findReferences' ||
-          input.operation === 'goToDefinition' ||
-          input.operation === 'goToImplementation' ||
-          input.operation === 'workspaceSymbol')
+        (input.operation === "findReferences" ||
+          input.operation === "goToDefinition" ||
+          input.operation === "goToImplementation" ||
+          input.operation === "workspaceSymbol")
       ) {
-        if (input.operation === 'workspaceSymbol') {
-          // SymbolInformation has location.uri — filter by extracting locations
-          const symbols = result as SymbolInformation[]
+        if (input.operation === "workspaceSymbol") {
+          // SymbolInformation has location.uri: filter by extracting locations
+          const symbols = result as SymbolInformation[];
           const locations = symbols
-            .filter(s => s?.location?.uri)
-            .map(s => s.location)
+            .filter((s) => s?.location?.uri)
+            .map((s) => s.location);
           const filteredLocations = await filterGitIgnoredLocations(
             locations,
             cwd,
-          )
-          const filteredUris = new Set(filteredLocations.map(l => l.uri))
+          );
+          const filteredUris = new Set(filteredLocations.map((l) => l.uri));
           result = symbols.filter(
-            s => !s?.location?.uri || filteredUris.has(s.location.uri),
-          )
+            (s) => !s?.location?.uri || filteredUris.has(s.location.uri),
+          );
         } else {
           // Location[] or (Location | LocationLink)[]
           const locations = (result as (Location | LocationLink)[]).map(
             toLocation,
-          )
+          );
           const filteredLocations = await filterGitIgnoredLocations(
             locations,
             cwd,
-          )
-          const filteredUris = new Set(filteredLocations.map(l => l.uri))
-          result = (result as (Location | LocationLink)[]).filter(item => {
-            const loc = toLocation(item)
-            return !loc.uri || filteredUris.has(loc.uri)
-          })
+          );
+          const filteredUris = new Set(filteredLocations.map((l) => l.uri));
+          result = (result as (Location | LocationLink)[]).filter((item) => {
+            const loc = toLocation(item);
+            return !loc.uri || filteredUris.has(loc.uri);
+          });
         }
       }
 
@@ -564,7 +575,7 @@ export const LSPTool = buildTool({
         input.operation,
         result,
         cwd,
-      )
+      );
 
       const output: Output = {
         operation: input.operation,
@@ -572,21 +583,21 @@ export const LSPTool = buildTool({
         filePath: input.filePath,
         resultCount,
         fileCount,
-      }
+      };
 
       return {
         data: output,
-      }
+      };
     } catch (error) {
-      const err = toError(error)
-      const errorMessage = err.message
+      const err = toError(error);
+      const errorMessage = err.message;
 
       // Log error for tracking
       logError(
         new Error(
           `LSP tool request failed for ${input.operation} on ${input.filePath}: ${errorMessage}`,
         ),
-      )
+      );
 
       // Some servers don't implement every capability (e.g. the JSON server
       // has no workspace/symbol). Surface that as a calm "not supported" hint
@@ -594,54 +605,54 @@ export const LSPTool = buildTool({
       const unsupported =
         /unhandled method|method not found|not supported|cannot read|unimplemented/i.test(
           errorMessage,
-        )
+        );
       const result = unsupported
         ? `The language server for this file does not support ${input.operation}. Use a different LSP operation, or fall back to ${unsupportedFallbackText(context.options.tools)}.`
-        : `Error performing ${input.operation}: ${errorMessage}`
+        : `Error performing ${input.operation}: ${errorMessage}`;
 
       const output: Output = {
         operation: input.operation,
         result,
         filePath: input.filePath,
-      }
+      };
       return {
         data: output,
-      }
+      };
     }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     return {
       tool_use_id: toolUseID,
-      type: 'tool_result',
+      type: "tool_result",
       content: output.result,
-    }
+    };
   },
-} satisfies ToolDef<InputSchema, Output>)
+} satisfies ToolDef<InputSchema, Output>);
 
 /**
  * Maps LSPTool operation to LSP method and params
  */
 /**
  * Heuristic: is the match at `index` inside a line comment or string literal?
- * No full parser — just enough to avoid resolving a symbol to a mention in a
+ * No full parser: just enough to avoid resolving a symbol to a mention in a
  * docstring/comment, which is the common cause of a correct name landing on a
  * non-symbol position and returning 0 results.
  */
 function isInCommentOrString(lineText: string, index: number): boolean {
-  const before = lineText.slice(0, index)
+  const before = lineText.slice(0, index);
   // A line-comment marker before the match (// but not '://', or #).
-  if (/(?:^|[^:])\/\//.test(before) || /(?:^|\s)#/.test(before)) return true
+  if (/(?:^|[^:])\/\//.test(before) || /(?:^|\s)#/.test(before)) return true;
   // Inside a string: an odd number of unescaped quotes precedes the match.
-  const quotes = before.match(/(?<!\\)["'`]/g)
-  if (quotes && quotes.length % 2 === 1) return true
-  return false
+  const quotes = before.match(/(?<!\\)["'`]/g);
+  if (quotes && quotes.length % 2 === 1) return true;
+  return false;
 }
 
 /**
  * Locate a symbol by name and return a 1-based { line, character } on the best
  * occurrence. Any real code occurrence works for definition/references/hover/
  * implementation/call-hierarchy (the server resolves from any reference site),
- * so the model passes just a name instead of computing coordinates — which is
+ * so the model passes just a name instead of computing coordinates: which is
  * the #1 source of wrong "0 results" (a hand-computed column lands on a keyword
  * like `export`/`def`, not the symbol). We skip comment/string mentions and
  * prefer the definition line. Returns null if not found or unreadable.
@@ -651,38 +662,41 @@ async function resolveSymbolPosition(
   symbol: string,
 ): Promise<{ line: number; character: number } | null> {
   try {
-    const content = await readFile(absolutePath, 'utf-8')
-    const lines = content.split('\n')
-    const re = new RegExp(`\\b${escapeRegExp(symbol)}\\b`, 'g')
-    const occurrences: Array<{ line: number; character: number; text: string }> =
-      []
+    const content = await readFile(absolutePath, "utf-8");
+    const lines = content.split("\n");
+    const re = new RegExp(`\\b${escapeRegExp(symbol)}\\b`, "g");
+    const occurrences: Array<{
+      line: number;
+      character: number;
+      text: string;
+    }> = [];
     for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i] ?? ''
-      re.lastIndex = 0
-      let match: RegExpExecArray | null
+      const lineText = lines[i] ?? "";
+      re.lastIndex = 0;
+      let match: RegExpExecArray | null;
       while ((match = re.exec(lineText)) !== null) {
-        occurrences.push({ line: i, character: match.index, text: lineText })
+        occurrences.push({ line: i, character: match.index, text: lineText });
       }
     }
-    if (occurrences.length === 0) return null
+    if (occurrences.length === 0) return null;
 
     // Prefer real-code occurrences over mentions in comments/strings.
     const codeOccurrences = occurrences.filter(
-      o => !isInCommentOrString(o.text, o.character),
-    )
-    const pool = codeOccurrences.length > 0 ? codeOccurrences : occurrences
+      (o) => !isInCommentOrString(o.text, o.character),
+    );
+    const pool = codeOccurrences.length > 0 ? codeOccurrences : occurrences;
 
     // Prefer the definition site: `def/class/function/const/... <symbol>` or
     // `<symbol> =` / `<symbol>:` / `<symbol>(`.
-    const esc = escapeRegExp(symbol)
+    const esc = escapeRegExp(symbol);
     const defRe = new RegExp(
       `\\b(?:def|class|function|const|let|var|interface|type|enum)\\b[^\\n]*\\b${esc}\\b|\\b${esc}\\b\\s*[=:(]`,
-    )
-    const chosen = pool.find(o => defRe.test(o.text)) ?? pool[0]
-    if (!chosen) return null
-    return { line: chosen.line + 1, character: chosen.character + 1 }
+    );
+    const chosen = pool.find((o) => defRe.test(o.text)) ?? pool[0];
+    if (!chosen) return null;
+    return { line: chosen.line + 1, character: chosen.character + 1 };
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -691,7 +705,7 @@ function getMethodAndParams(
   absolutePath: string,
   position1Based?: { line: number; character: number },
 ): { method: string; params: unknown } {
-  const uri = pathToFileURL(absolutePath).href
+  const uri = pathToFileURL(absolutePath).href;
   // Convert from 1-based (user-friendly) to 0-based (LSP protocol). Undefined
   // for operations that don't use a position (document/workspace symbol).
   const position = position1Based
@@ -699,83 +713,83 @@ function getMethodAndParams(
         line: position1Based.line - 1,
         character: position1Based.character - 1,
       }
-    : undefined
+    : undefined;
 
   switch (input.operation) {
-    case 'goToDefinition':
+    case "goToDefinition":
       return {
-        method: 'textDocument/definition',
+        method: "textDocument/definition",
         params: {
           textDocument: { uri },
           position,
         },
-      }
-    case 'findReferences':
+      };
+    case "findReferences":
       return {
-        method: 'textDocument/references',
+        method: "textDocument/references",
         params: {
           textDocument: { uri },
           position,
           context: { includeDeclaration: true },
         },
-      }
-    case 'hover':
+      };
+    case "hover":
       return {
-        method: 'textDocument/hover',
+        method: "textDocument/hover",
         params: {
           textDocument: { uri },
           position,
         },
-      }
-    case 'documentSymbol':
+      };
+    case "documentSymbol":
       return {
-        method: 'textDocument/documentSymbol',
+        method: "textDocument/documentSymbol",
         params: {
           textDocument: { uri },
         },
-      }
-    case 'workspaceSymbol':
+      };
+    case "workspaceSymbol":
       return {
-        method: 'workspace/symbol',
+        method: "workspace/symbol",
         // Search for the given symbol; empty query returns all symbols.
         params: {
-          query: input.symbol ?? '',
+          query: input.symbol ?? "",
         },
-      }
-    case 'goToImplementation':
+      };
+    case "goToImplementation":
       return {
-        method: 'textDocument/implementation',
+        method: "textDocument/implementation",
         params: {
           textDocument: { uri },
           position,
         },
-      }
-    case 'prepareCallHierarchy':
+      };
+    case "prepareCallHierarchy":
       return {
-        method: 'textDocument/prepareCallHierarchy',
+        method: "textDocument/prepareCallHierarchy",
         params: {
           textDocument: { uri },
           position,
         },
-      }
-    case 'incomingCalls':
+      };
+    case "incomingCalls":
       // For incoming/outgoing calls, we first need to prepare the call hierarchy
       // The LSP server will return CallHierarchyItem(s) that we pass to the calls request
       return {
-        method: 'textDocument/prepareCallHierarchy',
+        method: "textDocument/prepareCallHierarchy",
         params: {
           textDocument: { uri },
           position,
         },
-      }
-    case 'outgoingCalls':
+      };
+    case "outgoingCalls":
       return {
-        method: 'textDocument/prepareCallHierarchy',
+        method: "textDocument/prepareCallHierarchy",
         params: {
           textDocument: { uri },
           position,
         },
-      }
+      };
   }
 }
 
@@ -783,37 +797,37 @@ function getMethodAndParams(
  * Counts the total number of symbols including nested children
  */
 function countSymbols(symbols: DocumentSymbol[]): number {
-  let count = symbols.length
+  let count = symbols.length;
   for (const symbol of symbols) {
     if (symbol.children && symbol.children.length > 0) {
-      count += countSymbols(symbol.children)
+      count += countSymbols(symbol.children);
     }
   }
-  return count
+  return count;
 }
 
 /**
  * Counts unique files from an array of locations
  */
 function countUniqueFiles(locations: Location[]): number {
-  return new Set(locations.map(loc => loc.uri)).size
+  return new Set(locations.map((loc) => loc.uri)).size;
 }
 
 /**
  * Extracts a file path from a file:// URI, decoding percent-encoded characters.
  */
 function uriToFilePath(uri: string): string {
-  let filePath = uri.replace(/^file:\/\//, '')
-  // On Windows, file:///C:/path becomes /C:/path — strip the leading slash
+  let filePath = uri.replace(/^file:\/\//, "");
+  // On Windows, file:///C:/path becomes /C:/path: strip the leading slash
   if (/^\/[A-Za-z]:/.test(filePath)) {
-    filePath = filePath.slice(1)
+    filePath = filePath.slice(1);
   }
   try {
-    filePath = decodeURIComponent(filePath)
+    filePath = decodeURIComponent(filePath);
   } catch {
     // Use un-decoded path if malformed
   }
-  return filePath
+  return filePath;
 }
 
 /**
@@ -825,63 +839,63 @@ async function filterGitIgnoredLocations<T extends Location>(
   cwd: string,
 ): Promise<T[]> {
   if (locations.length === 0) {
-    return locations
+    return locations;
   }
 
   // Collect unique file paths from URIs
-  const uriToPath = new Map<string, string>()
+  const uriToPath = new Map<string, string>();
   for (const loc of locations) {
     if (loc.uri && !uriToPath.has(loc.uri)) {
-      uriToPath.set(loc.uri, uriToFilePath(loc.uri))
+      uriToPath.set(loc.uri, uriToFilePath(loc.uri));
     }
   }
 
-  const uniquePaths = uniq(uriToPath.values())
+  const uniquePaths = uniq(uriToPath.values());
   if (uniquePaths.length === 0) {
-    return locations
+    return locations;
   }
 
   // Batch check paths with git check-ignore
   // Exit code 0 = at least one path is ignored, 1 = none ignored, 128 = not a git repo
-  const ignoredPaths = new Set<string>()
-  const BATCH_SIZE = 50
+  const ignoredPaths = new Set<string>();
+  const BATCH_SIZE = 50;
   for (let i = 0; i < uniquePaths.length; i += BATCH_SIZE) {
-    const batch = uniquePaths.slice(i, i + BATCH_SIZE)
+    const batch = uniquePaths.slice(i, i + BATCH_SIZE);
     const result = await execFileNoThrowWithCwd(
-      'git',
-      ['check-ignore', ...batch],
+      "git",
+      ["check-ignore", ...batch],
       {
         cwd,
         preserveOutputOnError: false,
         timeout: 5_000,
       },
-    )
+    );
 
     if (result.code === 0 && result.stdout) {
-      for (const line of result.stdout.split('\n')) {
-        const trimmed = line.trim()
+      for (const line of result.stdout.split("\n")) {
+        const trimmed = line.trim();
         if (trimmed) {
-          ignoredPaths.add(trimmed)
+          ignoredPaths.add(trimmed);
         }
       }
     }
   }
 
   if (ignoredPaths.size === 0) {
-    return locations
+    return locations;
   }
 
-  return locations.filter(loc => {
-    const filePath = uriToPath.get(loc.uri)
-    return !filePath || !ignoredPaths.has(filePath)
-  })
+  return locations.filter((loc) => {
+    const filePath = uriToPath.get(loc.uri);
+    return !filePath || !ignoredPaths.has(filePath);
+  });
 }
 
 /**
  * Checks if item is LocationLink (has targetUri) vs Location (has uri)
  */
 function isLocationLink(item: Location | LocationLink): item is LocationLink {
-  return 'targetUri' in item
+  return "targetUri" in item;
 }
 
 /**
@@ -892,43 +906,43 @@ function toLocation(item: Location | LocationLink): Location {
     return {
       uri: item.targetUri,
       range: item.targetSelectionRange || item.targetRange,
-    }
+    };
   }
-  return item
+  return item;
 }
 
 /**
  * Formats LSP result based on operation type and extracts summary counts
  */
 function formatResult(
-  operation: Input['operation'],
+  operation: Input["operation"],
   result: unknown,
   cwd: string,
 ): { formatted: string; resultCount: number; fileCount: number } {
   switch (operation) {
-    case 'goToDefinition': {
+    case "goToDefinition": {
       // Handle both Location and LocationLink formats
       const rawResults = Array.isArray(result)
         ? result
         : result
           ? [result as Location | LocationLink]
-          : []
+          : [];
 
       // Convert LocationLinks to Locations for uniform handling
-      const locations = rawResults.map(toLocation)
+      const locations = rawResults.map(toLocation);
 
       // Log and filter out locations with undefined uris
-      const invalidLocations = locations.filter(loc => !loc || !loc.uri)
+      const invalidLocations = locations.filter((loc) => !loc || !loc.uri);
       if (invalidLocations.length > 0) {
         logError(
           new Error(
             `LSP server returned ${invalidLocations.length} location(s) with undefined URI for goToDefinition on ${cwd}. ` +
               `This indicates malformed data from the LSP server.`,
           ),
-        )
+        );
       }
 
-      const validLocations = locations.filter(loc => loc && loc.uri)
+      const validLocations = locations.filter((loc) => loc && loc.uri);
       return {
         formatted: formatGoToDefinitionResult(
           result as
@@ -941,46 +955,46 @@ function formatResult(
         ),
         resultCount: validLocations.length,
         fileCount: countUniqueFiles(validLocations),
-      }
+      };
     }
-    case 'findReferences': {
-      const locations = (result as Location[]) || []
+    case "findReferences": {
+      const locations = (result as Location[]) || [];
 
       // Log and filter out locations with undefined uris
-      const invalidLocations = locations.filter(loc => !loc || !loc.uri)
+      const invalidLocations = locations.filter((loc) => !loc || !loc.uri);
       if (invalidLocations.length > 0) {
         logError(
           new Error(
             `LSP server returned ${invalidLocations.length} location(s) with undefined URI for findReferences on ${cwd}. ` +
               `This indicates malformed data from the LSP server.`,
           ),
-        )
+        );
       }
 
-      const validLocations = locations.filter(loc => loc && loc.uri)
+      const validLocations = locations.filter((loc) => loc && loc.uri);
       return {
         formatted: formatFindReferencesResult(result as Location[] | null, cwd),
         resultCount: validLocations.length,
         fileCount: countUniqueFiles(validLocations),
-      }
+      };
     }
-    case 'hover': {
+    case "hover": {
       return {
         formatted: formatHoverResult(result as Hover | null, cwd),
         resultCount: result ? 1 : 0,
         fileCount: result ? 1 : 0,
-      }
+      };
     }
-    case 'documentSymbol': {
+    case "documentSymbol": {
       // LSP allows documentSymbol to return either DocumentSymbol[] or SymbolInformation[]
-      const symbols = (result as (DocumentSymbol | SymbolInformation)[]) || []
+      const symbols = (result as (DocumentSymbol | SymbolInformation)[]) || [];
       // Detect format: DocumentSymbol has 'range', SymbolInformation has 'location'
       const isDocumentSymbol =
-        symbols.length > 0 && symbols[0] && 'range' in symbols[0]
+        symbols.length > 0 && symbols[0] && "range" in symbols[0];
       // Count symbols - DocumentSymbol can have nested children, SymbolInformation is flat
       const count = isDocumentSymbol
         ? countSymbols(symbols as DocumentSymbol[])
-        : symbols.length
+        : symbols.length;
       return {
         formatted: formatDocumentSymbolResult(
           result as (DocumentSymbol[] | SymbolInformation[]) | null,
@@ -988,28 +1002,28 @@ function formatResult(
         ),
         resultCount: count,
         fileCount: symbols.length > 0 ? 1 : 0,
-      }
+      };
     }
-    case 'workspaceSymbol': {
-      const symbols = (result as SymbolInformation[]) || []
+    case "workspaceSymbol": {
+      const symbols = (result as SymbolInformation[]) || [];
 
       // Log and filter out symbols with undefined location.uri
       const invalidSymbols = symbols.filter(
-        sym => !sym || !sym.location || !sym.location.uri,
-      )
+        (sym) => !sym || !sym.location || !sym.location.uri,
+      );
       if (invalidSymbols.length > 0) {
         logError(
           new Error(
             `LSP server returned ${invalidSymbols.length} symbol(s) with undefined location URI for workspaceSymbol on ${cwd}. ` +
               `This indicates malformed data from the LSP server.`,
           ),
-        )
+        );
       }
 
       const validSymbols = symbols.filter(
-        sym => sym && sym.location && sym.location.uri,
-      )
-      const locations = validSymbols.map(s => s.location)
+        (sym) => sym && sym.location && sym.location.uri,
+      );
+      const locations = validSymbols.map((s) => s.location);
       return {
         formatted: formatWorkspaceSymbolResult(
           result as SymbolInformation[] | null,
@@ -1017,31 +1031,31 @@ function formatResult(
         ),
         resultCount: validSymbols.length,
         fileCount: countUniqueFiles(locations),
-      }
+      };
     }
-    case 'goToImplementation': {
+    case "goToImplementation": {
       // Handle both Location and LocationLink formats (same as goToDefinition)
       const rawResults = Array.isArray(result)
         ? result
         : result
           ? [result as Location | LocationLink]
-          : []
+          : [];
 
       // Convert LocationLinks to Locations for uniform handling
-      const locations = rawResults.map(toLocation)
+      const locations = rawResults.map(toLocation);
 
       // Log and filter out locations with undefined uris
-      const invalidLocations = locations.filter(loc => !loc || !loc.uri)
+      const invalidLocations = locations.filter((loc) => !loc || !loc.uri);
       if (invalidLocations.length > 0) {
         logError(
           new Error(
             `LSP server returned ${invalidLocations.length} location(s) with undefined URI for goToImplementation on ${cwd}. ` +
               `This indicates malformed data from the LSP server.`,
           ),
-        )
+        );
       }
 
-      const validLocations = locations.filter(loc => loc && loc.uri)
+      const validLocations = locations.filter((loc) => loc && loc.uri);
       return {
         // Reuse goToDefinition formatter since the result format is identical
         formatted: formatGoToDefinitionResult(
@@ -1055,10 +1069,10 @@ function formatResult(
         ),
         resultCount: validLocations.length,
         fileCount: countUniqueFiles(validLocations),
-      }
+      };
     }
-    case 'prepareCallHierarchy': {
-      const items = (result as CallHierarchyItem[]) || []
+    case "prepareCallHierarchy": {
+      const items = (result as CallHierarchyItem[]) || [];
       return {
         formatted: formatPrepareCallHierarchyResult(
           result as CallHierarchyItem[] | null,
@@ -1066,10 +1080,10 @@ function formatResult(
         ),
         resultCount: items.length,
         fileCount: items.length > 0 ? countUniqueFilesFromCallItems(items) : 0,
-      }
+      };
     }
-    case 'incomingCalls': {
-      const calls = (result as CallHierarchyIncomingCall[]) || []
+    case "incomingCalls": {
+      const calls = (result as CallHierarchyIncomingCall[]) || [];
       return {
         formatted: formatIncomingCallsResult(
           result as CallHierarchyIncomingCall[] | null,
@@ -1078,10 +1092,10 @@ function formatResult(
         resultCount: calls.length,
         fileCount:
           calls.length > 0 ? countUniqueFilesFromIncomingCalls(calls) : 0,
-      }
+      };
     }
-    case 'outgoingCalls': {
-      const calls = (result as CallHierarchyOutgoingCall[]) || []
+    case "outgoingCalls": {
+      const calls = (result as CallHierarchyOutgoingCall[]) || [];
       return {
         formatted: formatOutgoingCallsResult(
           result as CallHierarchyOutgoingCall[] | null,
@@ -1090,7 +1104,7 @@ function formatResult(
         resultCount: calls.length,
         fileCount:
           calls.length > 0 ? countUniqueFilesFromOutgoingCalls(calls) : 0,
-      }
+      };
     }
   }
 }
@@ -1100,8 +1114,8 @@ function formatResult(
  * Filters out items with undefined URIs
  */
 function countUniqueFilesFromCallItems(items: CallHierarchyItem[]): number {
-  const validUris = items.map(item => item.uri).filter(uri => uri)
-  return new Set(validUris).size
+  const validUris = items.map((item) => item.uri).filter((uri) => uri);
+  return new Set(validUris).size;
 }
 
 /**
@@ -1111,8 +1125,8 @@ function countUniqueFilesFromCallItems(items: CallHierarchyItem[]): number {
 function countUniqueFilesFromIncomingCalls(
   calls: CallHierarchyIncomingCall[],
 ): number {
-  const validUris = calls.map(call => call.from?.uri).filter(uri => uri)
-  return new Set(validUris).size
+  const validUris = calls.map((call) => call.from?.uri).filter((uri) => uri);
+  return new Set(validUris).size;
 }
 
 /**
@@ -1122,6 +1136,6 @@ function countUniqueFilesFromIncomingCalls(
 function countUniqueFilesFromOutgoingCalls(
   calls: CallHierarchyOutgoingCall[],
 ): number {
-  const validUris = calls.map(call => call.to?.uri).filter(uri => uri)
-  return new Set(validUris).size
+  const validUris = calls.map((call) => call.to?.uri).filter((uri) => uri);
+  return new Set(validUris).size;
 }

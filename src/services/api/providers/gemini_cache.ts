@@ -26,74 +26,77 @@
  * prompt inline every turn. That's a known limitation, not a regression.
  */
 
-import { createHash } from 'crypto'
+import { createHash } from "crypto";
 
 interface CacheEntry {
-  cacheName: string // "cachedContents/xxxxx"
-  expiresAt: number // epoch ms
-  model: string
+  cacheName: string; // "cachedContents/xxxxx"
+  expiresAt: number; // epoch ms
+  model: string;
 }
 
 interface CacheMiss {
-  reason: 'too_small' | 'unsupported' | 'error'
-  retryAfter: number // epoch ms - don't retry until after this
+  reason: "too_small" | "unsupported" | "error";
+  retryAfter: number; // epoch ms - don't retry until after this
 }
 
 export interface CacheLookupResult {
-  cacheName: string
-  createdTokens: number
+  cacheName: string;
+  createdTokens: number;
 }
 
 // Server-side TTL is set to 600s (10 min) for breathing room. We expire
 // locally at 5 min (300s) so we never reference a server cache that just
-// died — the extra 5 min server-side gives the refresh cycle time to
+// died: the extra 5 min server-side gives the refresh cycle time to
 // create a replacement before the old one expires.
-const CACHE_TTL_MS = 5 * 60 * 1000
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Proactively refresh the cache when less than this much TTL remains.
 // This prevents the gap where the old cache expires before the new one
 // is ready, which would force one request to pay full input cost.
-const REFRESH_THRESHOLD_MS = 60_000
+const REFRESH_THRESHOLD_MS = 60_000;
 
-// Cooldown after a "too small" miss — the payload size won't change
+// Cooldown after a "too small" miss: the payload size won't change
 // between turns, so a longer cooldown is fine.
-const MISS_COOLDOWN_TOO_SMALL_MS = 120_000
+const MISS_COOLDOWN_TOO_SMALL_MS = 120_000;
 
-// Cooldown after a transient error — shorter so we recover quickly.
-const MISS_COOLDOWN_ERROR_MS = 15_000
+// Cooldown after a transient error: shorter so we recover quickly.
+const MISS_COOLDOWN_ERROR_MS = 15_000;
 
 // Economic floor before we even attempt to cache: micro-caches cost more
 // in create round-trips than they save. 8 KB chars ≈ ~2 K tokens.
-const MIN_CACHE_SIZE_CHARS = 8192
+const MIN_CACHE_SIZE_CHARS = 8192;
 
 // Server-side minimum cacheable size is MODEL-DEPENDENT (tokens):
 // 2.5 Pro requires 4,096; flash families 1,024; 3.x Pro 2,048. A single
 // flat guard sized for ~2K tokens let 2.5-Pro payloads between ~8 KB and
 // ~16 KB attempt a create the server always rejects ("too small"), then
-// re-attempt every cooldown — pure wasted round-trips. Small sessions
+// re-attempt every cooldown: pure wasted round-trips. Small sessions
 // (cheap power mode strips optional tools) sit in exactly that window.
 // Estimated at 4 chars/token, conservatively high so the guard can only
 // skip caches the server would reject anyway, floored at the economic
 // minimum above.
-const MODEL_MIN_CACHE_TOKENS: ReadonlyArray<{ prefix: string; tokens: number }> = [
-  { prefix: 'gemini-2.5-pro', tokens: 4096 },
-  { prefix: 'gemini-3-pro', tokens: 2048 },
-  { prefix: 'gemini-3.1-pro', tokens: 2048 },
-]
+const MODEL_MIN_CACHE_TOKENS: ReadonlyArray<{
+  prefix: string;
+  tokens: number;
+}> = [
+  { prefix: "gemini-2.5-pro", tokens: 4096 },
+  { prefix: "gemini-3-pro", tokens: 2048 },
+  { prefix: "gemini-3.1-pro", tokens: 2048 },
+];
 
 function minCacheSizeCharsForModel(model: string): number {
-  const lower = model.toLowerCase()
+  const lower = model.toLowerCase();
   for (const entry of MODEL_MIN_CACHE_TOKENS) {
     if (lower.startsWith(entry.prefix)) {
-      return Math.max(MIN_CACHE_SIZE_CHARS, entry.tokens * 4)
+      return Math.max(MIN_CACHE_SIZE_CHARS, entry.tokens * 4);
     }
   }
-  return MIN_CACHE_SIZE_CHARS
+  return MIN_CACHE_SIZE_CHARS;
 }
 
 /**
  * Models that support context caching. Covers the full Gemini 2.5+ and
- * 3.x families. Image/audio/TTS models are intentionally excluded —
+ * 3.x families. Image/audio/TTS models are intentionally excluded:
  * they don't ingest a long system prompt in the first place.
  *
  * Uses a prefix-match strategy so new model variants (e.g.
@@ -101,29 +104,29 @@ function minCacheSizeCharsForModel(model: string): number {
  * automatically without needing a code change.
  */
 const CACHE_CAPABLE_MODEL_PREFIXES = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-3-pro',
-  'gemini-3-flash',
-  'gemini-3.1-pro',
-  'gemini-3.1-flash',
-  'gemini-3.5-flash',
-]
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+  "gemini-3-pro",
+  "gemini-3-flash",
+  "gemini-3.1-pro",
+  "gemini-3.1-flash",
+  "gemini-3.5-flash",
+];
 
-// In-process stores. Per-process is correct here — caches are tied to
+// In-process stores. Per-process is correct here: caches are tied to
 // the API key, not to the user identity beyond that.
-const _caches = new Map<string, CacheEntry>()
-const _misses = new Map<string, CacheMiss>()
+const _caches = new Map<string, CacheEntry>();
+const _misses = new Map<string, CacheMiss>();
 
 // Diagnostic counters
-const _stats = { hits: 0, misses: 0, creates: 0, refreshes: 0, errors: 0 }
+const _stats = { hits: 0, misses: 0, creates: 0, refreshes: 0, errors: 0 };
 
 // Track in-flight background refreshes to avoid duplicate work.
-const _pendingRefreshes = new Set<string>()
+const _pendingRefreshes = new Set<string>();
 
 function supportsCaching(model: string): boolean {
-  const lower = model.toLowerCase()
-  return CACHE_CAPABLE_MODEL_PREFIXES.some(p => lower.startsWith(p))
+  const lower = model.toLowerCase();
+  return CACHE_CAPABLE_MODEL_PREFIXES.some((p) => lower.startsWith(p));
 }
 
 function computeKey(
@@ -131,33 +134,33 @@ function computeKey(
   systemInstruction: unknown,
   tools: unknown,
 ): string {
-  const hash = createHash('sha256')
-  hash.update(model)
-  hash.update('|')
-  hash.update(JSON.stringify(systemInstruction ?? null))
-  hash.update('|')
-  hash.update(JSON.stringify(tools ?? null))
-  return hash.digest('hex')
+  const hash = createHash("sha256");
+  hash.update(model);
+  hash.update("|");
+  hash.update(JSON.stringify(systemInstruction ?? null));
+  hash.update("|");
+  hash.update(JSON.stringify(tools ?? null));
+  return hash.digest("hex");
 }
 
 function approxSize(systemInstruction: unknown, tools: unknown): number {
   return (
-    JSON.stringify(systemInstruction ?? '').length +
-    JSON.stringify(tools ?? '').length
-  )
+    JSON.stringify(systemInstruction ?? "").length +
+    JSON.stringify(tools ?? "").length
+  );
 }
 
 /**
  * Build the headers for cache API calls. Uses x-goog-api-key header
- * instead of URL query param — more secure (avoids logging the key in
+ * instead of URL query param: more secure (avoids logging the key in
  * server access logs and proxy caches).
  */
 function _cacheHeaders(apiKey: string): Record<string, string> {
   return {
-    'Content-Type': 'application/json',
-    'x-goog-api-key': apiKey,
-    'Connection': 'keep-alive',
-  }
+    "Content-Type": "application/json",
+    "x-goog-api-key": apiKey,
+    Connection: "keep-alive",
+  };
 }
 
 /**
@@ -168,97 +171,96 @@ async function _createCacheOnServer(
   key: string,
   args: GetOrCreateCacheArgs,
 ): Promise<CacheLookupResult | null> {
-  const { model, baseUrl, apiKey, systemInstruction, tools } = args
+  const { model, baseUrl, apiKey, systemInstruction, tools } = args;
   try {
     const body: Record<string, unknown> = {
       model: `models/${model}`,
-      ttl: '600s',
-    }
-    if (systemInstruction) body.systemInstruction = systemInstruction
-    if (tools) body.tools = tools
+      ttl: "600s",
+    };
+    if (systemInstruction) body.systemInstruction = systemInstruction;
+    if (tools) body.tools = tools;
 
-    const response = await fetch(
-      `${baseUrl}/cachedContents`,
-      {
-        method: 'POST',
-        headers: _cacheHeaders(apiKey),
-        body: JSON.stringify(body),
-      },
-    )
+    const response = await fetch(`${baseUrl}/cachedContents`, {
+      method: "POST",
+      headers: _cacheHeaders(apiKey),
+      body: JSON.stringify(body),
+    });
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '')
+      const errText = await response.text().catch(() => "");
       const isTooSmall =
-        errText.toLowerCase().includes('minimum') ||
-        errText.toLowerCase().includes('too small')
+        errText.toLowerCase().includes("minimum") ||
+        errText.toLowerCase().includes("too small");
       _misses.set(key, {
-        reason: isTooSmall ? 'too_small' : 'error',
-        retryAfter: Date.now() + (isTooSmall ? MISS_COOLDOWN_TOO_SMALL_MS : MISS_COOLDOWN_ERROR_MS),
-      })
-      _stats.errors++
-      return null
+        reason: isTooSmall ? "too_small" : "error",
+        retryAfter:
+          Date.now() +
+          (isTooSmall ? MISS_COOLDOWN_TOO_SMALL_MS : MISS_COOLDOWN_ERROR_MS),
+      });
+      _stats.errors++;
+      return null;
     }
 
     const data = (await response.json()) as {
-      name?: string
+      name?: string;
       usageMetadata?: {
-        totalTokenCount?: number
-        promptTokenCount?: number
-      }
-    }
+        totalTokenCount?: number;
+        promptTokenCount?: number;
+      };
+    };
     if (!data.name) {
       _misses.set(key, {
-        reason: 'error',
+        reason: "error",
         retryAfter: Date.now() + MISS_COOLDOWN_ERROR_MS,
-      })
-      _stats.errors++
-      return null
+      });
+      _stats.errors++;
+      return null;
     }
 
     _caches.set(key, {
       cacheName: data.name,
       expiresAt: Date.now() + CACHE_TTL_MS,
       model,
-    })
+    });
     return {
       cacheName: data.name,
       createdTokens:
-        data.usageMetadata?.totalTokenCount
-        ?? data.usageMetadata?.promptTokenCount
-        ?? 0,
-    }
+        data.usageMetadata?.totalTokenCount ??
+        data.usageMetadata?.promptTokenCount ??
+        0,
+    };
   } catch {
     _misses.set(key, {
-      reason: 'error',
+      reason: "error",
       retryAfter: Date.now() + MISS_COOLDOWN_ERROR_MS,
-    })
-    _stats.errors++
-    return null
+    });
+    _stats.errors++;
+    return null;
   }
 }
 
 /**
  * Proactively refresh a cache entry in the background before it expires.
- * Fire-and-forget — the current request uses the still-valid old cache
+ * Fire-and-forget: the current request uses the still-valid old cache
  * while this creates a replacement that will be ready for the next turn.
  */
 function _refreshInBackground(args: GetOrCreateCacheArgs, key: string): void {
-  if (_pendingRefreshes.has(key)) return
-  _pendingRefreshes.add(key)
-  _stats.refreshes++
+  if (_pendingRefreshes.has(key)) return;
+  _pendingRefreshes.add(key);
+  _stats.refreshes++;
 
   _createCacheOnServer(key, args)
     .catch(() => {})
-    .finally(() => _pendingRefreshes.delete(key))
+    .finally(() => _pendingRefreshes.delete(key));
 }
 
 export interface GetOrCreateCacheArgs {
-  model: string
+  model: string;
   /** Base URL for the Gemini v1beta endpoint (API-key path only). */
-  baseUrl: string
-  apiKey: string
-  systemInstruction: unknown
-  tools: unknown
+  baseUrl: string;
+  apiKey: string;
+  systemInstruction: unknown;
+  tools: unknown;
 }
 
 /**
@@ -273,56 +275,57 @@ export interface GetOrCreateCacheArgs {
 export async function getOrCreateCacheWithUsage(
   args: GetOrCreateCacheArgs,
 ): Promise<CacheLookupResult | null> {
-  const { model, apiKey, systemInstruction, tools } = args
+  const { model, apiKey, systemInstruction, tools } = args;
 
-  if (!supportsCaching(model)) return null
-  if (!apiKey) return null
-  if (approxSize(systemInstruction, tools) < minCacheSizeCharsForModel(model)) return null
+  if (!supportsCaching(model)) return null;
+  if (!apiKey) return null;
+  if (approxSize(systemInstruction, tools) < minCacheSizeCharsForModel(model))
+    return null;
 
-  const key = computeKey(model, systemInstruction, tools)
+  const key = computeKey(model, systemInstruction, tools);
 
   // Honor active miss cooldown.
-  const miss = _misses.get(key)
+  const miss = _misses.get(key);
   if (miss && Date.now() < miss.retryAfter) {
-    _stats.misses++
-    return null
+    _stats.misses++;
+    return null;
   }
-  if (miss) _misses.delete(key)
+  if (miss) _misses.delete(key);
 
   // Return existing cache if still valid.
-  const existing = _caches.get(key)
+  const existing = _caches.get(key);
   if (existing && Date.now() < existing.expiresAt) {
-    _stats.hits++
+    _stats.hits++;
     // Proactively refresh when close to expiry so the next request
     // doesn't pay full input cost while waiting for a new cache.
-    const remaining = existing.expiresAt - Date.now()
+    const remaining = existing.expiresAt - Date.now();
     if (remaining < REFRESH_THRESHOLD_MS) {
-      _refreshInBackground(args, key)
+      _refreshInBackground(args, key);
     }
-    return { cacheName: existing.cacheName, createdTokens: 0 }
+    return { cacheName: existing.cacheName, createdTokens: 0 };
   }
-  if (existing) _caches.delete(key)
+  if (existing) _caches.delete(key);
 
   // Create a new cache.
-  _stats.creates++
-  return _createCacheOnServer(key, args)
+  _stats.creates++;
+  return _createCacheOnServer(key, args);
 }
 
 export async function getOrCreateCache(
   args: GetOrCreateCacheArgs,
 ): Promise<string | null> {
-  return (await getOrCreateCacheWithUsage(args))?.cacheName ?? null
+  return (await getOrCreateCacheWithUsage(args))?.cacheName ?? null;
 }
 
 /**
- * Drop a cache entry from the map — call this when a request using this
+ * Drop a cache entry from the map: call this when a request using this
  * cache name returned 404/expired so the next call creates a fresh one.
  */
 export function invalidateCache(cacheName: string): void {
   for (const [key, entry] of _caches.entries()) {
     if (entry.cacheName === cacheName) {
-      _caches.delete(key)
-      return
+      _caches.delete(key);
+      return;
     }
   }
 }
@@ -330,29 +333,39 @@ export function invalidateCache(cacheName: string): void {
 /**
  * Pre-warm the cache for a given model + system prompt + tools combo.
  * Called during provider initialization to ensure the first real request
- * gets a cache hit. Non-blocking — returns immediately.
+ * gets a cache hit. Non-blocking: returns immediately.
  */
 export function warmCache(args: GetOrCreateCacheArgs): void {
-  if (!supportsCaching(args.model)) return
-  if (!args.apiKey) return
-  if (approxSize(args.systemInstruction, args.tools) < minCacheSizeCharsForModel(args.model)) return
-  // Fire and forget — don't block the caller.
-  getOrCreateCache(args).catch(() => {})
+  if (!supportsCaching(args.model)) return;
+  if (!args.apiKey) return;
+  if (
+    approxSize(args.systemInstruction, args.tools) <
+    minCacheSizeCharsForModel(args.model)
+  )
+    return;
+  // Fire and forget: don't block the caller.
+  getOrCreateCache(args).catch(() => {});
 }
 
 /** Diagnostic counters for cache performance. */
-export function getCacheStats(): { hits: number; misses: number; creates: number; refreshes: number; errors: number } {
-  return { ..._stats }
+export function getCacheStats(): {
+  hits: number;
+  misses: number;
+  creates: number;
+  refreshes: number;
+  errors: number;
+} {
+  return { ..._stats };
 }
 
-/** Test hook — clear all cache state. Not used in prod. */
+/** Test hook: clear all cache state. Not used in prod. */
 export function _resetGeminiCacheStateForTests(): void {
-  _caches.clear()
-  _misses.clear()
-  _pendingRefreshes.clear()
-  _stats.hits = 0
-  _stats.misses = 0
-  _stats.creates = 0
-  _stats.refreshes = 0
-  _stats.errors = 0
+  _caches.clear();
+  _misses.clear();
+  _pendingRefreshes.clear();
+  _stats.hits = 0;
+  _stats.misses = 0;
+  _stats.creates = 0;
+  _stats.refreshes = 0;
+  _stats.errors = 0;
 }

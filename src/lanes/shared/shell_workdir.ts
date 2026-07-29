@@ -15,7 +15,7 @@
  * field that is strictly better than a cd-prefix:
  *   - quoting-safe (no hand-quoting paths with spaces; on Windows the
  *     backslashes in a `cd "C:\…"` prefix are bash escapes),
- *   - one-off — it does NOT change the session cwd (a synthesized
+ *   - one-off: it does NOT change the session cwd (a synthesized
  *     `cd X && …` is treated by BashTool as a real shell move and
  *     persists the cwd, which is a surprising side effect),
  *   - understood by the workdir preflight + the cwd-transparency note.
@@ -24,7 +24,7 @@
  *   1. do NOT advertise a directory parameter in the schema the model sees;
  *      prompts should teach absolute paths or native CLI location flags instead.
  *   2. if an older provider shim still sends a directory key, map it to the
- *      shared impl's internal `workdir` field — never to a `cd …` prefix.
+ *      shared impl's internal `workdir` field: never to a `cd …` prefix.
  *
  * Lanes keep their NATIVE parameter name (the model was post-trained on
  * it); only the mapping target is standardized. New lanes should reuse
@@ -35,7 +35,7 @@
 /** Deprecated legacy description. New model-facing shell schemas should not
  * expose a directory parameter. */
 export const SHELL_WORKDIR_PARAM_DESCRIPTION =
-  'Deprecated legacy directory parameter. Prefer absolute paths or native CLI location flags in the command.'
+  "Deprecated legacy directory parameter. Prefer absolute paths or native CLI location flags in the command.";
 
 /**
  * Legacy JSON-Schema property fragment for compatibility only. New shell tool
@@ -44,7 +44,7 @@ export const SHELL_WORKDIR_PARAM_DESCRIPTION =
 export function shellWorkdirSchemaProperty(
   description: string = SHELL_WORKDIR_PARAM_DESCRIPTION,
 ): Record<string, unknown> {
-  return { type: 'string', description }
+  return { type: "string", description };
 }
 
 /**
@@ -53,17 +53,17 @@ export function shellWorkdirSchemaProperty(
  * always wins, followed by the per-lane aliases.
  */
 export const SHELL_WORKDIR_INPUT_KEYS = [
-  'workdir',
-  'dir_path',
-  'cwd',
-  'directory',
-] as const
+  "workdir",
+  "dir_path",
+  "cwd",
+  "directory",
+] as const;
 
 /**
  * Copy the directory value from whichever native key the lane used onto
  * the shared impl's `workdir` field. Mutates and returns `out`.
  *
- * Never emits a `cd <dir> && …` prefix — that is the whole point. If no
+ * Never emits a `cd <dir> && …` prefix: that is the whole point. If no
  * directory key is present (or it is blank), `out` is returned unchanged.
  *
  * @param out    the shared-impl input being assembled (already has `command`).
@@ -76,11 +76,11 @@ export function applyShellWorkdir(
   keys: readonly string[] = SHELL_WORKDIR_INPUT_KEYS,
 ): Record<string, unknown> {
   for (const key of keys) {
-    const value = native[key]
-    if (typeof value === 'string' && value.trim().length > 0) {
-      out.workdir = value
-      return out
+    const value = native[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      out.workdir = value;
+      return out;
     }
   }
-  return out
+  return out;
 }

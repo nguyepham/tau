@@ -1,38 +1,38 @@
-import { feature } from 'bun:bundle'
-import { setSessionBypassPermissionsMode } from '../../bootstrap/state.js'
-import type { ToolPermissionContext } from '../../Tool.js'
-import { logForDebugging } from '../debug.js'
-import { createBypassPermissionsContext } from './bypassPermissionsMode.js'
-import type { PermissionMode } from './PermissionMode.js'
+import { feature } from "bun:bundle";
+import { setSessionBypassPermissionsMode } from "../../bootstrap/state.js";
+import type { ToolPermissionContext } from "../../Tool.js";
+import { logForDebugging } from "../debug.js";
+import { createBypassPermissionsContext } from "./bypassPermissionsMode.js";
+import type { PermissionMode } from "./PermissionMode.js";
 import {
   getAutoModeUnavailableReason,
   isAutoModeGateEnabled,
   isBypassPermissionsModeDisabled,
   transitionPermissionMode,
-} from './permissionSetup.js'
+} from "./permissionSetup.js";
 
 // Checks both the cached isAutoModeAvailable (set at startup by
-// verifyAutoModeGateAccess) and the live isAutoModeGateEnabled() — these can
+// verifyAutoModeGateAccess) and the live isAutoModeGateEnabled(): these can
 // diverge if the circuit breaker or settings change mid-session. The
 // live check prevents transitionPermissionMode from throwing
 // (permissionSetup.ts:~559), which would silently crash the shift+tab handler
 // and leave the user stuck at the current mode.
 function canCycleToAuto(ctx: ToolPermissionContext): boolean {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    const gateEnabled = isAutoModeGateEnabled()
-    const can = !!ctx.isAutoModeAvailable && gateEnabled
+  if (feature("TRANSCRIPT_CLASSIFIER")) {
+    const gateEnabled = isAutoModeGateEnabled();
+    const can = !!ctx.isAutoModeAvailable && gateEnabled;
     if (!can) {
       logForDebugging(
         `[auto-mode] canCycleToAuto=false: ctx.isAutoModeAvailable=${ctx.isAutoModeAvailable} isAutoModeGateEnabled=${gateEnabled} reason=${getAutoModeUnavailableReason()}`,
-      )
+      );
     }
-    return can
+    return can;
   }
-  return false
+  return false;
 }
 
 function canCycleToBypass(): boolean {
-  return !isBypassPermissionsModeDisabled()
+  return !isBypassPermissionsModeDisabled();
 }
 
 /**
@@ -43,48 +43,47 @@ export function getNextPermissionMode(
   _teamContext?: { leadAgentId: string },
 ): PermissionMode {
   switch (toolPermissionContext.mode) {
-    case 'default':
-      // Ants skip acceptEdits and plan — auto mode replaces them
-      if (process.env.USER_TYPE === 'ant') {
+    case "default":
+      // Ants skip acceptEdits and plan: auto mode replaces them
+      if (process.env.USER_TYPE === "ant") {
         if (canCycleToBypass()) {
-          return 'bypassPermissions'
+          return "bypassPermissions";
         }
         if (canCycleToAuto(toolPermissionContext)) {
-          return 'auto'
+          return "auto";
         }
-        return 'default'
+        return "default";
       }
-      return 'acceptEdits'
+      return "acceptEdits";
 
-    case 'acceptEdits':
-      return 'plan'
+    case "acceptEdits":
+      return "plan";
 
-    case 'plan':
-      return 'explore'
+    case "plan":
+      return "explore";
 
-    case 'explore':
+    case "explore":
       if (canCycleToBypass()) {
-        return 'bypassPermissions'
+        return "bypassPermissions";
       }
       if (canCycleToAuto(toolPermissionContext)) {
-        return 'auto'
+        return "auto";
       }
-      return 'default'
+      return "default";
 
-    case 'bypassPermissions':
+    case "bypassPermissions":
       if (canCycleToAuto(toolPermissionContext)) {
-        return 'auto'
+        return "auto";
       }
-      return 'default'
+      return "default";
 
-    case 'dontAsk':
+    case "dontAsk":
       // Not exposed in UI cycle yet, but return default if somehow reached
-      return 'default'
-
+      return "default";
 
     default:
-      // Covers auto (when TRANSCRIPT_CLASSIFIER is enabled) and any future modes — always fall back to default
-      return 'default'
+      // Covers auto (when TRANSCRIPT_CLASSIFIER is enabled) and any future modes: always fall back to default
+      return "default";
   }
 }
 
@@ -99,16 +98,16 @@ export function cyclePermissionMode(
   toolPermissionContext: ToolPermissionContext,
   teamContext?: { leadAgentId: string },
 ): { nextMode: PermissionMode; context: ToolPermissionContext } {
-  const nextMode = getNextPermissionMode(toolPermissionContext, teamContext)
-  if (nextMode === 'bypassPermissions') {
-    setSessionBypassPermissionsMode(true)
+  const nextMode = getNextPermissionMode(toolPermissionContext, teamContext);
+  if (nextMode === "bypassPermissions") {
+    setSessionBypassPermissionsMode(true);
     return {
       nextMode,
       context: createBypassPermissionsContext(toolPermissionContext),
-    }
+    };
   }
-  if (toolPermissionContext.mode === 'bypassPermissions') {
-    setSessionBypassPermissionsMode(false)
+  if (toolPermissionContext.mode === "bypassPermissions") {
+    setSessionBypassPermissionsMode(false);
   }
   return {
     nextMode,
@@ -117,5 +116,5 @@ export function cyclePermissionMode(
       nextMode,
       toolPermissionContext,
     ),
-  }
+  };
 }

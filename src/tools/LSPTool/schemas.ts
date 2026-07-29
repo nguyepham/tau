@@ -1,5 +1,5 @@
-import { z } from 'zod/v4'
-import { lazySchema } from '../../utils/lazySchema.js'
+import { z } from "zod/v4";
+import { lazySchema } from "../../utils/lazySchema.js";
 
 /**
  * Discriminated union of all LSP operations (discriminator: 'operation').
@@ -15,29 +15,29 @@ import { lazySchema } from '../../utils/lazySchema.js'
 export const lspToolInputSchema = lazySchema(() => {
   const filePath = z
     .string()
-    .describe('The absolute or relative path to the file')
+    .describe("The absolute or relative path to the file");
   const symbol = z
     .string()
     .optional()
     .describe(
-      'Name of the symbol to act on, e.g. "LogoV2". PREFERRED — the tool finds its position for you, so you do not need line/character. Provide this OR line+character.',
-    )
+      'Name of the symbol to act on, e.g. "LogoV2". PREFERRED: the tool finds its position for you, so you do not need line/character. Provide this OR line+character.',
+    );
   const line = z
     .number()
     .int()
     .positive()
     .optional()
     .describe(
-      'The line number (1-based, as shown in editors). Optional when symbol is provided.',
-    )
+      "The line number (1-based, as shown in editors). Optional when symbol is provided.",
+    );
   const character = z
     .number()
     .int()
     .positive()
     .optional()
     .describe(
-      'The character offset (1-based, as shown in editors). Optional when symbol is provided.',
-    )
+      "The character offset (1-based, as shown in editors). Optional when symbol is provided.",
+    );
 
   const op = (operation: string) =>
     z.strictObject({
@@ -46,52 +46,52 @@ export const lspToolInputSchema = lazySchema(() => {
       symbol,
       line,
       character,
-    })
+    });
 
-  return z.discriminatedUnion('operation', [
-    op('goToDefinition'),
-    op('findReferences'),
-    op('hover'),
-    op('documentSymbol'),
-    op('workspaceSymbol'),
-    op('goToImplementation'),
-    op('prepareCallHierarchy'),
-    op('incomingCalls'),
-    op('outgoingCalls'),
-  ])
-})
+  return z.discriminatedUnion("operation", [
+    op("goToDefinition"),
+    op("findReferences"),
+    op("hover"),
+    op("documentSymbol"),
+    op("workspaceSymbol"),
+    op("goToImplementation"),
+    op("prepareCallHierarchy"),
+    op("incomingCalls"),
+    op("outgoingCalls"),
+  ]);
+});
 
 /**
  * TypeScript type for LSPTool input
  */
-export type LSPToolInput = z.infer<ReturnType<typeof lspToolInputSchema>>
+export type LSPToolInput = z.infer<ReturnType<typeof lspToolInputSchema>>;
 
 /** Operations that require a position (symbol or line+character). */
 export const LSP_POSITION_OPERATIONS: ReadonlySet<string> = new Set([
-  'goToDefinition',
-  'findReferences',
-  'hover',
-  'goToImplementation',
-  'prepareCallHierarchy',
-  'incomingCalls',
-  'outgoingCalls',
-])
+  "goToDefinition",
+  "findReferences",
+  "hover",
+  "goToImplementation",
+  "prepareCallHierarchy",
+  "incomingCalls",
+  "outgoingCalls",
+]);
 
 /**
  * Type guard to check if an operation is a valid LSP operation
  */
 export function isValidLSPOperation(
   operation: string,
-): operation is LSPToolInput['operation'] {
+): operation is LSPToolInput["operation"] {
   return [
-    'goToDefinition',
-    'findReferences',
-    'hover',
-    'documentSymbol',
-    'workspaceSymbol',
-    'goToImplementation',
-    'prepareCallHierarchy',
-    'incomingCalls',
-    'outgoingCalls',
-  ].includes(operation)
+    "goToDefinition",
+    "findReferences",
+    "hover",
+    "documentSymbol",
+    "workspaceSymbol",
+    "goToImplementation",
+    "prepareCallHierarchy",
+    "incomingCalls",
+    "outgoingCalls",
+  ].includes(operation);
 }

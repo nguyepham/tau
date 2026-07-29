@@ -6,7 +6,7 @@
  * output-token ceiling finally stops it. Weak and heavily quantized models on
  * compat lanes do it most, usually after a tool returns nothing useful and
  * they have nothing left to say. Nothing in the streaming protocol catches it
- * — `stop_reason` only arrives at the end, so a stream that has degenerated
+ *: `stop_reason` only arrives at the end, so a stream that has degenerated
  * looks exactly like a stream that is working, and the turn burns output
  * tokens until the ceiling is hit.
  *
@@ -23,24 +23,24 @@
  */
 
 /** Consecutive copies of the repeating unit before a tail counts as a loop. */
-export const DEFAULT_MIN_REPEATS = 6
+export const DEFAULT_MIN_REPEATS = 6;
 
 /** Characters the repeating run must span before it counts as a loop. */
-export const DEFAULT_MIN_REPEATED_CHARS = 1500
+export const DEFAULT_MIN_REPEATED_CHARS = 1500;
 
 /**
  * Longest repeating unit considered. Longer units do occur, but the longer
  * the unit the likelier the text is legitimately structured rather than
  * looping, and verification cost grows with it.
  */
-const MAX_PERIOD = 2048
+const MAX_PERIOD = 2048;
 
 /**
  * Tail searched for the previous copy of the anchor. Bounds the cost of
  * finding the unit on a long response; it does not bound the run itself,
  * which is measured over the whole text once the unit is known.
  */
-const WINDOW_CHARS = 16_384
+const WINDOW_CHARS = 16_384;
 
 /**
  * Suffix used to locate the previous copy. Long enough that an accidental
@@ -48,34 +48,34 @@ const WINDOW_CHARS = 16_384
  * because in a looping tail the anchor is itself periodic and its nearest
  * earlier occurrence still sits exactly one unit back.
  */
-const ANCHOR_CHARS = 48
+const ANCHOR_CHARS = 48;
 
 /** New characters that must arrive before the tail is re-examined. */
-const CHECK_INTERVAL_CHARS = 256
+const CHECK_INTERVAL_CHARS = 256;
 
 /** Cap on the unit copy carried in the detection, which is for logs only. */
-const UNIT_PREVIEW_CHARS = 80
+const UNIT_PREVIEW_CHARS = 80;
 
 export type RepetitionThresholds = {
-  minRepeats?: number
-  minRepeatedChars?: number
-}
+  minRepeats?: number;
+  minRepeatedChars?: number;
+};
 
 export type RepetitionDetection = {
   /** Length of the repeating unit. */
-  period: number
+  period: number;
   /** Consecutive copies found at the tail, counted within the window. */
-  repeats: number
+  repeats: number;
   /** Characters the run spans: `period * repeats`. */
-  repeatedChars: number
+  repeatedChars: number;
   /**
    * Prefix length that keeps everything before the run plus one copy of the
    * unit, so the trimmed text still reads as a finished thought.
    */
-  keepChars: number
-  /** The unit, truncated. Diagnostics only — never send it to analytics. */
-  unit: string
-}
+  keepChars: number;
+  /** The unit, truncated. Diagnostics only: never send it to analytics. */
+  unit: string;
+};
 
 /**
  * Report an exactly-repeating run at the tail of `text`.
@@ -94,42 +94,46 @@ export function detectDegenerateRepetition(
   text: string,
   options?: RepetitionThresholds,
 ): RepetitionDetection | null {
-  const minRepeats = options?.minRepeats ?? DEFAULT_MIN_REPEATS
-  const minRepeatedChars = options?.minRepeatedChars ?? DEFAULT_MIN_REPEATED_CHARS
+  const minRepeats = options?.minRepeats ?? DEFAULT_MIN_REPEATS;
+  const minRepeatedChars =
+    options?.minRepeatedChars ?? DEFAULT_MIN_REPEATED_CHARS;
   // A threshold of 1 repeat would match every string against itself.
-  if (minRepeats < 2 || minRepeatedChars < 1) return null
+  if (minRepeats < 2 || minRepeatedChars < 1) return null;
 
-  const length = text.length
-  if (length < minRepeatedChars) return null
+  const length = text.length;
+  if (length < minRepeatedChars) return null;
 
-  const offset = Math.max(0, length - WINDOW_CHARS)
-  const window = offset === 0 ? text : text.slice(offset)
-  const windowLength = window.length
+  const offset = Math.max(0, length - WINDOW_CHARS);
+  const window = offset === 0 ? text : text.slice(offset);
+  const windowLength = window.length;
 
-  const anchorStart = windowLength - Math.min(ANCHOR_CHARS, windowLength)
-  if (anchorStart < 1) return null
-  const previous = window.lastIndexOf(window.slice(anchorStart), anchorStart - 1)
-  if (previous < 0) return null
+  const anchorStart = windowLength - Math.min(ANCHOR_CHARS, windowLength);
+  if (anchorStart < 1) return null;
+  const previous = window.lastIndexOf(
+    window.slice(anchorStart),
+    anchorStart - 1,
+  );
+  if (previous < 0) return null;
 
-  const period = anchorStart - previous
-  if (period < 1 || period > MAX_PERIOD) return null
+  const period = anchorStart - previous;
+  if (period < 1 || period > MAX_PERIOD) return null;
 
   // Counted over the whole text, not just the window: a loop left running
   // produces a run far longer than any window worth searching, and stopping
   // the count at the window edge would report a run that starts where the
-  // window happens to start — trimming to there would keep every earlier copy.
+  // window happens to start: trimming to there would keep every earlier copy.
   // The walk only covers ground the run actually occupies, so it costs what
   // the loop cost to produce and nothing on text that is not repeating.
-  const unit = text.slice(length - period)
-  let runStart = length - period
-  let repeats = 1
+  const unit = text.slice(length - period);
+  let runStart = length - period;
+  let repeats = 1;
   while (runStart >= period && text.startsWith(unit, runStart - period)) {
-    runStart -= period
-    repeats++
+    runStart -= period;
+    repeats++;
   }
 
-  const repeatedChars = repeats * period
-  if (repeats < minRepeats || repeatedChars < minRepeatedChars) return null
+  const repeatedChars = repeats * period;
+  if (repeats < minRepeats || repeatedChars < minRepeatedChars) return null;
 
   return {
     period,
@@ -140,7 +144,7 @@ export function detectDegenerateRepetition(
       unit.length > UNIT_PREVIEW_CHARS
         ? `${unit.slice(0, UNIT_PREVIEW_CHARS)}…`
         : unit,
-  }
+  };
 }
 
 /**
@@ -159,7 +163,7 @@ export function trimRepeatedTail(
 ): string {
   return detection.keepChars < text.length
     ? text.slice(0, detection.keepChars)
-    : text
+    : text;
 }
 
 /**
@@ -169,7 +173,7 @@ export function trimRepeatedTail(
  * needs to know it was looping.
  */
 export function formatRepetitionNotice(detection: RepetitionDetection): string {
-  return `\n\n[stopped: output began repeating — the same ${detection.period}-character passage ${detection.repeats} times in a row — and was truncated here]`
+  return `\n\n[stopped: output began repeating: the same ${detection.period}-character passage ${detection.repeats} times in a row: and was truncated here]`;
 }
 
 export type RepetitionGuard = {
@@ -177,8 +181,8 @@ export type RepetitionGuard = {
    * Feed the full accumulated text of a content block after each delta.
    * Returns a detection the first time the block trips the thresholds.
    */
-  check(blockIndex: number, accumulated: string): RepetitionDetection | null
-}
+  check(blockIndex: number, accumulated: string): RepetitionDetection | null;
+};
 
 /**
  * Throttled per-block wrapper over {@link detectDegenerateRepetition}.
@@ -187,26 +191,26 @@ export type RepetitionGuard = {
  * pay the window cost hundreds of times per response for an answer that
  * cannot change that fast. Re-scanning every {@link CHECK_INTERVAL_CHARS}
  * bounds detection lateness to well under one interval's worth of tokens
- * while making short responses — which cannot trip the thresholds at all —
+ * while making short responses: which cannot trip the thresholds at all:
  * completely free.
  */
 export function createRepetitionGuard(
   options?: RepetitionThresholds,
 ): RepetitionGuard {
   const minRepeatedChars =
-    options?.minRepeatedChars ?? DEFAULT_MIN_REPEATED_CHARS
-  const checkedAt = new Map<number, number>()
+    options?.minRepeatedChars ?? DEFAULT_MIN_REPEATED_CHARS;
+  const checkedAt = new Map<number, number>();
   return {
     check(blockIndex, accumulated) {
-      if (accumulated.length < minRepeatedChars) return null
-      const checked = checkedAt.get(blockIndex) ?? 0
+      if (accumulated.length < minRepeatedChars) return null;
+      const checked = checkedAt.get(blockIndex) ?? 0;
       // Only "grew, but not by enough" is skipped. A shorter string than last
       // time means the block was replaced rather than appended to, and must be
       // examined rather than silently skipped forever.
-      const grew = accumulated.length - checked
-      if (grew >= 0 && grew < CHECK_INTERVAL_CHARS) return null
-      checkedAt.set(blockIndex, accumulated.length)
-      return detectDegenerateRepetition(accumulated, options)
+      const grew = accumulated.length - checked;
+      if (grew >= 0 && grew < CHECK_INTERVAL_CHARS) return null;
+      checkedAt.set(blockIndex, accumulated.length);
+      return detectDegenerateRepetition(accumulated, options);
     },
-  }
+  };
 }

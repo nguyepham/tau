@@ -1,15 +1,18 @@
-import { toJSONSchema } from 'zod/v4'
-import { SettingsSchema } from '../../utils/settings/types.js'
-import { jsonStringify } from '../../utils/slowOperations.js'
-import { registerBundledSkill } from '../bundledSkills.js'
+import { toJSONSchema } from "zod/v4";
+import { SettingsSchema } from "../../utils/settings/types.js";
+import { jsonStringify } from "../../utils/slowOperations.js";
+import { registerBundledSkill } from "../bundledSkills.js";
 
 /**
  * Generate JSON Schema from the settings Zod schema.
  * This keeps the skill prompt in sync with the actual types.
  */
 function generateSettingsSchema(): string {
-  const jsonSchema = toJSONSchema(SettingsSchema(), { io: 'input', unrepresentable: 'any' })
-  return jsonStringify(jsonSchema, null, 2)
+  const jsonSchema = toJSONSchema(SettingsSchema(), {
+    io: "input",
+    unrepresentable: "any",
+  });
+  return jsonStringify(jsonSchema, null, 2);
 }
 
 const SETTINGS_EXAMPLES_DOCS = `## Settings File Locations
@@ -101,7 +104,7 @@ Plugin syntax: \`plugin-name@source\` where source is \`claude-code-marketplace\
 - \`spinnerVerbs\`: Customize spinner verbs (\`{ "mode": "append" | "replace", "verbs": [...] }\`)
 - \`spinnerTipsOverride\`: Override spinner tips (\`{ "excludeDefault": true, "tips": ["Custom tip"] }\`)
 - \`syntaxHighlightingDisabled\`: Disable diff highlighting
-`
+`;
 
 // Note: We keep hand-written examples for common patterns since they're more
 // actionable than auto-generated schema docs. The generated schema list
@@ -264,45 +267,45 @@ echo '{"systemMessage": "Session complete!"}'
   }
 }
 \`\`\`
-`
+`;
 
 const HOOK_VERIFICATION_FLOW = `## Constructing a Hook (with verification)
 
-Given an event, matcher, target file, and desired behavior, follow this flow. Each step catches a different failure class — a hook that silently does nothing is worse than no hook.
+Given an event, matcher, target file, and desired behavior, follow this flow. Each step catches a different failure class: a hook that silently does nothing is worse than no hook.
 
 1. **Dedup check.** Read the target file. If a hook already exists on the same event+matcher, show the existing command and ask: keep it, replace it, or add alongside.
 
-2. **Construct the command for THIS project — don't assume.** The hook receives JSON on stdin. Build a command that:
-   - Extracts any needed payload safely — use \`jq -r\` into a quoted variable or \`{ read -r f; ... "$f"; }\`, NOT unquoted \`| xargs\` (splits on spaces)
+2. **Construct the command for THIS project: don't assume.** The hook receives JSON on stdin. Build a command that:
+   - Extracts any needed payload safely: use \`jq -r\` into a quoted variable or \`{ read -r f; ... "$f"; }\`, NOT unquoted \`| xargs\` (splits on spaces)
    - Invokes the underlying tool the way this project runs it (npx/bunx/yarn/pnpm? Makefile target? globally-installed?)
    - Skips inputs the tool doesn't handle (formatters often have \`--ignore-unknown\`; if not, guard by extension)
-   - Stays RAW for now — no \`|| true\`, no stderr suppression. You'll wrap it after the pipe-test passes.
+   - Stays RAW for now: no \`|| true\`, no stderr suppression. You'll wrap it after the pipe-test passes.
 
 3. **Pipe-test the raw command.** Synthesize the stdin payload the hook will receive and pipe it directly:
    - \`Pre|PostToolUse\` on \`Write|Edit\`: \`echo '{"tool_name":"Edit","tool_input":{"file_path":"<a real file from this repo>"}}' | <cmd>\`
    - \`Pre|PostToolUse\` on \`Bash\`: \`echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | <cmd>\`
    - \`Stop\`/\`UserPromptSubmit\`/\`SessionStart\`: most commands don't read stdin, so \`echo '{}' | <cmd>\` suffices
 
-   Check exit code AND side effect (file actually formatted, test actually ran). If it fails you get a real error — fix (wrong package manager? tool not installed? jq path wrong?) and retest. Once it works, wrap with \`2>/dev/null || true\` (unless the user wants a blocking check).
+   Check exit code AND side effect (file actually formatted, test actually ran). If it fails you get a real error: fix (wrong package manager? tool not installed? jq path wrong?) and retest. Once it works, wrap with \`2>/dev/null || true\` (unless the user wants a blocking check).
 
-4. **Write the JSON.** Merge into the target file (schema shape in the "Hook Structure" section above). If this creates \`.claude/settings.local.json\` for the first time, add it to .gitignore — the Write tool doesn't auto-gitignore it.
+4. **Write the JSON.** Merge into the target file (schema shape in the "Hook Structure" section above). If this creates \`.claude/settings.local.json\` for the first time, add it to .gitignore: the Write tool doesn't auto-gitignore it.
 
 5. **Validate syntax + schema in one shot:**
 
    \`jq -e '.hooks.<event>[] | select(.matcher == "<matcher>") | .hooks[] | select(.type == "command") | .command' <target-file>\`
 
-   Exit 0 + prints your command = correct. Exit 4 = matcher doesn't match. Exit 5 = malformed JSON or wrong nesting. A broken settings.json silently disables ALL settings from that file — fix any pre-existing malformation too.
+   Exit 0 + prints your command = correct. Exit 4 = matcher doesn't match. Exit 5 = malformed JSON or wrong nesting. A broken settings.json silently disables ALL settings from that file: fix any pre-existing malformation too.
 
-6. **Prove the hook fires** — only for \`Pre|PostToolUse\` on a matcher you can trigger in-turn (\`Write|Edit\` via Edit, \`Bash\` via Bash). \`Stop\`/\`UserPromptSubmit\`/\`SessionStart\` fire outside this turn — skip to step 7.
+6. **Prove the hook fires**: only for \`Pre|PostToolUse\` on a matcher you can trigger in-turn (\`Write|Edit\` via Edit, \`Bash\` via Bash). \`Stop\`/\`UserPromptSubmit\`/\`SessionStart\` fire outside this turn: skip to step 7.
 
-   For a **formatter** on \`PostToolUse\`/\`Write|Edit\`: introduce a detectable violation via Edit (two consecutive blank lines, bad indentation, missing semicolon — something this formatter corrects; NOT trailing whitespace, Edit strips that before writing), re-read, confirm the hook **fixed** it. For **anything else**: temporarily prefix the command in settings.json with \`echo "$(date) hook fired" >> /tmp/claude-hook-check.txt; \`, trigger the matching tool (Edit for \`Write|Edit\`, a harmless \`true\` for \`Bash\`), read the sentinel file.
+   For a **formatter** on \`PostToolUse\`/\`Write|Edit\`: introduce a detectable violation via Edit (two consecutive blank lines, bad indentation, missing semicolon: something this formatter corrects; NOT trailing whitespace, Edit strips that before writing), re-read, confirm the hook **fixed** it. For **anything else**: temporarily prefix the command in settings.json with \`echo "$(date) hook fired" >> /tmp/claude-hook-check.txt; \`, trigger the matching tool (Edit for \`Write|Edit\`, a harmless \`true\` for \`Bash\`), read the sentinel file.
 
-   **Always clean up** — revert the violation, strip the sentinel prefix — whether the proof passed or failed.
+   **Always clean up**: revert the violation, strip the sentinel prefix: whether the proof passed or failed.
 
-   **If proof fails but pipe-test passed and \`jq -e\` passed**: the settings watcher isn't watching \`.claude/\` — it only watches directories that had a settings file when this session started. The hook is written correctly. Tell the user to open \`/hooks\` once (reloads config) or restart — you can't do this yourself; \`/hooks\` is a user UI menu and opening it ends this turn.
+   **If proof fails but pipe-test passed and \`jq -e\` passed**: the settings watcher isn't watching \`.claude/\`: it only watches directories that had a settings file when this session started. The hook is written correctly. Tell the user to open \`/hooks\` once (reloads config) or restart: you can't do this yourself; \`/hooks\` is a user UI menu and opening it ends this turn.
 
-7. **Handoff.** Tell the user the hook is live (or needs \`/hooks\`/restart per the watcher caveat). Point them at \`/hooks\` to review, edit, or disable it later. The UI only shows "Ran N hooks" if a hook errors or is slow — silent success is invisible by design.
-`
+7. **Handoff.** Tell the user the hook is live (or needs \`/hooks\`/restart per the watcher caveat). Point them at \`/hooks\` to review, edit, or disable it later. The UI only shows "Ran N hooks" if a hook errors or is slow: silent success is invisible by design.
+`;
 
 const UPDATE_CONFIG_PROMPT = `# Update Config Skill
 
@@ -440,36 +443,36 @@ If a hook isn't running:
 4. **Check hook type** - Is it "command", "prompt", or "agent"?
 5. **Test the command** - Run the hook command manually to see if it works
 6. **Use --debug** - Run \`claude --debug\` to see hook execution logs
-`
+`;
 
 export function registerUpdateConfigSkill(): void {
   registerBundledSkill({
-    name: 'update-config',
+    name: "update-config",
     description:
       'Use this skill to configure the Tau harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move permission to"), env vars ("set X=Y"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: "allow npm commands", "add bq permission to global settings", "move permission to user settings", "set DEBUG=true", "when claude stops show X". For simple settings like theme/model, use Config tool.',
-    allowedTools: ['Read'],
+    allowedTools: ["Read"],
     userInvocable: true,
     async getPromptForCommand(args) {
-      if (args.startsWith('[hooks-only]')) {
-        const req = args.slice('[hooks-only]'.length).trim()
-        let prompt = HOOKS_DOCS + '\n\n' + HOOK_VERIFICATION_FLOW
+      if (args.startsWith("[hooks-only]")) {
+        const req = args.slice("[hooks-only]".length).trim();
+        let prompt = HOOKS_DOCS + "\n\n" + HOOK_VERIFICATION_FLOW;
         if (req) {
-          prompt += `\n\n## Task\n\n${req}`
+          prompt += `\n\n## Task\n\n${req}`;
         }
-        return [{ type: 'text', text: prompt }]
+        return [{ type: "text", text: prompt }];
       }
 
       // Generate schema dynamically to stay in sync with types
-      const jsonSchema = generateSettingsSchema()
+      const jsonSchema = generateSettingsSchema();
 
-      let prompt = UPDATE_CONFIG_PROMPT
-      prompt += `\n\n## Full Settings JSON Schema\n\n\`\`\`json\n${jsonSchema}\n\`\`\``
+      let prompt = UPDATE_CONFIG_PROMPT;
+      prompt += `\n\n## Full Settings JSON Schema\n\n\`\`\`json\n${jsonSchema}\n\`\`\``;
 
       if (args) {
-        prompt += `\n\n## User Request\n\n${args}`
+        prompt += `\n\n## User Request\n\n${args}`;
       }
 
-      return [{ type: 'text', text: prompt }]
+      return [{ type: "text", text: prompt }];
     },
-  })
+  });
 }

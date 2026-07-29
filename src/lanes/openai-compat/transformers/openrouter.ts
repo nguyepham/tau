@@ -20,17 +20,17 @@
  *   pass through as-is.
  */
 
-import type { Transformer, TransformContext, HeaderContext } from './base.js'
-import type { OpenAIChatRequest } from './shared_types.js'
+import type { Transformer, TransformContext, HeaderContext } from "./base.js";
+import type { OpenAIChatRequest } from "./shared_types.js";
 import {
   isOpenAIStrictOnOpenRouter,
   normalizeOpenAIStrictToolSchema,
-} from '../../../utils/model/openrouterStrictSchema.js'
+} from "../../../utils/model/openrouterStrictSchema.js";
 
 export const openrouterTransformer: Transformer = {
-  id: 'openrouter',
-  displayName: 'OpenRouter',
-  defaultBaseUrl: 'https://openrouter.ai/api/v1',
+  id: "openrouter",
+  displayName: "OpenRouter",
+  defaultBaseUrl: "https://openrouter.ai/api/v1",
 
   supportsStrictMode: () => true,
 
@@ -40,49 +40,59 @@ export const openrouterTransformer: Transformer = {
     // fewer max_tokens" on free/low-credit accounts. 8192 fits typical
     // free credit allowances and still leaves room for long tool arguments
     // and multi-line code emissions.
-    return requested > 8192 ? 8192 : requested
+    return requested > 8192 ? 8192 : requested;
   },
 
   buildHeaders(_apiKey: string, ctx?: HeaderContext): Record<string, string> {
-    const referer = process.env.OPENROUTER_REFERER ?? 'https://github.com/AbdoKnbGit/tau'
-    const title = process.env.OPENROUTER_TITLE ?? 'Tau'
-    const categories = process.env.OPENROUTER_CATEGORIES ?? 'cli-agent'
+    const referer =
+      process.env.OPENROUTER_REFERER ?? "https://github.com/AbdoKnbGit/tau";
+    const title = process.env.OPENROUTER_TITLE ?? "Tau";
+    const categories = process.env.OPENROUTER_CATEGORIES ?? "cli-agent";
 
     return {
-      'HTTP-Referer': referer,
-      'X-OpenRouter-Title': title,
-      'X-OpenRouter-Categories': categories,
-      'X-Title': title,
-      ...(ctx?.sessionId ? { 'x-session-id': normalizeOpenRouterSessionId(ctx.sessionId) } : {}),
-    }
+      "HTTP-Referer": referer,
+      "X-OpenRouter-Title": title,
+      "X-OpenRouter-Categories": categories,
+      "X-Title": title,
+      ...(ctx?.sessionId
+        ? { "x-session-id": normalizeOpenRouterSessionId(ctx.sessionId) }
+        : {}),
+    };
   },
 
-  transformRequest(body: OpenAIChatRequest, ctx: TransformContext): OpenAIChatRequest {
+  transformRequest(
+    body: OpenAIChatRequest,
+    ctx: TransformContext,
+  ): OpenAIChatRequest {
     if (ctx.sessionId) {
-      const sessionKey = normalizeOpenRouterSessionId(ctx.sessionId)
-      body.session_id = sessionKey
-      const retention = resolveOpenRouterCacheRetention()
-      if (retention !== 'none') {
-        body.prompt_cache_key = sessionKey
-        if (retention === 'long') body.prompt_cache_retention = '24h'
+      const sessionKey = normalizeOpenRouterSessionId(ctx.sessionId);
+      body.session_id = sessionKey;
+      const retention = resolveOpenRouterCacheRetention();
+      if (retention !== "none") {
+        body.prompt_cache_key = sessionKey;
+        if (retention === "long") body.prompt_cache_retention = "24h";
       }
     }
 
-    applyOpenRouterToolCacheBreakpoint(body)
-    applyOpenRouterContextCompressionPlugin(body)
-    applyOpenRouterProviderRouting(body, ctx.sessionId)
+    applyOpenRouterToolCacheBreakpoint(body);
+    applyOpenRouterContextCompressionPlugin(body);
+    applyOpenRouterProviderRouting(body, ctx.sessionId);
 
     // Only emit the reasoning knob for models that actually support it.
     // Llama-4 / prompt-guard / base-chat Llamas routed via Vertex return
     // "thinking is not supported by this model" when reasoning is set.
-    if (ctx.isReasoning && ctx.reasoningEffort && openrouterModelSupportsReasoning(body.model)) {
-      body.reasoning = { effort: ctx.reasoningEffort }
+    if (
+      ctx.isReasoning &&
+      ctx.reasoningEffort &&
+      openrouterModelSupportsReasoning(body.model)
+    ) {
+      body.reasoning = { effort: ctx.reasoningEffort };
     }
-    return body
+    return body;
   },
 
   schemaDropList(): Set<string> {
-    return new Set(['$schema', '$id', '$ref', '$comment'])
+    return new Set(["$schema", "$id", "$ref", "$comment"]);
   },
 
   // Gemini routed via OpenRouter passes through the Gemini schema
@@ -95,10 +105,15 @@ export const openrouterTransformer: Transformer = {
   // Mirrors opencode's `sanitizeGemini` in provider/transform.ts:1329.
   // Other upstreams on OR (Anthropic, OpenAI, Llama, …) accept the
   // base shape, so the sanitizer is gated on the model id.
-  sanitizeToolSchemaExtra(schema: Record<string, unknown>, modelId: string): Record<string, unknown> {
-    if (isGeminiOnOR(modelId)) return sanitizeGeminiSchema(schema) as Record<string, unknown>
-    if (isOpenAIStrictOnOpenRouter(modelId)) return normalizeOpenAIStrictToolSchema(schema)
-    return schema
+  sanitizeToolSchemaExtra(
+    schema: Record<string, unknown>,
+    modelId: string,
+  ): Record<string, unknown> {
+    if (isGeminiOnOR(modelId))
+      return sanitizeGeminiSchema(schema) as Record<string, unknown>;
+    if (isOpenAIStrictOnOpenRouter(modelId))
+      return normalizeOpenAIStrictToolSchema(schema);
+    return schema;
   },
 
   // Per-model default generation params. OpenRouter hosts many
@@ -108,49 +123,64 @@ export const openrouterTransformer: Transformer = {
   //   - MiniMax-M2 → temperature 1.0, top_p 0.95, top_k 20–40.
   //   - Kimi K2 family → 0.6 / 1.0 depending on variant.
   defaultGenerationParams(model: string) {
-    const id = model.toLowerCase()
-    if (id.includes('google/gemini') || id.includes('gemini')) {
-      return { temperature: 1.0, top_p: 0.95, top_k: 64 }
+    const id = model.toLowerCase();
+    if (id.includes("google/gemini") || id.includes("gemini")) {
+      return { temperature: 1.0, top_p: 0.95, top_k: 64 };
     }
-    if (id.includes('qwen')) {
-      return { temperature: 0.55, top_p: 1.0 }
+    if (id.includes("qwen")) {
+      return { temperature: 0.55, top_p: 1.0 };
     }
-    if (id.includes('minimax-m2') || id.includes('minimax/m2')) {
-      const k = ['m2.', 'm25', 'm21'].some(s => id.includes(s)) ? 40 : 20
-      return { temperature: 1.0, top_p: 0.95, top_k: k }
+    if (id.includes("minimax-m2") || id.includes("minimax/m2")) {
+      const k = ["m2.", "m25", "m21"].some((s) => id.includes(s)) ? 40 : 20;
+      return { temperature: 1.0, top_p: 0.95, top_k: k };
     }
-    if (id.includes('kimi-k2') || id.includes('moonshot/kimi-k2')) {
-      const isThinking = ['thinking', 'k2.', 'k2p', 'k2-5'].some(s => id.includes(s))
+    if (id.includes("kimi-k2") || id.includes("moonshot/kimi-k2")) {
+      const isThinking = ["thinking", "k2.", "k2p", "k2-5"].some((s) =>
+        id.includes(s),
+      );
       return isThinking
         ? { temperature: 1.0, top_p: 0.95 }
-        : { temperature: 0.6 }
+        : { temperature: 0.6 };
     }
-    return undefined
+    return undefined;
   },
 
   contextExceededMarkers(): string[] {
-    return ['context length', 'context_length_exceeded', 'prompt is too long', 'maximum context']
+    return [
+      "context length",
+      "context_length_exceeded",
+      "prompt is too long",
+      "maximum context",
+    ];
   },
 
-  preferredEditFormat(model: string): 'apply_patch' | 'edit_block' | 'str_replace' {
-    const m = model.toLowerCase()
+  preferredEditFormat(
+    model: string,
+  ): "apply_patch" | "edit_block" | "str_replace" {
+    const m = model.toLowerCase();
     // Frontier models routed via OpenRouter: keep apply_patch.
-    if (m.includes('anthropic/') || m.includes('claude-')) return 'apply_patch'
-    if (m.includes('openai/gpt-5') || m.includes('openai/o1') || m.includes('openai/o3')) return 'apply_patch'
-    if (m.includes('google/gemini-3') || m.includes('google/gemini-2.5')) return 'apply_patch'
+    if (m.includes("anthropic/") || m.includes("claude-")) return "apply_patch";
+    if (
+      m.includes("openai/gpt-5") ||
+      m.includes("openai/o1") ||
+      m.includes("openai/o3")
+    )
+      return "apply_patch";
+    if (m.includes("google/gemini-3") || m.includes("google/gemini-2.5"))
+      return "apply_patch";
     // Everything else on OpenRouter → SEARCH/REPLACE (safer for non-frontier).
-    return 'edit_block'
+    return "edit_block";
   },
 
   smallFastModel(model: string): string | null {
     // OpenRouter sticky/cache routing is per account + model + session. Do
     // not substitute helper/side-query traffic onto a different OpenRouter
     // model: that splits cache stats and warms a separate provider cache.
-    void model
-    return null
+    void model;
+    return null;
   },
 
-  cacheControlMode(model: string): 'none' | 'passthrough' | 'last-only' {
+  cacheControlMode(model: string): "none" | "passthrough" | "last-only" {
     // Keep this provider-scoped, not model-scoped: opencode applies
     // OpenRouter cache-control provider options broadly, and OpenRouter's
     // current schema accepts cache_control content parts generally. The lane
@@ -158,16 +188,16 @@ export const openrouterTransformer: Transformer = {
     // Within last-only the lane branches per family: Anthropic-style rolling
     // trailing stamps for most models, a single quantized anchor for
     // google/gemini-* (see or_gemini_cache.ts).
-    void model
-    return 'last-only'
+    void model;
+    return "last-only";
   },
-}
+};
 
-type OpenRouterCacheRetention = 'none' | 'short' | 'long'
-type OpenRouterContextCompressionMode = 'enabled' | 'disabled'
+type OpenRouterCacheRetention = "none" | "short" | "long";
+type OpenRouterContextCompressionMode = "enabled" | "disabled";
 
 function applyOpenRouterToolCacheBreakpoint(body: OpenAIChatRequest): void {
-  if (!body.tools?.length) return
+  if (!body.tools?.length) return;
 
   // A single marker on the final tool definition covers the stable tool
   // schema prefix without spending one breakpoint per tool. Together with
@@ -176,43 +206,51 @@ function applyOpenRouterToolCacheBreakpoint(body: OpenAIChatRequest): void {
   // For Gemini upstreams this stamp is inert on its own (live-measured: no
   // reads, no writes, never billed), but combined with the lane's single
   // message anchor (or_gemini_cache.ts) it is the recipe that reliably
-  // triggers Gemini's synchronous explicit cache from turn 1 — so it stays
+  // triggers Gemini's synchronous explicit cache from turn 1: so it stays
   // applied for every OpenRouter model family.
-  const lastTool = body.tools[body.tools.length - 1]
+  const lastTool = body.tools[body.tools.length - 1];
   if (lastTool && !lastTool.cache_control) {
-    lastTool.cache_control = { type: 'ephemeral' }
+    lastTool.cache_control = { type: "ephemeral" };
   }
 }
 
 function normalizeOpenRouterSessionId(sessionId: string): string {
-  if (sessionId.length <= 256) return sessionId
-  const hash = shortStableHash(sessionId)
-  return `${sessionId.slice(0, 247)}:${hash}`
+  if (sessionId.length <= 256) return sessionId;
+  const hash = shortStableHash(sessionId);
+  return `${sessionId.slice(0, 247)}:${hash}`;
 }
 
 function shortStableHash(value: string): string {
-  let hash = 0x811c9dc5
+  let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193) >>> 0
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return hash.toString(16).padStart(8, '0')
+  return hash.toString(16).padStart(8, "0");
 }
 
 function resolveOpenRouterCacheRetention(): OpenRouterCacheRetention {
   const raw = (
-    process.env.CLAUDEX_OPENROUTER_CACHE_RETENTION
-    ?? process.env.OPENROUTER_CACHE_RETENTION
-    ?? ''
-  ).trim().toLowerCase()
+    process.env.CLAUDEX_OPENROUTER_CACHE_RETENTION ??
+    process.env.OPENROUTER_CACHE_RETENTION ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
-  if (raw === 'none' || raw === 'off' || raw === 'false' || raw === '0' || raw === 'disabled') {
-    return 'none'
+  if (
+    raw === "none" ||
+    raw === "off" ||
+    raw === "false" ||
+    raw === "0" ||
+    raw === "disabled"
+  ) {
+    return "none";
   }
-  if (raw === 'long' || raw === '24h') {
-    return 'long'
+  if (raw === "long" || raw === "24h") {
+    return "long";
   }
-  return 'short'
+  return "short";
 }
 
 // ── Session→served-provider auto-pin ─────────────────────────────
@@ -223,32 +261,32 @@ function resolveOpenRouterCacheRetention(): OpenRouterCacheRetention {
 // session with session_id + prompt_cache_key on every call). Response chunks
 // name the provider that actually served each request, so the lane records it
 // and PINS the next request via provider.order. allow_fallbacks stays ON so
-// availability is never sacrificed — if OR falls back anyway, the fallback
+// availability is never sacrificed: if OR falls back anyway, the fallback
 // provider is recorded and becomes the new pin. Explicit
 // OPENROUTER_PROVIDER_ORDER always wins; disable with TAU_OPENROUTER_AUTO_PIN=0.
-const _servedProviderBySession = new Map<string, string>()
+const _servedProviderBySession = new Map<string, string>();
 
 export function recordOpenRouterServedProvider(
   sessionId: string | undefined,
   model: string,
   servedProvider: string,
 ): void {
-  if (!sessionId) return
-  const slug = normalizeOpenRouterProviderSlug(servedProvider)
-  if (!slug) return
-  const key = `${sessionId}:${model.toLowerCase()}`
-  const prev = _servedProviderBySession.get(key)
+  if (!sessionId) return;
+  const slug = normalizeOpenRouterProviderSlug(servedProvider);
+  if (!slug) return;
+  const key = `${sessionId}:${model.toLowerCase()}`;
+  const prev = _servedProviderBySession.get(key);
   if (prev !== slug && process.env.TAU_CACHE_DEBUG) {
     // A provider switch means this request ran against a cold upstream
     // cache. Surfacing it separates routing misses from prefix churn.
     console.error(
-      `[tau-or] ${model} served by "${slug}"${prev ? ` (was "${prev}")` : ''}`,
-    )
+      `[tau-or] ${model} served by "${slug}"${prev ? ` (was "${prev}")` : ""}`,
+    );
   }
-  _servedProviderBySession.set(key, slug)
+  _servedProviderBySession.set(key, slug);
   if (_servedProviderBySession.size > 512) {
-    const oldest = _servedProviderBySession.keys().next().value
-    if (oldest !== undefined) _servedProviderBySession.delete(oldest)
+    const oldest = _servedProviderBySession.keys().next().value;
+    if (oldest !== undefined) _servedProviderBySession.delete(oldest);
   }
 }
 
@@ -258,11 +296,11 @@ export function recordOpenRouterServedProvider(
  * "amazon-bedrock").
  */
 function normalizeOpenRouterProviderSlug(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, '-')
+  return name.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 export function _resetOpenRouterAutoPinForTest(): void {
-  _servedProviderBySession.clear()
+  _servedProviderBySession.clear();
 }
 
 /**
@@ -277,160 +315,206 @@ function applyOpenRouterProviderRouting(
   body: OpenAIChatRequest,
   sessionId?: string,
 ): void {
-  const bag = body as unknown as Record<string, unknown>
+  const bag = body as unknown as Record<string, unknown>;
   const raw = (
-    process.env.CLAUDEX_OPENROUTER_PROVIDER_ORDER
-    ?? process.env.OPENROUTER_PROVIDER_ORDER
-    ?? ''
-  ).trim()
-  const explicitOrder = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : []
+    process.env.CLAUDEX_OPENROUTER_PROVIDER_ORDER ??
+    process.env.OPENROUTER_PROVIDER_ORDER ??
+    ""
+  ).trim();
+  const explicitOrder = raw
+    ? raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 
   if (explicitOrder.length > 0) {
     const provider = (
-      bag.provider && typeof bag.provider === 'object' ? bag.provider : {}
-    ) as Record<string, unknown>
-    if (provider.order === undefined) provider.order = explicitOrder
+      bag.provider && typeof bag.provider === "object" ? bag.provider : {}
+    ) as Record<string, unknown>;
+    if (provider.order === undefined) provider.order = explicitOrder;
 
     const fallbacks = (
-      process.env.CLAUDEX_OPENROUTER_ALLOW_FALLBACKS
-      ?? process.env.OPENROUTER_ALLOW_FALLBACKS
-      ?? ''
-    ).trim().toLowerCase()
-    if (['false', '0', 'off', 'no'].includes(fallbacks)) {
-      provider.allow_fallbacks = false
+      process.env.CLAUDEX_OPENROUTER_ALLOW_FALLBACKS ??
+      process.env.OPENROUTER_ALLOW_FALLBACKS ??
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    if (["false", "0", "off", "no"].includes(fallbacks)) {
+      provider.allow_fallbacks = false;
     }
-    bag.provider = provider
-    return
+    bag.provider = provider;
+    return;
   }
 
-  if (process.env.TAU_OPENROUTER_AUTO_PIN === '0') return
-  if (!sessionId) return
-  const pinned = _servedProviderBySession.get(`${sessionId}:${body.model.toLowerCase()}`)
-  if (!pinned) return
+  if (process.env.TAU_OPENROUTER_AUTO_PIN === "0") return;
+  if (!sessionId) return;
+  const pinned = _servedProviderBySession.get(
+    `${sessionId}:${body.model.toLowerCase()}`,
+  );
+  if (!pinned) return;
 
   const provider = (
-    bag.provider && typeof bag.provider === 'object' ? bag.provider : {}
-  ) as Record<string, unknown>
-  // allow_fallbacks stays default (true): availability first — a fallback
+    bag.provider && typeof bag.provider === "object" ? bag.provider : {}
+  ) as Record<string, unknown>;
+  // allow_fallbacks stays default (true): availability first: a fallback
   // response gets recorded and becomes the new pin.
-  if (provider.order === undefined) provider.order = [pinned]
-  bag.provider = provider
+  if (provider.order === undefined) provider.order = [pinned];
+  bag.provider = provider;
 }
 
 function resolveOpenRouterContextCompressionMode(): OpenRouterContextCompressionMode {
   const raw = (
-    process.env.CLAUDEX_OPENROUTER_CONTEXT_COMPRESSION
-    ?? process.env.OPENROUTER_CONTEXT_COMPRESSION
-    ?? ''
-  ).trim().toLowerCase()
+    process.env.CLAUDEX_OPENROUTER_CONTEXT_COMPRESSION ??
+    process.env.OPENROUTER_CONTEXT_COMPRESSION ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
-  if (raw === 'on' || raw === 'true' || raw === '1' || raw === 'enabled') {
-    return 'enabled'
+  if (raw === "on" || raw === "true" || raw === "1" || raw === "enabled") {
+    return "enabled";
   }
-  return 'disabled'
+  return "disabled";
 }
 
-function applyOpenRouterContextCompressionPlugin(body: OpenAIChatRequest): void {
-  const mode = resolveOpenRouterContextCompressionMode()
-  const existing = body.plugins?.find(plugin => plugin.id === 'context-compression')
-  if (mode === 'disabled') {
-    if (existing) existing.enabled = false
-    return
+function applyOpenRouterContextCompressionPlugin(
+  body: OpenAIChatRequest,
+): void {
+  const mode = resolveOpenRouterContextCompressionMode();
+  const existing = body.plugins?.find(
+    (plugin) => plugin.id === "context-compression",
+  );
+  if (mode === "disabled") {
+    if (existing) existing.enabled = false;
+    return;
   }
 
-  body.plugins = body.plugins ?? []
+  body.plugins = body.plugins ?? [];
   if (existing) {
-    delete existing.enabled
-    return
+    delete existing.enabled;
+    return;
   }
-  body.plugins.push({ id: 'context-compression' })
+  body.plugins.push({ id: "context-compression" });
 }
 
 function isGeminiOnOR(model: string): boolean {
-  const m = model.toLowerCase()
-  return m.startsWith('google/gemini') || m.includes('gemini-')
+  const m = model.toLowerCase();
+  return m.startsWith("google/gemini") || m.includes("gemini-");
 }
 
 /**
  * Gemini upstream sanitizer. Mirrors opencode's `sanitizeGemini` in
- * provider/transform.ts. Returns a fresh object — never mutates input.
+ * provider/transform.ts. Returns a fresh object: never mutates input.
  */
 function sanitizeGeminiSchema(node: unknown): unknown {
-  if (node === null || typeof node !== 'object') return node
-  if (Array.isArray(node)) return node.map(sanitizeGeminiSchema)
+  if (node === null || typeof node !== "object") return node;
+  if (Array.isArray(node)) return node.map(sanitizeGeminiSchema);
 
-  const obj = node as Record<string, unknown>
-  const result: Record<string, unknown> = {}
+  const obj = node as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (k === 'enum' && Array.isArray(v)) {
-      result[k] = v.map(item => String(item))
+    if (k === "enum" && Array.isArray(v)) {
+      result[k] = v.map((item) => String(item));
       // Integer/number enums become string enums; the type field must
       // follow suit or Gemini 400s with "type mismatch in enum".
-      if (result.type === 'integer' || result.type === 'number') {
-        result.type = 'string'
+      if (result.type === "integer" || result.type === "number") {
+        result.type = "string";
       }
-    } else if (v !== null && typeof v === 'object') {
-      result[k] = sanitizeGeminiSchema(v)
+    } else if (v !== null && typeof v === "object") {
+      result[k] = sanitizeGeminiSchema(v);
     } else {
-      result[k] = v
+      result[k] = v;
     }
   }
 
   // `required` must only list fields that exist in `properties`. MCP
   // tools occasionally list required fields that aren't declared
-  // (validator quirk) — Gemini rejects those.
-  if (result.type === 'object' && result.properties && Array.isArray(result.required)) {
-    const props = result.properties as Record<string, unknown>
+  // (validator quirk): Gemini rejects those.
+  if (
+    result.type === "object" &&
+    result.properties &&
+    Array.isArray(result.required)
+  ) {
+    const props = result.properties as Record<string, unknown>;
     result.required = (result.required as unknown[]).filter(
-      (f): f is string => typeof f === 'string' && f in props,
-    )
+      (f): f is string => typeof f === "string" && f in props,
+    );
   }
 
   // Array nodes must carry an `items` schema. Default to `string`
   // when the original schema was loose (e.g. JSON `{ type: "array" }`).
-  if (result.type === 'array' && !hasCombiner(result)) {
-    if (result.items == null) result.items = { type: 'string' }
+  if (result.type === "array" && !hasCombiner(result)) {
+    if (result.items == null) result.items = { type: "string" };
     else if (
-      typeof result.items === 'object' &&
+      typeof result.items === "object" &&
       !Array.isArray(result.items) &&
       !hasSchemaIntent(result.items as Record<string, unknown>)
     ) {
-      ;(result.items as Record<string, unknown>).type = 'string'
+      (result.items as Record<string, unknown>).type = "string";
     }
   }
 
   // Non-object nodes must not declare `properties` / `required`.
-  if (result.type && result.type !== 'object' && !hasCombiner(result)) {
-    delete result.properties
-    delete result.required
+  if (result.type && result.type !== "object" && !hasCombiner(result)) {
+    delete result.properties;
+    delete result.required;
   }
-  return result
+  return result;
 }
 
 function hasCombiner(node: Record<string, unknown>): boolean {
-  return Array.isArray(node.anyOf) || Array.isArray(node.oneOf) || Array.isArray(node.allOf)
+  return (
+    Array.isArray(node.anyOf) ||
+    Array.isArray(node.oneOf) ||
+    Array.isArray(node.allOf)
+  );
 }
 
 function hasSchemaIntent(node: Record<string, unknown>): boolean {
-  if (hasCombiner(node)) return true
+  if (hasCombiner(node)) return true;
   return [
-    'type', 'properties', 'items', 'prefixItems', 'enum', 'const', '$ref',
-    'additionalProperties', 'patternProperties', 'required', 'not', 'if',
-    'then', 'else',
-  ].some(k => k in node)
+    "type",
+    "properties",
+    "items",
+    "prefixItems",
+    "enum",
+    "const",
+    "$ref",
+    "additionalProperties",
+    "patternProperties",
+    "required",
+    "not",
+    "if",
+    "then",
+    "else",
+  ].some((k) => k in node);
 }
 
 function openrouterModelSupportsReasoning(model: string): boolean {
-  const m = model.toLowerCase()
+  const m = model.toLowerCase();
   // Known reasoning-capable families on OpenRouter:
-  if (m.includes('deepseek-r1') || m.includes('deepseek/deepseek-r')) return true
-  if (m.includes('qwen/qwq') || m.includes('qwen3')) return true
-  if (m.includes('openai/o1') || m.includes('openai/o3') || m.includes('openai/o4')) return true
-  if (m.includes('openai/gpt-5')) return true
-  if (m.includes('anthropic/claude-3-7') || m.includes('anthropic/claude-sonnet-4') || m.includes('anthropic/claude-opus-4')) return true
-  if (m.includes('google/gemini-2.5') || m.includes('google/gemini-3')) return true
-  if (m.includes('xai/grok-3') || m.includes('xai/grok-4')) return true
+  if (m.includes("deepseek-r1") || m.includes("deepseek/deepseek-r"))
+    return true;
+  if (m.includes("qwen/qwq") || m.includes("qwen3")) return true;
+  if (
+    m.includes("openai/o1") ||
+    m.includes("openai/o3") ||
+    m.includes("openai/o4")
+  )
+    return true;
+  if (m.includes("openai/gpt-5")) return true;
+  if (
+    m.includes("anthropic/claude-3-7") ||
+    m.includes("anthropic/claude-sonnet-4") ||
+    m.includes("anthropic/claude-opus-4")
+  )
+    return true;
+  if (m.includes("google/gemini-2.5") || m.includes("google/gemini-3"))
+    return true;
+  if (m.includes("xai/grok-3") || m.includes("xai/grok-4")) return true;
   // Everything else (including base Llama, Llama-4, prompt-guard,
-  // orpheus, gemma, mistral-small, etc.) — no reasoning knob.
-  return false
+  // orpheus, gemma, mistral-small, etc.): no reasoning knob.
+  return false;
 }

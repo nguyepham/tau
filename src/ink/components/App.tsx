@@ -1,35 +1,70 @@
-import React, { PureComponent, type ReactNode } from 'react';
-import { updateLastInteractionTime } from '../../bootstrap/state.js';
-import { logForDebugging } from '../../utils/debug.js';
-import { stopCapturingEarlyInput } from '../../utils/earlyInput.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
-import { isMouseClicksDisabled } from '../../utils/fullscreen.js';
-import { logError } from '../../utils/log.js';
-import { EventEmitter } from '../events/emitter.js';
-import { InputEvent } from '../events/input-event.js';
-import { TerminalFocusEvent } from '../events/terminal-focus-event.js';
-import { INITIAL_STATE, type ParsedInput, type ParsedKey, type ParsedMouse, parseMultipleKeypresses } from '../parse-keypress.js';
-import reconciler from '../reconciler.js';
-import { finishSelection, hasSelection, type SelectionState, startSelection } from '../selection.js';
-import { isXtermJs, setXtversionName, supportsExtendedKeys } from '../terminal.js';
-import { getTerminalFocused, setTerminalFocused } from '../terminal-focus-state.js';
-import { TerminalQuerier, xtversion } from '../terminal-querier.js';
-import { DISABLE_KITTY_KEYBOARD, DISABLE_MODIFY_OTHER_KEYS, ENABLE_KITTY_KEYBOARD, ENABLE_MODIFY_OTHER_KEYS, FOCUS_IN, FOCUS_OUT } from '../termio/csi.js';
-import { DBP, DFE, DISABLE_MOUSE_TRACKING, EBP, EFE, HIDE_CURSOR, SHOW_CURSOR } from '../termio/dec.js';
-import AppContext from './AppContext.js';
-import { ClockProvider } from './ClockContext.js';
-import CursorDeclarationContext, { type CursorDeclarationSetter } from './CursorDeclarationContext.js';
-import ErrorOverview from './ErrorOverview.js';
-import StdinContext from './StdinContext.js';
-import { TerminalFocusProvider } from './TerminalFocusContext.js';
-import { TerminalSizeContext } from './TerminalSizeContext.js';
+import React, { PureComponent, type ReactNode } from "react";
+import { updateLastInteractionTime } from "../../bootstrap/state.js";
+import { logForDebugging } from "../../utils/debug.js";
+import { stopCapturingEarlyInput } from "../../utils/earlyInput.js";
+import { isEnvTruthy } from "../../utils/envUtils.js";
+import { isMouseClicksDisabled } from "../../utils/fullscreen.js";
+import { logError } from "../../utils/log.js";
+import { EventEmitter } from "../events/emitter.js";
+import { InputEvent } from "../events/input-event.js";
+import { TerminalFocusEvent } from "../events/terminal-focus-event.js";
+import {
+  INITIAL_STATE,
+  type ParsedInput,
+  type ParsedKey,
+  type ParsedMouse,
+  parseMultipleKeypresses,
+} from "../parse-keypress.js";
+import reconciler from "../reconciler.js";
+import {
+  finishSelection,
+  hasSelection,
+  type SelectionState,
+  startSelection,
+} from "../selection.js";
+import {
+  isXtermJs,
+  setXtversionName,
+  supportsExtendedKeys,
+} from "../terminal.js";
+import {
+  getTerminalFocused,
+  setTerminalFocused,
+} from "../terminal-focus-state.js";
+import { TerminalQuerier, xtversion } from "../terminal-querier.js";
+import {
+  DISABLE_KITTY_KEYBOARD,
+  DISABLE_MODIFY_OTHER_KEYS,
+  ENABLE_KITTY_KEYBOARD,
+  ENABLE_MODIFY_OTHER_KEYS,
+  FOCUS_IN,
+  FOCUS_OUT,
+} from "../termio/csi.js";
+import {
+  DBP,
+  DFE,
+  DISABLE_MOUSE_TRACKING,
+  EBP,
+  EFE,
+  HIDE_CURSOR,
+  SHOW_CURSOR,
+} from "../termio/dec.js";
+import AppContext from "./AppContext.js";
+import { ClockProvider } from "./ClockContext.js";
+import CursorDeclarationContext, {
+  type CursorDeclarationSetter,
+} from "./CursorDeclarationContext.js";
+import ErrorOverview from "./ErrorOverview.js";
+import StdinContext from "./StdinContext.js";
+import { TerminalFocusProvider } from "./TerminalFocusContext.js";
+import { TerminalSizeContext } from "./TerminalSizeContext.js";
 
 // Platforms that support Unix-style process suspension (SIGSTOP/SIGCONT)
-const SUPPORTS_SUSPEND = process.platform !== 'win32';
+const SUPPORTS_SUSPEND = process.platform !== "win32";
 
 // After this many milliseconds of stdin silence, the next chunk triggers
 // a terminal mode re-assert (mouse tracking). Catches tmux detach→attach,
-// ssh reconnect, and laptop wake — the terminal resets DEC private modes
+// ssh reconnect, and laptop wake: the terminal resets DEC private modes
 // but no signal reaches us. 5s is well above normal inter-keystroke gaps
 // but short enough that the first scroll after reattach works.
 const STDIN_RESUME_GAP_MS = 5000;
@@ -48,7 +83,7 @@ type Props = {
   // so the handler is always wired but dormant until tracking is on.
   readonly selection: SelectionState;
   readonly onSelectionChange: () => void;
-  // Dispatch a click at (col, row) — hit-tests the DOM tree and bubbles
+  // Dispatch a click at (col, row): hit-tests the DOM tree and bubbles
   // onClick handlers. Returns true if a DOM handler consumed the click.
   // No-op (returns false) outside fullscreen mode (Ink.dispatchClick
   // gates on altScreenActive).
@@ -99,14 +134,14 @@ type State = {
 // It renders stdin and stdout contexts, so that children can access them if needed
 // It also handles Ctrl+C exiting and cursor visibility
 export default class App extends PureComponent<Props, State> {
-  static displayName = 'InternalApp';
+  static displayName = "InternalApp";
   static getDerivedStateFromError(error: Error) {
     return {
-      error
+      error,
     };
   }
   override state = {
-    error: undefined
+    error: undefined,
   };
 
   // Count how many components enabled raw mode to avoid disabling
@@ -131,10 +166,10 @@ export default class App extends PureComponent<Props, State> {
   lastClickCol = -1;
   lastClickRow = -1;
   clickCount = 0;
-  // Deferred hyperlink-open timer — cancelled if a second click arrives
+  // Deferred hyperlink-open timer: cancelled if a second click arrives
   // within MULTI_CLICK_TIMEOUT_MS (so double-clicking a hyperlink selects
   // the word without also opening the browser). DOM onClick dispatch is
-  // NOT deferred — it returns true from onClickAt and skips this timer.
+  // NOT deferred: it returns true from onClickAt and skips this timer.
   pendingHyperlinkTimer: ReturnType<typeof setTimeout> | null = null;
   // Last mode-1003 motion position. Terminals already dedupe to cell
   // granularity but this also lets us skip dispatchHover entirely on
@@ -152,35 +187,52 @@ export default class App extends PureComponent<Props, State> {
     return this.props.stdin.isTTY;
   }
   override render() {
-    return <TerminalSizeContext.Provider value={{
-      columns: this.props.terminalColumns,
-      rows: this.props.terminalRows
-    }}>
-        <AppContext.Provider value={{
-        exit: this.handleExit
-      }}>
-          <StdinContext.Provider value={{
-          stdin: this.props.stdin,
-          setRawMode: this.handleSetRawMode,
-          isRawModeSupported: this.isRawModeSupported(),
-          internal_exitOnCtrlC: this.props.exitOnCtrlC,
-          internal_eventEmitter: this.internal_eventEmitter,
-          internal_querier: this.querier
-        }}>
+    return (
+      <TerminalSizeContext.Provider
+        value={{
+          columns: this.props.terminalColumns,
+          rows: this.props.terminalRows,
+        }}
+      >
+        <AppContext.Provider
+          value={{
+            exit: this.handleExit,
+          }}
+        >
+          <StdinContext.Provider
+            value={{
+              stdin: this.props.stdin,
+              setRawMode: this.handleSetRawMode,
+              isRawModeSupported: this.isRawModeSupported(),
+              internal_exitOnCtrlC: this.props.exitOnCtrlC,
+              internal_eventEmitter: this.internal_eventEmitter,
+              internal_querier: this.querier,
+            }}
+          >
             <TerminalFocusProvider>
               <ClockProvider>
-                <CursorDeclarationContext.Provider value={this.props.onCursorDeclaration ?? (() => {})}>
-                  {this.state.error ? <ErrorOverview error={this.state.error as Error} /> : this.props.children}
+                <CursorDeclarationContext.Provider
+                  value={this.props.onCursorDeclaration ?? (() => {})}
+                >
+                  {this.state.error ? (
+                    <ErrorOverview error={this.state.error as Error} />
+                  ) : (
+                    this.props.children
+                  )}
                 </CursorDeclarationContext.Provider>
               </ClockProvider>
             </TerminalFocusProvider>
           </StdinContext.Provider>
         </AppContext.Provider>
-      </TerminalSizeContext.Provider>;
+      </TerminalSizeContext.Provider>
+    );
   }
   override componentDidMount() {
     // In accessibility mode, keep the native cursor visible for screen magnifiers and other tools
-    if (this.props.stdout.isTTY && !isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)) {
+    if (
+      this.props.stdout.isTTY &&
+      !isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)
+    ) {
       this.props.stdout.write(HIDE_CURSOR);
     }
   }
@@ -207,17 +259,19 @@ export default class App extends PureComponent<Props, State> {
     this.handleExit(error);
   }
   handleSetRawMode = (isEnabled: boolean): void => {
-    const {
-      stdin
-    } = this.props;
+    const { stdin } = this.props;
     if (!this.isRawModeSupported()) {
       if (stdin === process.stdin) {
-        throw new Error('Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported');
+        throw new Error(
+          "Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported",
+        );
       } else {
-        throw new Error('Raw mode is not supported on the stdin provided to Ink.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported');
+        throw new Error(
+          "Raw mode is not supported on the stdin provided to Ink.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported",
+        );
       }
     }
-    stdin.setEncoding('utf8');
+    stdin.setEncoding("utf8");
     if (isEnabled) {
       // Ensure raw mode is enabled only once
       if (this.rawModeEnabledCount === 0) {
@@ -228,17 +282,17 @@ export default class App extends PureComponent<Props, State> {
         stopCapturingEarlyInput();
         // ref() keeps the event loop alive while raw mode is active.
         // On MSYS2/Git Bash, stdin is an fs.ReadStream (no _handle),
-        // so ref() may not exist — guard it.
-        if (typeof stdin.ref === 'function') stdin.ref();
+        // so ref() may not exist: guard it.
+        if (typeof stdin.ref === "function") stdin.ref();
         stdin.setRawMode(true);
-        stdin.addListener('readable', this.handleReadable);
+        stdin.addListener("readable", this.handleReadable);
         // Enable bracketed paste mode
         this.props.stdout.write(EBP);
         // Enable terminal focus reporting (DECSET 1004)
         this.props.stdout.write(EFE);
         // Enable extended key reporting so ctrl+shift+<letter> is
         // distinguishable from ctrl+<letter>. We write both the kitty stack
-        // push (CSI >1u) and xterm modifyOtherKeys level 2 (CSI >4;2m) —
+        // push (CSI >1u) and xterm modifyOtherKeys level 2 (CSI >4;2m):
         // terminals honor whichever they implement (tmux only accepts the
         // latter).
         if (supportsExtendedKeys()) {
@@ -251,15 +305,18 @@ export default class App extends PureComponent<Props, State> {
         // sentinel bounds the round-trip, and if the terminal ignores the
         // query, flush() still resolves and name stays undefined.
         // Deferred to next tick so it fires AFTER the current synchronous
-        // init sequence completes — avoids interleaving with alt-screen/mouse
+        // init sequence completes: avoids interleaving with alt-screen/mouse
         // tracking enable writes that may happen in the same render cycle.
         setImmediate(() => {
-          void Promise.all([this.querier.send(xtversion()), this.querier.flush()]).then(([r]) => {
+          void Promise.all([
+            this.querier.send(xtversion()),
+            this.querier.flush(),
+          ]).then(([r]) => {
             if (r) {
               setXtversionName(r.name);
               logForDebugging(`XTVERSION: terminal identified as "${r.name}"`);
             } else {
-              logForDebugging('XTVERSION: no reply (terminal ignored query)');
+              logForDebugging("XTVERSION: no reply (terminal ignored query)");
             }
           });
         });
@@ -277,8 +334,8 @@ export default class App extends PureComponent<Props, State> {
       // Disable bracketed paste mode
       this.props.stdout.write(DBP);
       stdin.setRawMode(false);
-      stdin.removeListener('readable', this.handleReadable);
-      if (typeof stdin.unref === 'function') stdin.unref();
+      stdin.removeListener("readable", this.handleReadable);
+      if (typeof stdin.unref === "function") stdin.unref();
     }
   };
 
@@ -299,7 +356,10 @@ export default class App extends PureComponent<Props, State> {
     // drain stdin next and clear this timer. Prevents both the spurious
     // Escape key and the lost scroll event.
     if (this.props.stdin.readableLength > 0) {
-      this.incompleteEscapeTimer = setTimeout(this.flushIncomplete, this.NORMAL_TIMEOUT);
+      this.incompleteEscapeTimer = setTimeout(
+        this.flushIncomplete,
+        this.NORMAL_TIMEOUT,
+      );
       return;
     }
 
@@ -320,7 +380,13 @@ export default class App extends PureComponent<Props, State> {
     // This batches all state updates from handleInput and all useInput
     // listeners together within one high-priority update context.
     if (keys.length > 0) {
-      reconciler.discreteUpdates(processKeysInBatch, this, keys, undefined, undefined);
+      reconciler.discreteUpdates(
+        processKeysInBatch,
+        this,
+        keys,
+        undefined,
+        undefined,
+      );
     }
 
     // If we have incomplete escape sequences, set a timer to flush them
@@ -329,7 +395,12 @@ export default class App extends PureComponent<Props, State> {
       if (this.incompleteEscapeTimer) {
         clearTimeout(this.incompleteEscapeTimer);
       }
-      this.incompleteEscapeTimer = setTimeout(this.flushIncomplete, this.keyParseState.mode === 'IN_PASTE' ? this.PASTE_TIMEOUT : this.NORMAL_TIMEOUT);
+      this.incompleteEscapeTimer = setTimeout(
+        this.flushIncomplete,
+        this.keyParseState.mode === "IN_PASTE"
+          ? this.PASTE_TIMEOUT
+          : this.NORMAL_TIMEOUT,
+      );
     }
   };
   handleReadable = (): void => {
@@ -358,20 +429,24 @@ export default class App extends PureComponent<Props, State> {
       // Re-attach the listener in case the exception detached it.
       // Bun may remove the listener after an error; without this,
       // the session freezes permanently (stdin reader dead, event loop alive).
-      const {
-        stdin
-      } = this.props;
-      if (this.rawModeEnabledCount > 0 && !stdin.listeners('readable').includes(this.handleReadable)) {
-        logForDebugging('handleReadable: re-attaching stdin readable listener after error recovery', {
-          level: 'warn'
-        });
-        stdin.addListener('readable', this.handleReadable);
+      const { stdin } = this.props;
+      if (
+        this.rawModeEnabledCount > 0 &&
+        !stdin.listeners("readable").includes(this.handleReadable)
+      ) {
+        logForDebugging(
+          "handleReadable: re-attaching stdin readable listener after error recovery",
+          {
+            level: "warn",
+          },
+        );
+        stdin.addListener("readable", this.handleReadable);
       }
     }
   };
   handleInput = (input: string | undefined): void => {
     // Exit on Ctrl+C
-    if (input === '\x03' && this.props.exitOnCtrlC) {
+    if (input === "\x03" && this.props.exitOnCtrlC) {
       this.handleExit();
     }
 
@@ -387,7 +462,7 @@ export default class App extends PureComponent<Props, State> {
   };
   handleTerminalFocus = (isFocused: boolean): void => {
     // setTerminalFocused notifies subscribers: TerminalFocusProvider (context)
-    // and Clock (interval speed) — no App setState needed.
+    // and Clock (interval speed): no App setState needed.
     setTerminalFocused(isFocused);
   };
   handleSuspend = (): void => {
@@ -405,7 +480,7 @@ export default class App extends PureComponent<Props, State> {
 
     // Show cursor, disable focus reporting, and disable mouse tracking
     // before suspending. DISABLE_MOUSE_TRACKING is a no-op if tracking
-    // wasn't enabled, so it's safe to emit unconditionally — without
+    // wasn't enabled, so it's safe to emit unconditionally: without
     // it, SGR mouse sequences would appear as garbled text at the
     // shell prompt while suspended.
     if (this.props.stdout.isTTY) {
@@ -413,7 +488,7 @@ export default class App extends PureComponent<Props, State> {
     }
 
     // Emit suspend event for Tau to handle. Mostly just has a notification
-    this.internal_eventEmitter.emit('suspend');
+    this.internal_eventEmitter.emit("suspend");
 
     // Set up resume handler
     const resumeHandler = () => {
@@ -434,30 +509,42 @@ export default class App extends PureComponent<Props, State> {
       }
 
       // Emit resume event for Tau to handle
-      this.internal_eventEmitter.emit('resume');
-      process.removeListener('SIGCONT', resumeHandler);
+      this.internal_eventEmitter.emit("resume");
+      process.removeListener("SIGCONT", resumeHandler);
     };
-    process.on('SIGCONT', resumeHandler);
-    process.kill(process.pid, 'SIGSTOP');
+    process.on("SIGCONT", resumeHandler);
+    process.kill(process.pid, "SIGSTOP");
   };
 }
 
 // Helper to process all keys within a single discrete update context.
 // discreteUpdates expects (fn, a, b, c, d) -> fn(a, b, c, d)
-function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined, _unused2: undefined): void {
+function processKeysInBatch(
+  app: App,
+  items: ParsedInput[],
+  _unused1: undefined,
+  _unused2: undefined,
+): void {
   // Update interaction time for notification timeout tracking.
   // This is called from the central input handler to avoid having multiple
   // stdin listeners that can cause race conditions and dropped input.
   // Terminal responses (kind: 'response') are automated, not user input.
-  // Mode-1003 no-button motion is also excluded — passive cursor drift is
+  // Mode-1003 no-button motion is also excluded: passive cursor drift is
   // not engagement (would suppress idle notifications + defer housekeeping).
-  if (items.some(i => i.kind === 'key' || i.kind === 'mouse' && !((i.button & 0x20) !== 0 && (i.button & 0x03) === 3))) {
+  if (
+    items.some(
+      (i) =>
+        i.kind === "key" ||
+        (i.kind === "mouse" &&
+          !((i.button & 0x20) !== 0 && (i.button & 0x03) === 3)),
+    )
+  ) {
     updateLastInteractionTime();
   }
   for (const item of items) {
     // Terminal responses (DECRPM, DA1, OSC replies, etc.) are not user
-    // input — route them to the querier to resolve pending promises.
-    if (item.kind === 'response') {
+    // input: route them to the querier to resolve pending promises.
+    if (item.kind === "response") {
       app.querier.onResponse(item.response);
       continue;
     }
@@ -465,7 +552,7 @@ function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined,
     // Mouse click/drag events update selection state (fullscreen only).
     // Terminal sends 1-indexed col/row; convert to 0-indexed for the
     // screen buffer. Button bit 0x20 = drag (motion while button held).
-    if (item.kind === 'mouse') {
+    if (item.kind === "mouse") {
       handleMouseEvent(app, item);
       continue;
     }
@@ -474,14 +561,14 @@ function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined,
     // Handle terminal focus events (DECSET 1004)
     if (sequence === FOCUS_IN) {
       app.handleTerminalFocus(true);
-      const event = new TerminalFocusEvent('terminalfocus');
-      app.internal_eventEmitter.emit('terminalfocus', event);
+      const event = new TerminalFocusEvent("terminalfocus");
+      app.internal_eventEmitter.emit("terminalfocus", event);
       continue;
     }
     if (sequence === FOCUS_OUT) {
       app.handleTerminalFocus(false);
       // Defensive: if we lost the release event (mouse released outside
-      // terminal window — some emulators drop it rather than capturing the
+      // terminal window: some emulators drop it rather than capturing the
       // pointer), focus-out is the next observable signal that the drag is
       // over. Without this, drag-to-scroll's timer runs until the scroll
       // boundary is hit.
@@ -489,8 +576,8 @@ function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined,
         finishSelection(app.props.selection);
         app.props.onSelectionChange();
       }
-      const event = new TerminalFocusEvent('terminalblur');
-      app.internal_eventEmitter.emit('terminalblur', event);
+      const event = new TerminalFocusEvent("terminalblur");
+      app.internal_eventEmitter.emit("terminalblur", event);
       continue;
     }
 
@@ -501,13 +588,13 @@ function processKeysInBatch(app: App, items: ParsedInput[], _unused1: undefined,
 
     // Handle Ctrl+Z (suspend) using parsed key to support both raw (\x1a) and
     // CSI u format (\x1b[122;5u) from Kitty keyboard protocol terminals
-    if (item.name === 'z' && item.ctrl && SUPPORTS_SUSPEND) {
+    if (item.name === "z" && item.ctrl && SUPPORTS_SUSPEND) {
       app.handleSuspend();
       continue;
     }
     app.handleInput(sequence);
     const event = new InputEvent(item);
-    app.internal_eventEmitter.emit('input', event);
+    app.internal_eventEmitter.emit("input", event);
 
     // Also dispatch through the DOM tree so onKeyDown handlers fire.
     app.props.dispatchKeyboardEvent(item);
@@ -524,7 +611,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
   const col = m.col - 1;
   const row = m.row - 1;
   const baseButton = m.button & 0x03;
-  if (m.action === 'press') {
+  if (m.action === "press") {
     if ((m.button & 0x20) !== 0 && baseButton === 3) {
       // Mode-1003 motion with no button held. Dispatch hover; skip the
       // rest of this handler (no selection, no click-count side effects).
@@ -533,7 +620,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
       // capture the pointer past window bounds, so the SGR 'm' never
       // arrives). Finish the selection here so copy-on-select fires. The
       // FOCUS_OUT handler covers the "switched apps" case but not "released
-      // past the edge, came back" — and tmux drops focus events unless
+      // past the edge, came back": and tmux drops focus events unless
       // `focus-events on` is set, so this is the more reliable signal.
       if (sel.isDragging) {
         finishSelection(sel);
@@ -552,7 +639,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
     }
     if ((m.button & 0x20) !== 0) {
       // Drag motion: mode-aware extension (char/word/line). onSelectionDrag
-      // calls notifySelectionChange internally — no extra onSelectionChange.
+      // calls notifySelectionChange internally: no extra onSelectionChange.
       app.props.onSelectionDrag(col, row);
       return;
     }
@@ -571,13 +658,16 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
     // release, which meant (a) visible latency before the word highlights
     // and (b) double-click+drag fell through to char-mode selection.
     const now = Date.now();
-    const nearLast = now - app.lastClickTime < MULTI_CLICK_TIMEOUT_MS && Math.abs(col - app.lastClickCol) <= MULTI_CLICK_DISTANCE && Math.abs(row - app.lastClickRow) <= MULTI_CLICK_DISTANCE;
+    const nearLast =
+      now - app.lastClickTime < MULTI_CLICK_TIMEOUT_MS &&
+      Math.abs(col - app.lastClickCol) <= MULTI_CLICK_DISTANCE &&
+      Math.abs(row - app.lastClickRow) <= MULTI_CLICK_DISTANCE;
     app.clickCount = nearLast ? app.clickCount + 1 : 1;
     app.lastClickTime = now;
     app.lastClickCol = col;
     app.lastClickRow = row;
     if (app.clickCount >= 2) {
-      // Cancel any pending hyperlink-open from the first click — this is
+      // Cancel any pending hyperlink-open from the first click: this is
       // a double-click, not a single-click on a link.
       if (app.pendingHyperlinkTimer) {
         clearTimeout(app.pendingHyperlinkTimer);
@@ -589,7 +679,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
       return;
     }
     startSelection(sel, col, row);
-    // SGR bit 0x08 = alt (xterm.js wires altKey here, not metaKey — see
+    // SGR bit 0x08 = alt (xterm.js wires altKey here, not metaKey: see
     // comment at the hyperlink-open guard below). On macOS xterm.js,
     // receiving alt means macOptionClickForcesSelection is OFF (otherwise
     // xterm.js would have consumed the event for native selection).
@@ -600,7 +690,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 
   // Release: end the drag even for non-zero button codes. Some terminals
   // encode release with the motion bit or button=3 "no button" (carried
-  // over from pre-SGR X10 encoding) — filtering those would orphan
+  // over from pre-SGR X10 encoding): filtering those would orphan
   // isDragging=true and leave drag-to-scroll's timer running until the
   // scroll boundary. Only act on non-left releases when we ARE dragging
   // (so an unrelated middle/right click-release doesn't touch selection).
@@ -617,19 +707,19 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
   // trackpad jitter during an intended double-click (press→wobble→release
   // →press) now correctly resolves to word-select instead of breaking to a
   // fresh single click. The nearLast window (500ms, 1 cell) bounds the
-  // effect — a deliberate drag past that just starts a fresh chain.
+  // effect: a deliberate drag past that just starts a fresh chain.
   // A press+release with no drag in char mode is a click: anchor set,
   // focus null → hasSelection false. In word/line mode the press already
   // set anchor+focus (hasSelection true), so release just keeps the
   // highlight. The anchor check guards against an orphaned release (no
-  // prior press — e.g. button was held when mouse tracking was enabled).
+  // prior press: e.g. button was held when mouse tracking was enabled).
   if (!hasSelection(sel) && sel.anchor) {
     // Single click: dispatch DOM click immediately (cursor repositioning
     // etc. are latency-sensitive). If no DOM handler consumed it, defer
     // the hyperlink check so a second click can cancel it.
     if (!app.props.onClickAt(col, row)) {
       // Resolve the hyperlink URL synchronously while the screen buffer
-      // still reflects what the user clicked — deferring only the
+      // still reflects what the user clicked: deferring only the
       // browser-open so double-click can cancel it.
       const url = app.props.getHyperlinkAt(col, row);
       // xterm.js (VS Code, Cursor, Windsurf, etc.) has its own OSC 8 link
@@ -637,22 +727,27 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
       // (Linkifier._handleMouseUp calls link.activate() but never
       // preventDefault/stopPropagation). The click is also forwarded to the
       // pty as SGR, so both VS Code's terminalLinkManager AND our handler
-      // here would open the URL — twice. We can't filter on Cmd: xterm.js
+      // here would open the URL: twice. We can't filter on Cmd: xterm.js
       // drops metaKey before SGR encoding (ICoreMouseEvent has no meta
       // field; the SGR bit we call 'meta' is wired to alt). Let xterm.js
       // own link-opening; Cmd+click is the native UX there anyway.
       // TERM_PROGRAM is the sync fast-path; isXtermJs() is the XTVERSION
       // probe result (catches SSH + non-VS Code embedders like Hyper).
-      if (url && process.env.TERM_PROGRAM !== 'vscode' && !isXtermJs()) {
-        // Clear any prior pending timer — clicking a second link
+      if (url && process.env.TERM_PROGRAM !== "vscode" && !isXtermJs()) {
+        // Clear any prior pending timer: clicking a second link
         // supersedes the first (only the latest click opens).
         if (app.pendingHyperlinkTimer) {
           clearTimeout(app.pendingHyperlinkTimer);
         }
-        app.pendingHyperlinkTimer = setTimeout((app, url) => {
-          app.pendingHyperlinkTimer = null;
-          app.props.onOpenHyperlink(url);
-        }, MULTI_CLICK_TIMEOUT_MS, app, url);
+        app.pendingHyperlinkTimer = setTimeout(
+          (app, url) => {
+            app.pendingHyperlinkTimer = null;
+            app.props.onOpenHyperlink(url);
+          },
+          MULTI_CLICK_TIMEOUT_MS,
+          app,
+          url,
+        );
       }
     }
   }

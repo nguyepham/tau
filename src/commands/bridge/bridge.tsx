@@ -1,30 +1,43 @@
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
-import { toString as qrToString } from 'qrcode';
-import * as React from 'react';
-import { useEffect, useState } from 'react';
-import { getBridgeAccessToken } from '../../bridge/bridgeConfig.js';
-import { checkBridgeMinVersion, getBridgeDisabledReason, isEnvLessBridgeEnabled } from '../../bridge/bridgeEnabled.js';
-import { checkEnvLessBridgeMinVersion } from '../../bridge/envLessBridgeConfig.js';
-import { BRIDGE_LOGIN_INSTRUCTION, REMOTE_CONTROL_DISCONNECTED_MSG } from '../../bridge/types.js';
-import { Dialog } from '../../components/design-system/Dialog.js';
-import { ListItem } from '../../components/design-system/ListItem.js';
-import { shouldShowRemoteCallout } from '../../components/RemoteCallout.js';
-import { useRegisterOverlay } from '../../context/overlayContext.js';
-import { Box, Text } from '../../ink.js';
-import { useKeybindings } from '../../keybindings/useKeybinding.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
-import { useAppState, useSetAppState } from '../../state/AppState.js';
-import type { ToolUseContext } from '../../Tool.js';
-import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js';
-import { logForDebugging } from '../../utils/debug.js';
+import { feature } from "bun:bundle";
+import { toString as qrToString } from "qrcode";
+import * as React from "react";
+import { useEffect, useState } from "react";
+import { getBridgeAccessToken } from "../../bridge/bridgeConfig.js";
+import {
+  checkBridgeMinVersion,
+  getBridgeDisabledReason,
+  isEnvLessBridgeEnabled,
+} from "../../bridge/bridgeEnabled.js";
+import { checkEnvLessBridgeMinVersion } from "../../bridge/envLessBridgeConfig.js";
+import {
+  BRIDGE_LOGIN_INSTRUCTION,
+  REMOTE_CONTROL_DISCONNECTED_MSG,
+} from "../../bridge/types.js";
+import { Dialog } from "../../components/design-system/Dialog.js";
+import { ListItem } from "../../components/design-system/ListItem.js";
+import { shouldShowRemoteCallout } from "../../components/RemoteCallout.js";
+import { useRegisterOverlay } from "../../context/overlayContext.js";
+import { Box, Text } from "../../ink.js";
+import { useKeybindings } from "../../keybindings/useKeybinding.js";
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from "../../services/analytics/index.js";
+import { useAppState, useSetAppState } from "../../state/AppState.js";
+import type { ToolUseContext } from "../../Tool.js";
+import type {
+  LocalJSXCommandContext,
+  LocalJSXCommandOnDone,
+} from "../../types/command.js";
+import { logForDebugging } from "../../utils/debug.js";
 type Props = {
   onDone: LocalJSXCommandOnDone;
   name?: string;
 };
 
 /**
- * /remote-control command — manages the bidirectional bridge connection.
+ * /remote-control command: manages the bidirectional bridge connection.
  *
  * When enabled, sets replBridgeEnabled in AppState, which triggers
  * useReplBridge in REPL.tsx to initialize the bridge connection.
@@ -37,19 +50,26 @@ type Props = {
  */
 function BridgeToggle(t0) {
   const $ = _c(10);
-  const {
-    onDone,
-    name
-  } = t0;
+  const { onDone, name } = t0;
   const setAppState = useSetAppState();
   const replBridgeConnected = useAppState(_temp);
   const replBridgeEnabled = useAppState(_temp2);
   const replBridgeOutboundOnly = useAppState(_temp3);
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   let t1;
-  if ($[0] !== name || $[1] !== onDone || $[2] !== replBridgeConnected || $[3] !== replBridgeEnabled || $[4] !== replBridgeOutboundOnly || $[5] !== setAppState) {
+  if (
+    $[0] !== name ||
+    $[1] !== onDone ||
+    $[2] !== replBridgeConnected ||
+    $[3] !== replBridgeEnabled ||
+    $[4] !== replBridgeOutboundOnly ||
+    $[5] !== setAppState
+  ) {
     t1 = () => {
-      if ((replBridgeConnected || replBridgeEnabled) && !replBridgeOutboundOnly) {
+      if (
+        (replBridgeConnected || replBridgeEnabled) &&
+        !replBridgeOutboundOnly
+      ) {
         setShowDisconnectDialog(true);
         return;
       }
@@ -61,33 +81,35 @@ function BridgeToggle(t0) {
         }
         if (error) {
           logEvent("tengu_bridge_command", {
-            action: "preflight_failed" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+            action:
+              "preflight_failed" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           });
           onDone(error, {
-            display: "system"
+            display: "system",
           });
           return;
         }
         if (shouldShowRemoteCallout()) {
-          setAppState(prev => {
+          setAppState((prev) => {
             if (prev.showRemoteCallout) {
               return prev;
             }
             return {
               ...prev,
               showRemoteCallout: true,
-              replBridgeInitialName: name
+              replBridgeInitialName: name,
             };
           });
           onDone("", {
-            display: "system"
+            display: "system",
           });
           return;
         }
         logEvent("tengu_bridge_command", {
-          action: "connect" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+          action:
+            "connect" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         });
-        setAppState(prev_0 => {
+        setAppState((prev_0) => {
           if (prev_0.replBridgeEnabled && !prev_0.replBridgeOutboundOnly) {
             return prev_0;
           }
@@ -96,11 +118,11 @@ function BridgeToggle(t0) {
             replBridgeEnabled: true,
             replBridgeExplicit: true,
             replBridgeOutboundOnly: false,
-            replBridgeInitialName: name
+            replBridgeInitialName: name,
           };
         });
         onDone("Remote Control connecting\u2026", {
-          display: "system"
+          display: "system",
         });
       })();
       return () => {
@@ -154,9 +176,7 @@ function _temp(s) {
 }
 function BridgeDisconnectDialog(t0) {
   const $ = _c(61);
-  const {
-    onDone
-  } = t0;
+  const { onDone } = t0;
   useRegisterOverlay("bridge-disconnect-dialog");
   const setAppState = useSetAppState();
   const sessionUrl = useAppState(_temp4);
@@ -177,8 +197,10 @@ function BridgeDisconnectDialog(t0) {
       qrToString(displayUrl, {
         type: "utf8",
         errorCorrectionLevel: "L",
-        small: true
-      }).then(setQrText).catch(() => setQrText(""));
+        small: true,
+      })
+        .then(setQrText)
+        .catch(() => setQrText(""));
     };
     t2 = [showQR, displayUrl];
     $[0] = displayUrl;
@@ -195,10 +217,11 @@ function BridgeDisconnectDialog(t0) {
     t3 = function handleDisconnect() {
       setAppState(_temp7);
       logEvent("tengu_bridge_command", {
-        action: "disconnect" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+        action:
+          "disconnect" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       });
       onDone(REMOTE_CONTROL_DISCONNECTED_MSG, {
-        display: "system"
+        display: "system",
       });
     };
     $[4] = onDone;
@@ -222,7 +245,7 @@ function BridgeDisconnectDialog(t0) {
   if ($[8] !== onDone) {
     t5 = function handleContinue() {
       onDone(undefined, {
-        display: "skip"
+        display: "skip",
       });
     };
     $[8] = onDone;
@@ -243,7 +266,11 @@ function BridgeDisconnectDialog(t0) {
     t7 = $[11];
   }
   let t8;
-  if ($[12] !== focusIndex || $[13] !== handleContinue || $[14] !== handleDisconnect) {
+  if (
+    $[12] !== focusIndex ||
+    $[13] !== handleContinue ||
+    $[14] !== handleDisconnect
+  ) {
     t8 = {
       "select:next": t6,
       "select:previous": t7,
@@ -257,7 +284,7 @@ function BridgeDisconnectDialog(t0) {
             handleContinue();
           }
         }
-      }
+      },
     };
     $[12] = focusIndex;
     $[13] = handleContinue;
@@ -269,7 +296,7 @@ function BridgeDisconnectDialog(t0) {
   let t9;
   if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
     t9 = {
-      context: "Select"
+      context: "Select",
     };
     $[16] = t9;
   } else {
@@ -285,7 +312,12 @@ function BridgeDisconnectDialog(t0) {
   let t14;
   let t15;
   let t16;
-  if ($[17] !== displayUrl || $[18] !== handleContinue || $[19] !== qrText || $[20] !== showQR) {
+  if (
+    $[17] !== displayUrl ||
+    $[18] !== handleContinue ||
+    $[19] !== qrText ||
+    $[20] !== showQR
+  ) {
     const qrLines = qrText ? qrText.split("\n").filter(_temp1) : [];
     T1 = Dialog;
     t14 = "Remote Control";
@@ -302,7 +334,9 @@ function BridgeDisconnectDialog(t0) {
     } else {
       t12 = $[31];
     }
-    t13 = showQR && qrLines.length > 0 && <Box flexDirection="column">{qrLines.map(_temp10)}</Box>;
+    t13 = showQR && qrLines.length > 0 && (
+      <Box flexDirection="column">{qrLines.map(_temp10)}</Box>
+    );
     $[17] = displayUrl;
     $[18] = handleContinue;
     $[19] = qrText;
@@ -380,7 +414,13 @@ function BridgeDisconnectDialog(t0) {
   }
   let t27;
   if ($[43] !== t19 || $[44] !== t23 || $[45] !== t26) {
-    t27 = <Box flexDirection="column">{t19}{t23}{t26}</Box>;
+    t27 = (
+      <Box flexDirection="column">
+        {t19}
+        {t23}
+        {t26}
+      </Box>
+    );
     $[43] = t19;
     $[44] = t23;
     $[45] = t26;
@@ -396,8 +436,22 @@ function BridgeDisconnectDialog(t0) {
     t28 = $[47];
   }
   let t29;
-  if ($[48] !== T0 || $[49] !== t10 || $[50] !== t11 || $[51] !== t12 || $[52] !== t13 || $[53] !== t27) {
-    t29 = <T0 flexDirection={t10} gap={t11}>{t12}{t13}{t27}{t28}</T0>;
+  if (
+    $[48] !== T0 ||
+    $[49] !== t10 ||
+    $[50] !== t11 ||
+    $[51] !== t12 ||
+    $[52] !== t13 ||
+    $[53] !== t27
+  ) {
+    t29 = (
+      <T0 flexDirection={t10} gap={t11}>
+        {t12}
+        {t13}
+        {t27}
+        {t28}
+      </T0>
+    );
     $[48] = T0;
     $[49] = t10;
     $[50] = t11;
@@ -409,8 +463,18 @@ function BridgeDisconnectDialog(t0) {
     t29 = $[54];
   }
   let t30;
-  if ($[55] !== T1 || $[56] !== t14 || $[57] !== t15 || $[58] !== t16 || $[59] !== t29) {
-    t30 = <T1 title={t14} onCancel={t15} hideInputGuide={t16}>{t29}</T1>;
+  if (
+    $[55] !== T1 ||
+    $[56] !== t14 ||
+    $[57] !== t15 ||
+    $[58] !== t16 ||
+    $[59] !== t29
+  ) {
+    t30 = (
+      <T1 title={t14} onCancel={t15} hideInputGuide={t16}>
+        {t29}
+      </T1>
+    );
     $[55] = T1;
     $[56] = t14;
     $[57] = t15;
@@ -452,7 +516,7 @@ function _temp7(prev) {
     ...prev,
     replBridgeEnabled: false,
     replBridgeExplicit: false,
-    replBridgeOutboundOnly: false
+    replBridgeOutboundOnly: false,
   };
 }
 function _temp6(s_1) {
@@ -465,13 +529,11 @@ function _temp4(s) {
   return s.replBridgeSessionUrl;
 }
 async function checkBridgePrerequisites(): Promise<string | null> {
-  // Check organization policy — remote control may be disabled
-  const {
-    waitForPolicyLimitsToLoad,
-    isPolicyAllowed
-  } = await import('../../services/policyLimits/index.js');
+  // Check organization policy: remote control may be disabled
+  const { waitForPolicyLimitsToLoad, isPolicyAllowed } =
+    await import("../../services/policyLimits/index.js");
   await waitForPolicyLimitsToLoad();
-  if (!isPolicyAllowed('allow_remote_control')) {
+  if (!isPolicyAllowed("allow_remote_control")) {
     return "Remote Control is disabled by your organization's policy.";
   }
   const disabledReason = await getBridgeDisabledReason();
@@ -482,27 +544,31 @@ async function checkBridgePrerequisites(): Promise<string | null> {
   // Mirror the v1/v2 branching logic in initReplBridge: env-less (v2) is used
   // only when the flag is on AND the session is not perpetual.  In assistant
   // mode (KAIROS) useReplBridge sets perpetual=true, which forces
-  // initReplBridge onto the v1 path — so the prerequisite check must match.
+  // initReplBridge onto the v1 path: so the prerequisite check must match.
   let useV2 = isEnvLessBridgeEnabled();
-  if (feature('KAIROS') && useV2) {
-    const {
-      isAssistantMode
-    } = await import('../../assistant/index.js');
+  if (feature("KAIROS") && useV2) {
+    const { isAssistantMode } = await import("../../assistant/index.js");
     if (isAssistantMode()) {
       useV2 = false;
     }
   }
-  const versionError = useV2 ? await checkEnvLessBridgeMinVersion() : checkBridgeMinVersion();
+  const versionError = useV2
+    ? await checkEnvLessBridgeMinVersion()
+    : checkBridgeMinVersion();
   if (versionError) {
     return versionError;
   }
   if (!getBridgeAccessToken()) {
     return BRIDGE_LOGIN_INSTRUCTION;
   }
-  logForDebugging('[bridge] Prerequisites passed, enabling bridge');
+  logForDebugging("[bridge] Prerequisites passed, enabling bridge");
   return null;
 }
-export async function call(onDone: LocalJSXCommandOnDone, _context: ToolUseContext & LocalJSXCommandContext, args: string): Promise<React.ReactNode> {
+export async function call(
+  onDone: LocalJSXCommandOnDone,
+  _context: ToolUseContext & LocalJSXCommandContext,
+  args: string,
+): Promise<React.ReactNode> {
   const name = args.trim() || undefined;
   return <BridgeToggle onDone={onDone} name={name} />;
 }

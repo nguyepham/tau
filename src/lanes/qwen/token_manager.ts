@@ -1,5 +1,5 @@
 /**
- * Qwen token lifecycle — file-backed, refresh-on-demand, race-safe.
+ * Qwen token lifecycle: file-backed, refresh-on-demand, race-safe.
  *
  * Port of reference/qwen-code-main/packages/core/src/qwen/sharedTokenManager.ts
  * adapted for claudex (no Config dependency; smaller API surface).
@@ -15,40 +15,40 @@
  * installations can share credentials if the user opts in.
  */
 
-import { readFile, writeFile, mkdir, rename } from 'fs/promises'
-import { join } from 'path'
-import { homedir } from 'os'
-import { existsSync } from 'fs'
+import { readFile, writeFile, mkdir, rename } from "fs/promises";
+import { join } from "path";
+import { homedir } from "os";
+import { existsSync } from "fs";
 import {
   type QwenCredentials,
   QwenCredentialsExpiredError,
   refreshAccessToken,
-} from './oauth.js'
+} from "./oauth.js";
 
-const QWEN_DIR = join(homedir(), '.qwen')
-const QWEN_CRED_FILE = join(QWEN_DIR, 'oauth_creds.json')
+const QWEN_DIR = join(homedir(), ".qwen");
+const QWEN_CRED_FILE = join(QWEN_DIR, "oauth_creds.json");
 
 /** Cushion before server-side expiry to force refresh. */
-const REFRESH_SKEW_MS = 30_000
+const REFRESH_SKEW_MS = 30_000;
 
 export class QwenTokenManager {
-  private creds: QwenCredentials | null = null
-  private loaded = false
-  private refreshing: Promise<QwenCredentials> | null = null
+  private creds: QwenCredentials | null = null;
+  private loaded = false;
+  private refreshing: Promise<QwenCredentials> | null = null;
 
   /**
    * Return a valid access token, refreshing if close to expiry.
-   * Throws `QwenCredentialsExpiredError` if refresh fails terminally —
+   * Throws `QwenCredentialsExpiredError` if refresh fails terminally:
    * caller should surface to the user as "run /login qwen again".
    */
   async getAccessToken(): Promise<string> {
-    const creds = await this.ensureValid()
-    return creds.access_token
+    const creds = await this.ensureValid();
+    return creds.access_token;
   }
 
   /** Return valid credentials (access_token + resource_url + more). */
   async getCredentials(): Promise<QwenCredentials> {
-    return this.ensureValid()
+    return this.ensureValid();
   }
 
   /**
@@ -56,17 +56,17 @@ export class QwenTokenManager {
    * Overwrites the file atomically.
    */
   async setCredentials(creds: QwenCredentials): Promise<void> {
-    this.creds = creds
-    this.loaded = true
-    await this.persist(creds)
+    this.creds = creds;
+    this.loaded = true;
+    await this.persist(creds);
   }
 
   /** Clear credentials (called on permanent refresh failure). */
   async clear(): Promise<void> {
-    this.creds = null
-    this.loaded = true
+    this.creds = null;
+    this.loaded = true;
     try {
-      await writeFile(QWEN_CRED_FILE, '{}', { encoding: 'utf-8', mode: 0o600 })
+      await writeFile(QWEN_CRED_FILE, "{}", { encoding: "utf-8", mode: 0o600 });
     } catch {
       // best-effort
     }
@@ -74,51 +74,58 @@ export class QwenTokenManager {
 
   /** Whether a set of credentials is currently loaded. */
   async hasCredentials(): Promise<boolean> {
-    if (!this.loaded) await this.load()
-    return this.creds != null && !!this.creds.access_token
+    if (!this.loaded) await this.load();
+    return this.creds != null && !!this.creds.access_token;
   }
 
   // ─── Internals ─────────────────────────────────────────────────
 
   private async ensureValid(): Promise<QwenCredentials> {
-    if (!this.loaded) await this.load()
+    if (!this.loaded) await this.load();
     if (!this.creds) {
-      throw new QwenCredentialsExpiredError('No Qwen credentials; run /login qwen')
+      throw new QwenCredentialsExpiredError(
+        "No Qwen credentials; run /login qwen",
+      );
     }
     if (this.creds.expiry_date - Date.now() > REFRESH_SKEW_MS) {
-      return this.creds
+      return this.creds;
     }
-    // Refresh — coalesce concurrent callers onto one request.
+    // Refresh: coalesce concurrent callers onto one request.
     if (!this.refreshing) {
       this.refreshing = this.doRefresh(this.creds).finally(() => {
-        this.refreshing = null
-      })
+        this.refreshing = null;
+      });
     }
-    return this.refreshing
+    return this.refreshing;
   }
 
   private async doRefresh(old: QwenCredentials): Promise<QwenCredentials> {
     try {
-      const next = await refreshAccessToken(old)
-      this.creds = next
-      await this.persist(next)
-      return next
+      const next = await refreshAccessToken(old);
+      this.creds = next;
+      await this.persist(next);
+      return next;
     } catch (err) {
       if (err instanceof QwenCredentialsExpiredError) {
-        await this.clear()
+        await this.clear();
       }
-      throw err
+      throw err;
     }
   }
 
   private async load(): Promise<void> {
-    this.loaded = true
-    if (!existsSync(QWEN_CRED_FILE)) return
+    this.loaded = true;
+    if (!existsSync(QWEN_CRED_FILE)) return;
     try {
-      const raw = await readFile(QWEN_CRED_FILE, 'utf-8')
-      const parsed = JSON.parse(raw) as QwenCredentials | Record<string, never>
-      if (parsed && typeof parsed === 'object' && 'access_token' in parsed && parsed.access_token) {
-        this.creds = parsed as QwenCredentials
+      const raw = await readFile(QWEN_CRED_FILE, "utf-8");
+      const parsed = JSON.parse(raw) as QwenCredentials | Record<string, never>;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "access_token" in parsed &&
+        parsed.access_token
+      ) {
+        this.creds = parsed as QwenCredentials;
       }
     } catch {
       // Corrupt file → ignore; user re-runs /login qwen.
@@ -128,29 +135,29 @@ export class QwenTokenManager {
   private async persist(creds: QwenCredentials): Promise<void> {
     try {
       if (!existsSync(QWEN_DIR)) {
-        await mkdir(QWEN_DIR, { recursive: true, mode: 0o700 })
+        await mkdir(QWEN_DIR, { recursive: true, mode: 0o700 });
       }
-      const tmp = QWEN_CRED_FILE + '.tmp'
+      const tmp = QWEN_CRED_FILE + ".tmp";
       await writeFile(tmp, JSON.stringify(creds, null, 2), {
-        encoding: 'utf-8',
+        encoding: "utf-8",
         mode: 0o600,
-      })
-      await rename(tmp, QWEN_CRED_FILE)
+      });
+      await rename(tmp, QWEN_CRED_FILE);
     } catch {
-      // best-effort — in-memory state still works this session.
+      // best-effort: in-memory state still works this session.
     }
   }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────
 
-let _singleton: QwenTokenManager | null = null
+let _singleton: QwenTokenManager | null = null;
 
 export function getQwenTokenManager(): QwenTokenManager {
-  if (!_singleton) _singleton = new QwenTokenManager()
-  return _singleton
+  if (!_singleton) _singleton = new QwenTokenManager();
+  return _singleton;
 }
 
 export function _resetQwenTokenManagerForTest(): void {
-  _singleton = null
+  _singleton = null;
 }

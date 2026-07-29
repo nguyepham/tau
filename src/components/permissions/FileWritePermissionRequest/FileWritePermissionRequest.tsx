@@ -1,16 +1,20 @@
 import { c as _c } from "react/compiler-runtime";
-import { existsSync } from 'fs';
-import { basename, relative } from 'path';
-import React, { useMemo } from 'react';
-import type { z } from 'zod/v4';
-import { Text } from '../../../ink.js';
-import { FileWriteTool } from '../../../tools/FileWriteTool/FileWriteTool.js';
-import { getCwd } from '../../../utils/cwd.js';
-import { readFileSync } from '../../../utils/fileRead.js';
-import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
-import { createSingleEditDiffConfig, type FileEdit, type IDEDiffSupport } from '../FilePermissionDialog/ideDiffConfig.js';
-import type { PermissionRequestProps } from '../PermissionRequest.js';
-import { FileWriteToolDiff } from './FileWriteToolDiff.js';
+import { existsSync } from "fs";
+import { basename, relative } from "path";
+import React, { useMemo } from "react";
+import type { z } from "zod/v4";
+import { Text } from "../../../ink.js";
+import { FileWriteTool } from "../../../tools/FileWriteTool/FileWriteTool.js";
+import { getCwd } from "../../../utils/cwd.js";
+import { readFileSync } from "../../../utils/fileRead.js";
+import { FilePermissionDialog } from "../FilePermissionDialog/FilePermissionDialog.js";
+import {
+  createSingleEditDiffConfig,
+  type FileEdit,
+  type IDEDiffSupport,
+} from "../FilePermissionDialog/ideDiffConfig.js";
+import type { PermissionRequestProps } from "../PermissionRequest.js";
+import { FileWriteToolDiff } from "./FileWriteToolDiff.js";
 type FileWriteToolInput = z.infer<typeof FileWriteTool.inputSchema>;
 const ideDiffSupport: IDEDiffSupport<FileWriteToolInput> = {
   getConfig: (input: FileWriteToolInput) => {
@@ -21,9 +25,13 @@ const ideDiffSupport: IDEDiffSupport<FileWriteToolInput> = {
       // Any unreadable target is previewed as a plain create. Rethrowing a
       // non-ENOENT read error here used to escape into the render (see the
       // dialog body below for why that is fatal).
-      oldContent = '';
+      oldContent = "";
     }
-    return createSingleEditDiffConfig(input.file_path, oldContent, input.content, false // For file writes, we replace the entire content
+    return createSingleEditDiffConfig(
+      input.file_path,
+      oldContent,
+      input.content,
+      false, // For file writes, we replace the entire content
     );
   },
   applyChanges: (input: FileWriteToolInput, modifiedEdits: FileEdit[]) => {
@@ -31,11 +39,11 @@ const ideDiffSupport: IDEDiffSupport<FileWriteToolInput> = {
     if (firstEdit) {
       return {
         ...input,
-        content: firstEdit.new_string
+        content: firstEdit.new_string,
       };
     }
     return input;
-  }
+  },
 };
 export function FileWritePermissionRequest(props) {
   const $ = _c(30);
@@ -49,17 +57,13 @@ export function FileWritePermissionRequest(props) {
     t0 = $[1];
   }
   const parsed = t0;
-  const {
-    file_path,
-    content
-  } = parsed;
+  const { file_path, content } = parsed;
   let t1;
   if ($[2] !== file_path) {
-    ;
     try {
       t1 = {
         fileExists: true,
-        oldContent: readFileSync(file_path)
+        oldContent: readFileSync(file_path),
       };
     } catch {
       // Never rethrow out of the render. This dialog's whole job is to show
@@ -71,7 +75,7 @@ export function FileWritePermissionRequest(props) {
       // Tab and Ctrl+C all land on a dead UI and the session looks hung.
       //
       // Reproduced with a file_path that is a directory (readFileSync throws
-      // EISDIR, which isENOENT rejects). Windows adds more ways in — a
+      // EISDIR, which isENOENT rejects). Windows adds more ways in: a
       // Controlled-Folder-Access path or a file held open by another process
       // fails with EPERM/EBUSY, not ENOENT.
       //
@@ -80,7 +84,7 @@ export function FileWritePermissionRequest(props) {
       // previewed instead, which is what a reviewer needs to see anyway.
       t1 = {
         fileExists: existsSync(file_path),
-        oldContent: ""
+        oldContent: "",
       };
     }
     $[2] = file_path;
@@ -88,10 +92,7 @@ export function FileWritePermissionRequest(props) {
   } else {
     t1 = $[3];
   }
-  const {
-    fileExists,
-    oldContent
-  } = t1;
+  const { fileExists, oldContent } = t1;
   const actionText = fileExists ? "overwrite" : "create";
   const t2 = props.toolUseConfirm;
   const t3 = props.toolUseContext;
@@ -125,7 +126,11 @@ export function FileWritePermissionRequest(props) {
   }
   let t11;
   if ($[11] !== actionText || $[12] !== t10) {
-    t11 = <Text>Do you want to {actionText} {t10}?</Text>;
+    t11 = (
+      <Text>
+        Do you want to {actionText} {t10}?
+      </Text>
+    );
     $[11] = actionText;
     $[12] = t10;
     $[13] = t11;
@@ -133,8 +138,20 @@ export function FileWritePermissionRequest(props) {
     t11 = $[13];
   }
   let t12;
-  if ($[14] !== content || $[15] !== fileExists || $[16] !== file_path || $[17] !== oldContent) {
-    t12 = <FileWriteToolDiff file_path={file_path} content={content} fileExists={fileExists} oldContent={oldContent} />;
+  if (
+    $[14] !== content ||
+    $[15] !== fileExists ||
+    $[16] !== file_path ||
+    $[17] !== oldContent
+  ) {
+    t12 = (
+      <FileWriteToolDiff
+        file_path={file_path}
+        content={content}
+        fileExists={fileExists}
+        oldContent={oldContent}
+      />
+    );
     $[14] = content;
     $[15] = fileExists;
     $[16] = file_path;
@@ -144,8 +161,35 @@ export function FileWritePermissionRequest(props) {
     t12 = $[18];
   }
   let t13;
-  if ($[19] !== file_path || $[20] !== props.onDone || $[21] !== props.onReject || $[22] !== props.toolUseConfirm || $[23] !== props.toolUseContext || $[24] !== props.workerBadge || $[25] !== t11 || $[26] !== t12 || $[27] !== t7 || $[28] !== t8) {
-    t13 = <FilePermissionDialog toolUseConfirm={t2} toolUseContext={t3} onDone={t4} onReject={t5} workerBadge={t6} title={t7} subtitle={t8} question={t11} content={t12} path={file_path} completionType="write_file_single" parseInput={parseInput} ideDiffSupport={ideDiffSupport} />;
+  if (
+    $[19] !== file_path ||
+    $[20] !== props.onDone ||
+    $[21] !== props.onReject ||
+    $[22] !== props.toolUseConfirm ||
+    $[23] !== props.toolUseContext ||
+    $[24] !== props.workerBadge ||
+    $[25] !== t11 ||
+    $[26] !== t12 ||
+    $[27] !== t7 ||
+    $[28] !== t8
+  ) {
+    t13 = (
+      <FilePermissionDialog
+        toolUseConfirm={t2}
+        toolUseContext={t3}
+        onDone={t4}
+        onReject={t5}
+        workerBadge={t6}
+        title={t7}
+        subtitle={t8}
+        question={t11}
+        content={t12}
+        path={file_path}
+        completionType="write_file_single"
+        parseInput={parseInput}
+        ideDiffSupport={ideDiffSupport}
+      />
+    );
     $[19] = file_path;
     $[20] = props.onDone;
     $[21] = props.onReject;

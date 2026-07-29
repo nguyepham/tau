@@ -656,7 +656,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
     const want = String(value ?? '');
     this.insertText(el, want, true);
     const gotValue = this.fieldValue(el);
-    if (want && !gotValue) return { success: false, reason: 'not_editable', error: 'Field @' + ref + ' stayed empty — it did not accept the text (disabled or custom widget). Try clicking it first, or use a different element.' };
+    if (want && !gotValue) return { success: false, reason: 'not_editable', error: 'Field @' + ref + ' stayed empty: it did not accept the text (disabled or custom widget). Try clicking it first, or use a different element.' };
     return { success: true, info: { ref: Number(ref), tag: el.tagName.toLowerCase(), valueLength: gotValue.length, verified: gotValue === want } };
   },
   selectOption(el, value, ref) {
@@ -719,7 +719,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
   // overlay container, then its close control (X / aria-label close / role
   // button in a dialog). Returns what it closed, or a miss so the caller can
   // fall back to the Escape key from the Node side. This is the first-class
-  // way out of a QuickView/lightbox — far more reliable than guessing where
+  // way out of a QuickView/lightbox: far more reliable than guessing where
   // the X sits and clicking coordinates.
   overlayPaintRank(el) {
     const doc = el.ownerDocument || document;
@@ -867,7 +867,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
   },
   // HTML5 drag-and-drop fallback (dragstart→dragenter→dragover→drop→dragend
   // with a shared DataTransfer) for when the real mouse drag visibly did
-  // nothing — kanban/list libraries listen to these events, not mouse events.
+  // nothing: kanban/list libraries listen to these events, not mouse events.
   syntheticDrag(fromRef, toRef) {
     const a = this.byRef(fromRef);
     const b = this.byRef(toRef);
@@ -920,7 +920,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
     return { success: true };
   },
   // Readable-content extraction (the read action): walks the rendered DOM and
-  // serializes it as compact markdown — headings, paragraphs, lists, tables,
+  // serializes it as compact markdown: headings, paragraphs, lists, tables,
   // code fences, links as [text](url). This is how the model READS a page
   // (articles, docs, search results) without burning tokens on screenshots.
   readPage(selector, offset, maxChars) {
@@ -1011,7 +1011,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
         push('\\n');
         return;
       }
-      // Generic container (P, DIV, SECTION, ...): mixed content — direct text
+      // Generic container (P, DIV, SECTION, ...): mixed content: direct text
       // and inline children accumulate into a paragraph; block children flush
       // it and recurse, so neither side of the mix is lost.
       let buf = '';
@@ -1044,7 +1044,7 @@ window.__tauPageTools = Object.assign(window.__tauPageTools || {}, {
  * stealthed Playwright) sails past Google's "unusual traffic" wall while a
  * bare CDP-driven Chrome gets flagged: a remote-debugged Chrome leaks
  * navigator.webdriver, an empty plugin/mediaDevice list, a missing
- * window.chrome, and headless screen/outerWindow zeros — all cheap bot tells.
+ * window.chrome, and headless screen/outerWindow zeros: all cheap bot tells.
  * We mask the high-signal ones. `chromeMajor` keeps the spoofed userAgentData
  * brands consistent with the real User-Agent string.
  */

@@ -1,23 +1,23 @@
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
-import * as React from 'react';
-import { useSettings } from '../../hooks/useSettings.js';
-import { Box, Text, useAnimationFrame } from '../../ink.js';
-import { interpolateColor, toRGBColor } from '../Spinner/utils.js';
+import { feature } from "bun:bundle";
+import * as React from "react";
+import { useSettings } from "../../hooks/useSettings.js";
+import { Box, Text, useAnimationFrame } from "../../ink.js";
+import { interpolateColor, toRGBColor } from "../Spinner/utils.js";
 type Props = {
-  voiceState: 'idle' | 'recording' | 'processing';
+  voiceState: "idle" | "recording" | "processing";
 };
 
 // Processing shimmer colors: dim gray to lighter gray (matches ThinkingShimmerText)
 const PROCESSING_DIM = {
   r: 153,
   g: 153,
-  b: 153
+  b: 153,
 };
 const PROCESSING_BRIGHT = {
   r: 185,
   g: 185,
-  b: 185
+  b: 185,
 };
 const PULSE_PERIOD_S = 2; // 2 second period for all pulsing animations
 
@@ -38,40 +38,35 @@ export function VoiceIndicator(props) {
 }
 function VoiceIndicatorImpl(t0) {
   const $ = _c(2);
-  const {
-    voiceState
-  } = t0;
+  const { voiceState } = t0;
   switch (voiceState) {
-    case "recording":
-      {
-        let t1;
-        if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <Text dimColor={true}>listening…</Text>;
-          $[0] = t1;
-        } else {
-          t1 = $[0];
-        }
-        return t1;
+    case "recording": {
+      let t1;
+      if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+        t1 = <Text dimColor={true}>listening…</Text>;
+        $[0] = t1;
+      } else {
+        t1 = $[0];
       }
-    case "processing":
-      {
-        let t1;
-        if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <ProcessingShimmer />;
-          $[1] = t1;
-        } else {
-          t1 = $[1];
-        }
-        return t1;
+      return t1;
+    }
+    case "processing": {
+      let t1;
+      if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+        t1 = <ProcessingShimmer />;
+        $[1] = t1;
+      } else {
+        t1 = $[1];
       }
-    case "idle":
-      {
-        return null;
-      }
+      return t1;
+    }
+    case "idle": {
+      return null;
+    }
   }
 }
 
-// Static — the warmup window (~120ms between space #2 and activation)
+// Static: the warmup window (~120ms between space #2 and activation)
 // is too brief for a 1s-period shimmer to register, and a 50ms animation
 // timer here runs concurrently with auto-repeat spaces arriving every
 // 30-80ms, compounding re-renders during an already-busy window.
@@ -105,10 +100,13 @@ function ProcessingShimmer() {
     return t0;
   }
   const elapsedSec = time / 1000;
-  const opacity = (Math.sin(elapsedSec * Math.PI * 2 / PULSE_PERIOD_S) + 1) / 2;
+  const opacity =
+    (Math.sin((elapsedSec * Math.PI * 2) / PULSE_PERIOD_S) + 1) / 2;
   let t0;
   if ($[1] !== opacity) {
-    t0 = toRGBColor(interpolateColor(PROCESSING_DIM, PROCESSING_BRIGHT, opacity));
+    t0 = toRGBColor(
+      interpolateColor(PROCESSING_DIM, PROCESSING_BRIGHT, opacity),
+    );
     $[1] = opacity;
     $[2] = t0;
   } else {

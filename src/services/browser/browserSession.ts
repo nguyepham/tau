@@ -352,11 +352,11 @@ export const COORD_STREAK_LIMIT = 3;
  * given the coordinate clicks already made since the last explicit look.
  * Pure so the guard can be unit-tested without a live browser.
  *
- *  - 'repeat' — lands on a spot already clicked that did nothing; repeating it
+ *  - 'repeat': lands on a spot already clicked that did nothing; repeating it
  *    cannot help.
- *  - 'streak' — the model has clicked blind coordinates COORD_STREAK_LIMIT times
+ *  - 'streak': the model has clicked blind coordinates COORD_STREAK_LIMIT times
  *    without observing/screenshotting; it is guessing.
- *  - null — allow.
+ *  - null: allow.
  */
 export function classifyCoordinateStreak(
   previous: ReadonlyArray<{ x: number; y: number }>,
@@ -506,7 +506,7 @@ class BrowserSessionService {
 
   /**
    * Clears the blind-coordinate-click streak. Called by the tool layer when the
-   * model takes an explicit look at the page (observe/screenshot) — NOT on the
+   * model takes an explicit look at the page (observe/screenshot): NOT on the
    * implicit observation that trails every action, or the guard would never
    * accumulate across a run of clicks.
    */
@@ -1079,7 +1079,7 @@ class BrowserSessionService {
 
   /**
    * Moves the mouse over an element (by ref or text) with a human-ish path.
-   * This is how hover menus, tooltips, and hover-revealed controls open —
+   * This is how hover menus, tooltips, and hover-revealed controls open:
    * the observation afterwards contains whatever appeared.
    */
   async hover(
@@ -1150,7 +1150,7 @@ class BrowserSessionService {
   /**
    * Closes the topmost modal/dialog/drawer/popup: clicks its close control, or
    * falls back to the Escape key when the overlay has no obvious close button.
-   * The clean way out of a QuickView/lightbox — replaces the coordinate-bashing
+   * The clean way out of a QuickView/lightbox: replaces the coordinate-bashing
    * the model resorts to when a click reports element_covered.
    */
   async dismissOverlay(signal?: AbortSignal): Promise<BrowserActionOutcome> {
@@ -1219,7 +1219,7 @@ class BrowserSessionService {
 
   /**
    * Extracts the rendered page (or a selector within it) as compact markdown.
-   * This is the model's reading channel — articles, docs, search results —
+   * This is the model's reading channel: articles, docs, search results:
    * with offset/maxChars pagination for long pages.
    */
   async readPage(options: {
@@ -1396,7 +1396,7 @@ class BrowserSessionService {
   }
 
   /**
-   * Runs JavaScript in the page and returns its JSON-serialized value — the
+   * Runs JavaScript in the page and returns its JSON-serialized value: the
    * escape hatch for data extraction and anything without a dedicated action.
    * Statement bodies get an async-IIFE retry so both styles work.
    */
@@ -2384,7 +2384,7 @@ class BrowserSessionService {
           .catch(() => undefined);
         const msg = (params.message ?? "").slice(0, 200);
         this.sessionNotes.push(
-          `A JavaScript ${params.type ?? "dialog"} appeared${msg ? `: "${msg}"` : ""} — auto-${accept ? "accepted (OK)" : "dismissed (Cancel)"}.`,
+          `A JavaScript ${params.type ?? "dialog"} appeared${msg ? `: "${msg}"` : ""}: auto-${accept ? "accepted (OK)" : "dismissed (Cancel)"}.`,
         );
       },
     );

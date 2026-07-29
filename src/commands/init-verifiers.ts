@@ -1,17 +1,17 @@
-import type { Command } from '../commands.js'
+import type { Command } from "../commands.js";
 
 const command = {
-  type: 'prompt',
-  name: 'init-verifiers',
+  type: "prompt",
+  name: "init-verifiers",
   description:
-    'Create verifier skill(s) for automated verification of code changes',
+    "Create verifier skill(s) for automated verification of code changes",
   contentLength: 0, // Dynamic content
-  progressMessage: 'analyzing your project and creating verifier skills',
-  source: 'builtin',
+  progressMessage: "analyzing your project and creating verifier skills",
+  source: "builtin",
   async getPromptForCommand() {
     return [
       {
-        type: 'text',
+        type: "text",
         text: `Use the TodoWrite tool to track your progress through this multi-step task.
 
 ## Goal
@@ -121,7 +121,7 @@ Based on the areas detected in Phase 1, you may need to create multiple verifier
 
    The \`<project>\` portion should be a short identifier for the subdirectory or project area (e.g., the folder name or package name).
 
-   Custom names are allowed but MUST include "verifier" in the name — the Verify agent discovers skills by looking for "verifier" in the folder name.
+   Custom names are allowed but MUST include "verifier" in the name: the Verify agent discovers skills by looking for "verifier" in the folder name.
 
 2. **Project-specific questions** based on type:
 
@@ -204,7 +204,7 @@ After verification:
 
 ## Self-Update
 
-If verification fails because this skill's instructions are outdated (dev server command/port/ready-signal changed, etc.) — not because the feature under test is broken — or if the user corrects you mid-run, use AskUserQuestion to confirm and then Edit this SKILL.md with a minimal targeted fix.
+If verification fails because this skill's instructions are outdated (dev server command/port/ready-signal changed, etc.): not because the feature under test is broken: or if the user corrects you mid-run, use AskUserQuestion to confirm and then Edit this SKILL.md with a minimal targeted fix.
 \`\`\`
 
 ### Allowed Tools by Type
@@ -249,14 +249,14 @@ allowed-tools:
 
 After writing the skill file(s), inform the user:
 1. Where each skill was created (always in \`.claude/skills/\`)
-2. How the Verify agent will discover them — the folder name must contain "verifier" (case-insensitive) for automatic discovery
+2. How the Verify agent will discover them: the folder name must contain "verifier" (case-insensitive) for automatic discovery
 3. That they can edit the skills to customize them
 4. That they can run /init-verifiers again to add more verifiers for other areas
 5. That the verifier will offer to self-update if it detects its own instructions are outdated (wrong dev server command, changed ready signal, etc.)
 `,
       },
-    ]
+    ];
   },
-} satisfies Command
+} satisfies Command;
 
-export default command
+export default command;

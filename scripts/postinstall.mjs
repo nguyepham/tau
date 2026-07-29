@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tau postinstall — downloads the platform-correct ripgrep binary
+ * Tau postinstall: downloads the platform-correct ripgrep binary
  * and pre-pulls the approved Ollama cloud model aliases.
  *
  * Runs automatically when the reviewed Tau installer invokes npm.
@@ -11,54 +11,94 @@
  * and first-launch code will retry any missed Ollama pulls.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, createWriteStream, readdirSync, renameSync, rmSync, copyFileSync } from 'fs';
-import { chmod } from 'fs/promises';
-import { resolve, dirname, join, basename } from 'path';
-import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
-import https from 'https';
-import { tmpdir } from 'os';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  createWriteStream,
+  readdirSync,
+  renameSync,
+  rmSync,
+  copyFileSync,
+} from "fs";
+import { chmod } from "fs/promises";
+import { resolve, dirname, join, basename } from "path";
+import { fileURLToPath } from "url";
+import { spawnSync } from "child_process";
+import https from "https";
+import { tmpdir } from "os";
 import {
   isLinuxArm64Musl,
   isUsableRipgrepCommand,
   resolveWindowsSystemExecutable,
-} from './platform-support.mjs';
+} from "./platform-support.mjs";
 
 // KEEP IN SYNC with src/utils/model/ollamaCatalog.ts (CLOUD_MODELS_LIST).
 const OLLAMA_CLOUD_MODELS = [
-  'glm-5.1:cloud',
-  'glm-5:cloud',
-  'glm-4.7:cloud',
-  'glm-4.6:cloud',
-  'kimi-k2.5:cloud',
-  'kimi-k2-thinking:cloud',
-  'qwen3.5:cloud',
-  'qwen3-coder-next:cloud',
-  'minimax-m2.7:cloud',
-  'minimax-m2.5:cloud',
-  'minimax-m2.1:cloud',
-  'minimax-m2:cloud',
-  'nemotron-3-super:cloud',
-  'deepseek-v3.2:cloud',
-  'gemini-3-flash-preview:cloud',
+  "glm-5.1:cloud",
+  "glm-5:cloud",
+  "glm-4.7:cloud",
+  "glm-4.6:cloud",
+  "kimi-k2.5:cloud",
+  "kimi-k2-thinking:cloud",
+  "qwen3.5:cloud",
+  "qwen3-coder-next:cloud",
+  "minimax-m2.7:cloud",
+  "minimax-m2.5:cloud",
+  "minimax-m2.1:cloud",
+  "minimax-m2:cloud",
+  "nemotron-3-super:cloud",
+  "deepseek-v3.2:cloud",
+  "gemini-3-flash-preview:cloud",
 ];
 
-const RG_VERSION = '14.1.1';
+const RG_VERSION = "14.1.1";
 
 // Map Node's (platform-arch) pair to the ripgrep release info
 const PLATFORM_MAP = {
-  'win32-x64':   { target: 'x86_64-pc-windows-msvc',   ext: 'zip',    binary: 'rg.exe', dir: 'x64-win32'   },
+  "win32-x64": {
+    target: "x86_64-pc-windows-msvc",
+    ext: "zip",
+    binary: "rg.exe",
+    dir: "x64-win32",
+  },
   // ripgrep first added an official Windows ARM64 artifact in 15.x. Keep the
   // established 14.1.1 binary everywhere else to avoid an unrelated upgrade.
-  'win32-arm64': { target: 'aarch64-pc-windows-msvc',  ext: 'zip',    binary: 'rg.exe', dir: 'arm64-win32', version: '15.1.0' },
-  'darwin-x64':  { target: 'x86_64-apple-darwin',       ext: 'tar.gz', binary: 'rg',     dir: 'x64-darwin'   },
-  'darwin-arm64':{ target: 'aarch64-apple-darwin',      ext: 'tar.gz', binary: 'rg',     dir: 'arm64-darwin' },
-  'linux-x64':   { target: 'x86_64-unknown-linux-musl', ext: 'tar.gz', binary: 'rg',     dir: 'x64-linux'    },
-  'linux-arm64': { target: 'aarch64-unknown-linux-gnu', ext: 'tar.gz', binary: 'rg',     dir: 'arm64-linux'  },
+  "win32-arm64": {
+    target: "aarch64-pc-windows-msvc",
+    ext: "zip",
+    binary: "rg.exe",
+    dir: "arm64-win32",
+    version: "15.1.0",
+  },
+  "darwin-x64": {
+    target: "x86_64-apple-darwin",
+    ext: "tar.gz",
+    binary: "rg",
+    dir: "x64-darwin",
+  },
+  "darwin-arm64": {
+    target: "aarch64-apple-darwin",
+    ext: "tar.gz",
+    binary: "rg",
+    dir: "arm64-darwin",
+  },
+  "linux-x64": {
+    target: "x86_64-unknown-linux-musl",
+    ext: "tar.gz",
+    binary: "rg",
+    dir: "x64-linux",
+  },
+  "linux-arm64": {
+    target: "aarch64-unknown-linux-gnu",
+    ext: "tar.gz",
+    binary: "rg",
+    dir: "arm64-linux",
+  },
 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(__dirname, '..');
+const packageRoot = resolve(__dirname, "..");
 
 async function main() {
   const key = `${process.platform}-${process.arch}`;
@@ -72,11 +112,11 @@ async function main() {
 
   if (isLinuxArm64Musl()) {
     return requireSystemRipgrep(
-      'the upstream release has no Linux ARM64 musl binary',
+      "the upstream release has no Linux ARM64 musl binary",
     );
   }
 
-  const destDir = join(packageRoot, 'dist', 'vendor', 'ripgrep', info.dir);
+  const destDir = join(packageRoot, "dist", "vendor", "ripgrep", info.dir);
   const destBinary = join(destDir, info.binary);
 
   if (existsSync(destBinary)) {
@@ -98,7 +138,7 @@ async function main() {
   // Use a private, unique directory. A predictable shared /tmp filename lets
   // concurrent installs corrupt each other's download and can follow a stale
   // symlink left by another local user.
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'tau-ripgrep-'));
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), "tau-ripgrep-"));
   const tmpArchive = join(temporaryDirectory, archiveName);
 
   console.log(`[tau] Downloading ripgrep ${version} for ${key}...`);
@@ -107,7 +147,7 @@ async function main() {
     await download(url, tmpArchive);
     mkdirSync(destDir, { recursive: true });
     await extract(tmpArchive, info.ext, info.binary, destDir);
-    if (process.platform !== 'win32') {
+    if (process.platform !== "win32") {
       await chmod(destBinary, 0o755);
     }
     if (
@@ -115,12 +155,12 @@ async function main() {
         requireFile: true,
       })
     ) {
-      throw new Error('the downloaded ripgrep binary cannot run on this host');
+      throw new Error("the downloaded ripgrep binary cannot run on this host");
     }
     console.log(`[tau] ripgrep installed at ${destBinary}`);
   } catch (err) {
     rmSync(destBinary, { force: true });
-    if (isUsableRipgrepCommand('rg')) {
+    if (isUsableRipgrepCommand("rg")) {
       console.log(
         `[tau] Vendored ripgrep unavailable (${err.message}); using the working system rg.`,
       );
@@ -131,7 +171,11 @@ async function main() {
       { cause: err },
     );
   } finally {
-    try { rmSync(temporaryDirectory, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -139,43 +183,58 @@ async function main() {
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     function get(currentUrl, redirects = 0) {
-      if (redirects > 5) return reject(new Error('Too many redirects'));
-      const request = https.get(currentUrl, { headers: { 'User-Agent': 'tau-postinstall' } }, (res) => {
-        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
-          res.resume(); // drain so the connection is freed
-          const location = res.headers.location;
-          if (!location) return reject(new Error(`Redirect without Location for ${currentUrl}`));
-          let nextUrl;
-          try {
-            nextUrl = new URL(location, currentUrl);
-          } catch {
-            return reject(new Error(`Invalid redirect Location for ${currentUrl}`));
+      if (redirects > 5) return reject(new Error("Too many redirects"));
+      const request = https.get(
+        currentUrl,
+        { headers: { "User-Agent": "tau-postinstall" } },
+        (res) => {
+          if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+            res.resume(); // drain so the connection is freed
+            const location = res.headers.location;
+            if (!location)
+              return reject(
+                new Error(`Redirect without Location for ${currentUrl}`),
+              );
+            let nextUrl;
+            try {
+              nextUrl = new URL(location, currentUrl);
+            } catch {
+              return reject(
+                new Error(`Invalid redirect Location for ${currentUrl}`),
+              );
+            }
+            if (nextUrl.protocol !== "https:") {
+              return reject(
+                new Error(`Refusing non-HTTPS redirect for ${currentUrl}`),
+              );
+            }
+            return get(nextUrl.href, redirects + 1);
           }
-          if (nextUrl.protocol !== 'https:') {
-            return reject(new Error(`Refusing non-HTTPS redirect for ${currentUrl}`));
+          if (res.statusCode !== 200) {
+            res.resume();
+            return reject(
+              new Error(`HTTP ${res.statusCode} for ${currentUrl}`),
+            );
           }
-          return get(nextUrl.href, redirects + 1);
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          return reject(new Error(`HTTP ${res.statusCode} for ${currentUrl}`));
-        }
-        const file = createWriteStream(dest, { flags: 'wx' });
-        res.pipe(file);
-        file.on('finish', () => file.close(error => error ? reject(error) : resolve()));
-        file.on('error', error => {
-          res.destroy();
-          reject(error);
-        });
-        res.on('error', error => {
-          file.destroy();
-          reject(error);
-        });
-      });
+          const file = createWriteStream(dest, { flags: "wx" });
+          res.pipe(file);
+          file.on("finish", () =>
+            file.close((error) => (error ? reject(error) : resolve())),
+          );
+          file.on("error", (error) => {
+            res.destroy();
+            reject(error);
+          });
+          res.on("error", (error) => {
+            file.destroy();
+            reject(error);
+          });
+        },
+      );
       request.setTimeout(60_000, () => {
         request.destroy(new Error(`Download timed out for ${currentUrl}`));
       });
-      request.on('error', reject);
+      request.on("error", reject);
     }
 
     get(url);
@@ -186,9 +245,9 @@ function download(url, dest) {
  * Extract the ripgrep binary from the archive into destDir.
  *
  * Uses `tar` for both `.tar.gz` and `.zip`. On Linux/macOS that's the
- * system tar (GNU or BSD — either handles tar.gz fine). On Windows we
+ * system tar (GNU or BSD: either handles tar.gz fine). On Windows we
  * pin to the libarchive `tar.exe` in the SystemRoot/WINDIR System32 directory
- * Windows 10 1803 — the only tool guaranteed to be present that can read
+ * Windows 10 1803: the only tool guaranteed to be present that can read
  * ZIPs without PowerShell. We avoid PATH on Windows because dev shells
  * (Git Bash, WSL, MSYS2) commonly shadow it with GNU tar, which can't
  * read ZIPs. If no usable tar is found we throw and the caller falls
@@ -198,9 +257,9 @@ async function extract(archivePath, ext, binaryName, destDir) {
   const tarBin = resolveTarBin(ext);
   if (!tarBin) {
     throw new Error(
-      process.platform === 'win32'
-        ? 'No ZIP-capable extractor found in the Windows System32 directory.'
-        : '`tar` not found on PATH.'
+      process.platform === "win32"
+        ? "No ZIP-capable extractor found in the Windows System32 directory."
+        : "`tar` not found on PATH.",
     );
   }
 
@@ -219,15 +278,20 @@ async function extract(archivePath, ext, binaryName, destDir) {
   try {
     copyFileSync(archivePath, stagingArchive);
 
-    const args = ext === 'tar.gz' ? ['-xzf', archiveBase] : ['-xf', archiveBase];
-    const result = spawnSync(tarBin, args, { cwd: stagingDir, stdio: 'pipe' });
+    const args =
+      ext === "tar.gz" ? ["-xzf", archiveBase] : ["-xf", archiveBase];
+    const result = spawnSync(tarBin, args, { cwd: stagingDir, stdio: "pipe" });
     if (result.status !== 0) {
-      throw new Error(`tar extraction failed: ${result.stderr?.toString().trim() || `exit ${result.status}`}`);
+      throw new Error(
+        `tar extraction failed: ${result.stderr?.toString().trim() || `exit ${result.status}`}`,
+      );
     }
 
     const found = findBinary(stagingDir, binaryName);
     if (!found) {
-      throw new Error(`Binary ${binaryName} not found in archive ${archivePath}.`);
+      throw new Error(
+        `Binary ${binaryName} not found in archive ${archivePath}.`,
+      );
     }
     renameSync(found, join(destDir, binaryName));
   } finally {
@@ -236,7 +300,7 @@ async function extract(archivePath, ext, binaryName, destDir) {
 }
 
 function requireSystemRipgrep(reason) {
-  if (isUsableRipgrepCommand('rg')) {
+  if (isUsableRipgrepCommand("rg")) {
     console.log(`[tau] ${reason}; using the working system rg.`);
     return;
   }
@@ -250,17 +314,17 @@ function requireSystemRipgrep(reason) {
  * working extractor, or null if none is available.
  */
 function resolveTarBin(ext) {
-  if (process.platform === 'win32' && ext === 'zip') {
+  if (process.platform === "win32" && ext === "zip") {
     // Pin to the absolute path so Git Bash / WSL / MSYS2 GNU tar can't
     // shadow Windows' libarchive bsdtar (the only one that reads ZIPs).
-    const bsdtar = resolveWindowsSystemExecutable('tar.exe');
+    const bsdtar = resolveWindowsSystemExecutable("tar.exe");
     if (!bsdtar) return null;
-    const probe = spawnSync(bsdtar, ['--version'], { stdio: 'pipe' });
+    const probe = spawnSync(bsdtar, ["--version"], { stdio: "pipe" });
     return probe.status === 0 ? bsdtar : null;
   }
-  // Linux/macOS use tar.gz — GNU tar or bsdtar both handle it fine.
-  const probe = spawnSync('tar', ['--version'], { stdio: 'ignore' });
-  return probe.status === 0 ? 'tar' : null;
+  // Linux/macOS use tar.gz: GNU tar or bsdtar both handle it fine.
+  const probe = spawnSync("tar", ["--version"], { stdio: "ignore" });
+  return probe.status === 0 ? "tar" : null;
 }
 
 /** Recursively locate a file by exact name under root. */
@@ -281,26 +345,34 @@ function findBinary(root, name) {
  * Pre-pull the approved Ollama cloud aliases so the /models picker shows
  * them as ready to use. Cloud aliases resolve instantly (just register a
  * client-side reference), so the cost is a handful of fast round-trips.
- * Any failure — Ollama not installed, daemon not running, network hiccup,
- * model missing — is swallowed; first-launch code retries what's missing.
+ * Any failure: Ollama not installed, daemon not running, network hiccup,
+ * model missing: is swallowed; first-launch code retries what's missing.
  */
 function primeOllamaCloudModels() {
-  if (process.env.TAU_SKIP_OLLAMA_PREPULL === '1') return;
+  if (process.env.TAU_SKIP_OLLAMA_PREPULL === "1") return;
   // Detect ollama CLI first so we skip silently on machines without it.
-  const probe = spawnSync('ollama', ['--version'], { stdio: 'ignore', timeout: 5000 });
+  const probe = spawnSync("ollama", ["--version"], {
+    stdio: "ignore",
+    timeout: 5000,
+  });
   if (probe.status !== 0) return;
 
-  console.log(`[tau] Pre-pulling ${OLLAMA_CLOUD_MODELS.length} Ollama cloud aliases...`);
+  console.log(
+    `[tau] Pre-pulling ${OLLAMA_CLOUD_MODELS.length} Ollama cloud aliases...`,
+  );
   let ok = 0;
   let fail = 0;
   for (const model of OLLAMA_CLOUD_MODELS) {
-    const res = spawnSync('ollama', ['pull', model], {
-      stdio: 'ignore',
+    const res = spawnSync("ollama", ["pull", model], {
+      stdio: "ignore",
       timeout: 60_000,
     });
-    if (res.status === 0) ok += 1; else fail += 1;
+    if (res.status === 0) ok += 1;
+    else fail += 1;
   }
-  console.log(`[tau] Ollama pre-pull: ${ok} ok, ${fail} skipped/failed (first launch will retry).`);
+  console.log(
+    `[tau] Ollama pre-pull: ${ok} ok, ${fail} skipped/failed (first launch will retry).`,
+  );
 }
 
 /**
@@ -311,9 +383,10 @@ function primeOllamaCloudModels() {
  * is fatal so the lifecycle-completion marker cannot certify it.
  */
 async function verifyDependencyTree() {
-  if (process.env.TAU_REPAIR === '1') return;
-  const { ensureDeps, manualFixInstructions } = await import('./verify-deps.mjs');
-  console.log('[tau] Verifying runtime dependencies...');
+  if (process.env.TAU_REPAIR === "1") return;
+  const { ensureDeps, manualFixInstructions } =
+    await import("./verify-deps.mjs");
+  console.log("[tau] Verifying runtime dependencies...");
   // The completion marker is deliberately written after every postinstall
   // step below. Do not interpret its temporary absence as a repair request.
   const ok = ensureDeps(packageRoot, {
@@ -321,57 +394,66 @@ async function verifyDependencyTree() {
     skipLifecycleMarker: true,
   });
   if (!ok) {
-    throw new Error(manualFixInstructions('@abdoknbgit/tau'));
+    throw new Error(manualFixInstructions("@abdoknbgit/tau"));
   }
 }
 
 function runOptionalNativeBuild(scriptName, requiredEnvName) {
-  const script = join(packageRoot, 'scripts', scriptName);
+  const script = join(packageRoot, "scripts", scriptName);
   if (!existsSync(script)) return;
 
   const result = spawnSync(process.execPath, [script], {
     cwd: packageRoot,
-    stdio: 'inherit',
+    stdio: "inherit",
     windowsHide: true,
     env: {
       ...process.env,
-      [requiredEnvName]: process.env[requiredEnvName] ?? '0',
+      [requiredEnvName]: process.env[requiredEnvName] ?? "0",
     },
   });
 
-  if (result.status !== 0 && process.env[requiredEnvName] === '1') {
+  if (result.status !== 0 && process.env[requiredEnvName] === "1") {
     process.exit(result.status ?? 1);
   }
 }
 
 function buildOptionalNativeTools() {
-  if (process.env.TAU_SKIP_NATIVE_TOOLS_POSTINSTALL === '1') return;
+  if (process.env.TAU_SKIP_NATIVE_TOOLS_POSTINSTALL === "1") return;
 
-  runOptionalNativeBuild('build-native-shell-parser.mjs', 'TAU_REQUIRE_NATIVE_SHELL_PARSER');
-  runOptionalNativeBuild('build-native-tools.mjs', 'TAU_REQUIRE_NATIVE_TOOLS');
+  runOptionalNativeBuild(
+    "build-native-shell-parser.mjs",
+    "TAU_REQUIRE_NATIVE_SHELL_PARSER",
+  );
+  runOptionalNativeBuild("build-native-tools.mjs", "TAU_REQUIRE_NATIVE_TOOLS");
 }
 
 async function runPostinstall() {
   // Invalidate a previous same-version install before doing any work. If this
   // run fails, the missing marker makes the updater repair it on next launch.
-  const {
-    clearLifecycleCompletionMarker,
-    writeLifecycleCompletionMarker,
-  } = await import('./verify-deps.mjs');
+  const { clearLifecycleCompletionMarker, writeLifecycleCompletionMarker } =
+    await import("./verify-deps.mjs");
   clearLifecycleCompletionMarker(packageRoot);
 
   await main();
 
   await verifyDependencyTree();
-  try { buildOptionalNativeTools(); } catch { /* native accelerators are optional */ }
-  try { primeOllamaCloudModels(); } catch { /* first launch retries */ }
+  try {
+    buildOptionalNativeTools();
+  } catch {
+    /* native accelerators are optional */
+  }
+  try {
+    primeOllamaCloudModels();
+  } catch {
+    /* first launch retries */
+  }
 
   // This is the final mandatory operation. A missing marker lets the verifier
   // distinguish npm 12's exit-0/script-blocked install from a completed one.
   writeLifecycleCompletionMarker(packageRoot);
 }
 
-runPostinstall().catch(error => {
+runPostinstall().catch((error) => {
   console.error(`[tau] postinstall failed: ${error?.message ?? error}`);
   process.exitCode = 1;
 });

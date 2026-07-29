@@ -1,74 +1,154 @@
-import { feature } from 'bun:bundle';
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
-import { copyFile, stat as fsStat, truncate as fsTruncate, link, open as fsOpen } from 'fs/promises';
-import path from 'path';
-import * as React from 'react';
-import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
-import type { AppState } from 'src/state/AppState.js';
-import { z } from 'zod/v4';
-import { clearSystemPromptSectionCacheEntry, getKairosActive, getOriginalCwd, getVisitedDirs, recordVisitedDir } from '../../bootstrap/state.js';
-import { TOOL_SUMMARY_MAX_LENGTH } from '../../constants/toolLimits.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
-import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js';
-import type { SetToolJSXFn, ToolCallProgress, ToolUseContext, ValidationResult } from '../../Tool.js';
-import { buildTool, type ToolDef } from '../../Tool.js';
-import { backgroundExistingForegroundTask, markTaskNotified, registerForeground, spawnShellTask, unregisterForeground } from '../../tasks/LocalShellTask/LocalShellTask.js';
-import type { AgentId } from '../../types/ids.js';
-import type { AssistantMessage } from '../../types/message.js';
-import { parseForSecurity } from '../../utils/bash/ast.js';
-import { splitCommand_DEPRECATED, splitCommandWithOperators } from '../../utils/bash/commands.js';
-import { extractClaudeCodeHints } from '../../utils/claudeCodeHints.js';
-import { detectCodeIndexingFromCommand } from '../../utils/codeIndexing.js';
-import { isEnvTruthy, shouldMaintainProjectWorkingDir } from '../../utils/envUtils.js';
-import { isENOENT, ShellError } from '../../utils/errors.js';
-import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
-import { fileHistoryEnabled, fileHistoryTrackEdit } from '../../utils/fileHistory.js';
-import { truncate } from '../../utils/format.js';
-import { getFsImplementation } from '../../utils/fsOperations.js';
-import { lazySchema } from '../../utils/lazySchema.js';
-import { expandPath } from '../../utils/path.js';
-import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
-import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js';
-import { exec, setCwd } from '../../utils/Shell.js';
-import { getCwd } from '../../utils/cwd.js';
-import { allWorkingDirectories, pathInAllowedWorkingPath } from '../../utils/permissions/filesystem.js';
-import type { ExecResult } from '../../utils/ShellCommand.js';
-import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
-import { semanticBoolean } from '../../utils/semanticBoolean.js';
-import { semanticNumber } from '../../utils/semanticNumber.js';
-import { EndTruncatingAccumulator } from '../../utils/stringUtils.js';
-import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
-import { TaskOutput } from '../../utils/task/TaskOutput.js';
-import { isOutputLineTruncated } from '../../utils/terminal.js';
-import { buildLargeToolResultMessage, ensureToolResultsDir, generatePreview, getToolResultPath, PREVIEW_SIZE_BYTES } from '../../utils/toolResultStorage.js';
-import { userFacingName as fileEditUserFacingName } from '../FileEditTool/UI.js';
-import { trackGitOperations } from '../shared/gitOperationTracking.js';
-import { bashToolHasPermission, commandHasAnyCd, matchWildcardPattern, permissionRuleExtractPrefix } from './bashPermissions.js';
-import { validateBashCommandPartsMatch } from './bashCommandParts.js';
-import { renderBashCommandPlan } from './bashCommandPlanner.js';
-import { allowsAutomaticBackgrounding, buildDetachedBackgroundValidationMessage, repairDetachedBackgroundCommand } from './backgroundDetachValidation.js';
-import { appendBashFailureGuidance } from './bashFailureGuidance.js';
-import { anchorCommandToDir, resolveTargetWorkdir, validateBashExecutionPreflight } from './bashPreflightValidation.js';
-import { validateBashSyntax } from './bashSyntaxValidation.js';
+import { feature } from "bun:bundle";
+import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
+import {
+  copyFile,
+  stat as fsStat,
+  truncate as fsTruncate,
+  link,
+  open as fsOpen,
+} from "fs/promises";
+import path from "path";
+import * as React from "react";
+import type { CanUseToolFn } from "src/hooks/useCanUseTool.js";
+import type { AppState } from "src/state/AppState.js";
+import { z } from "zod/v4";
+import {
+  clearSystemPromptSectionCacheEntry,
+  getKairosActive,
+  getOriginalCwd,
+  getVisitedDirs,
+  recordVisitedDir,
+} from "../../bootstrap/state.js";
+import { TOOL_SUMMARY_MAX_LENGTH } from "../../constants/toolLimits.js";
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from "../../services/analytics/index.js";
+import { notifyVscodeFileUpdated } from "../../services/mcp/vscodeSdkMcp.js";
+import type {
+  SetToolJSXFn,
+  ToolCallProgress,
+  ToolUseContext,
+  ValidationResult,
+} from "../../Tool.js";
+import { buildTool, type ToolDef } from "../../Tool.js";
+import {
+  backgroundExistingForegroundTask,
+  markTaskNotified,
+  registerForeground,
+  spawnShellTask,
+  unregisterForeground,
+} from "../../tasks/LocalShellTask/LocalShellTask.js";
+import type { AgentId } from "../../types/ids.js";
+import type { AssistantMessage } from "../../types/message.js";
+import { parseForSecurity } from "../../utils/bash/ast.js";
+import {
+  splitCommand_DEPRECATED,
+  splitCommandWithOperators,
+} from "../../utils/bash/commands.js";
+import { extractClaudeCodeHints } from "../../utils/claudeCodeHints.js";
+import { detectCodeIndexingFromCommand } from "../../utils/codeIndexing.js";
+import {
+  isEnvTruthy,
+  shouldMaintainProjectWorkingDir,
+} from "../../utils/envUtils.js";
+import { isENOENT, ShellError } from "../../utils/errors.js";
+import {
+  detectFileEncoding,
+  detectLineEndings,
+  getFileModificationTime,
+  writeTextContent,
+} from "../../utils/file.js";
+import {
+  fileHistoryEnabled,
+  fileHistoryTrackEdit,
+} from "../../utils/fileHistory.js";
+import { truncate } from "../../utils/format.js";
+import { getFsImplementation } from "../../utils/fsOperations.js";
+import { lazySchema } from "../../utils/lazySchema.js";
+import { expandPath } from "../../utils/path.js";
+import type { PermissionResult } from "../../utils/permissions/PermissionResult.js";
+import { maybeRecordPluginHint } from "../../utils/plugins/hintRecommendation.js";
+import { exec, setCwd } from "../../utils/Shell.js";
+import { getCwd } from "../../utils/cwd.js";
+import {
+  allWorkingDirectories,
+  pathInAllowedWorkingPath,
+} from "../../utils/permissions/filesystem.js";
+import type { ExecResult } from "../../utils/ShellCommand.js";
+import { SandboxManager } from "../../utils/sandbox/sandbox-adapter.js";
+import { semanticBoolean } from "../../utils/semanticBoolean.js";
+import { semanticNumber } from "../../utils/semanticNumber.js";
+import { EndTruncatingAccumulator } from "../../utils/stringUtils.js";
+import { getTaskOutputPath } from "../../utils/task/diskOutput.js";
+import { TaskOutput } from "../../utils/task/TaskOutput.js";
+import { isOutputLineTruncated } from "../../utils/terminal.js";
+import {
+  buildLargeToolResultMessage,
+  ensureToolResultsDir,
+  generatePreview,
+  getToolResultPath,
+  PREVIEW_SIZE_BYTES,
+} from "../../utils/toolResultStorage.js";
+import { userFacingName as fileEditUserFacingName } from "../FileEditTool/UI.js";
+import { trackGitOperations } from "../shared/gitOperationTracking.js";
+import {
+  bashToolHasPermission,
+  commandHasAnyCd,
+  matchWildcardPattern,
+  permissionRuleExtractPrefix,
+} from "./bashPermissions.js";
+import { validateBashCommandPartsMatch } from "./bashCommandParts.js";
+import { renderBashCommandPlan } from "./bashCommandPlanner.js";
+import {
+  allowsAutomaticBackgrounding,
+  buildDetachedBackgroundValidationMessage,
+  repairDetachedBackgroundCommand,
+} from "./backgroundDetachValidation.js";
+import { appendBashFailureGuidance } from "./bashFailureGuidance.js";
+import {
+  anchorCommandToDir,
+  resolveTargetWorkdir,
+  validateBashExecutionPreflight,
+} from "./bashPreflightValidation.js";
+import { validateBashSyntax } from "./bashSyntaxValidation.js";
 import {
   isSameBashCwd,
   normalizeBashExecutionInput,
   normalizeBashExecutionInputInPlace,
   resolveEffectiveBashCwd,
-} from './bashWorkdir.js';
-import { maybeAppendCommandHelp } from './commandHelp.js';
-import { recordBashFailure, recordBashSuccess } from './bashRetryGuard.js';
-import { getPlatform } from '../../utils/platform.js';
-import { findGitBashPath } from '../../utils/windowsPaths.js';
-import { interpretCommandResult } from './commandSemantics.js';
-import { getDefaultTimeoutMs, getMaxTimeoutMs, getSimplePrompt } from './prompt.js';
-import { checkReadOnlyConstraints } from './readOnlyValidation.js';
-import { parseSedEditCommand } from './sedEditParser.js';
-import { shouldUseSandbox } from './shouldUseSandbox.js';
-import { BASH_TOOL_NAME } from './toolName.js';
-import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseQueuedMessage } from './UI.js';
-import { buildImageToolResult, isImageOutput, resetCwdIfOutsideProject, resizeShellImageOutput, stdErrAppendShellResetMessage, stripEmptyLines } from './utils.js';
-const EOL = '\n';
+} from "./bashWorkdir.js";
+import { maybeAppendCommandHelp } from "./commandHelp.js";
+import { recordBashFailure, recordBashSuccess } from "./bashRetryGuard.js";
+import { getPlatform } from "../../utils/platform.js";
+import { findGitBashPath } from "../../utils/windowsPaths.js";
+import { interpretCommandResult } from "./commandSemantics.js";
+import {
+  getDefaultTimeoutMs,
+  getMaxTimeoutMs,
+  getSimplePrompt,
+} from "./prompt.js";
+import { checkReadOnlyConstraints } from "./readOnlyValidation.js";
+import { parseSedEditCommand } from "./sedEditParser.js";
+import { shouldUseSandbox } from "./shouldUseSandbox.js";
+import { BASH_TOOL_NAME } from "./toolName.js";
+import {
+  BackgroundHint,
+  renderToolResultMessage,
+  renderToolUseErrorMessage,
+  renderToolUseMessage,
+  renderToolUseProgressMessage,
+  renderToolUseQueuedMessage,
+} from "./UI.js";
+import {
+  buildImageToolResult,
+  isImageOutput,
+  resetCwdIfOutsideProject,
+  resizeShellImageOutput,
+  stdErrAppendShellResetMessage,
+  stripEmptyLines,
+} from "./utils.js";
+const EOL = "\n";
 
 // Progress display constants
 const PROGRESS_THRESHOLD_MS = 2000; // Show progress after 2 seconds
@@ -76,28 +156,71 @@ const PROGRESS_THRESHOLD_MS = 2000; // Show progress after 2 seconds
 const ASSISTANT_BLOCKING_BUDGET_MS = 15_000;
 
 // Search commands for collapsible display (grep, find, etc.)
-const BASH_SEARCH_COMMANDS = new Set(['find', 'grep', 'rg', 'ag', 'ack', 'locate', 'which', 'whereis']);
+const BASH_SEARCH_COMMANDS = new Set([
+  "find",
+  "grep",
+  "rg",
+  "ag",
+  "ack",
+  "locate",
+  "which",
+  "whereis",
+]);
 
 // Read/view commands for collapsible display (cat, head, etc.)
-const BASH_READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'more',
-// Analysis commands
-'wc', 'stat', 'file', 'strings',
-// Data processing — commonly used to parse/transform file content in pipes
-'jq', 'awk', 'cut', 'sort', 'uniq', 'tr']);
+const BASH_READ_COMMANDS = new Set([
+  "cat",
+  "head",
+  "tail",
+  "less",
+  "more",
+  // Analysis commands
+  "wc",
+  "stat",
+  "file",
+  "strings",
+  // Data processing: commonly used to parse/transform file content in pipes
+  "jq",
+  "awk",
+  "cut",
+  "sort",
+  "uniq",
+  "tr",
+]);
 
 // Directory-listing commands for collapsible display (ls, tree, du).
 // Split from BASH_READ_COMMANDS so the summary says "Listed N directories"
 // instead of the misleading "Read N files".
-const BASH_LIST_COMMANDS = new Set(['ls', 'tree', 'du']);
+const BASH_LIST_COMMANDS = new Set(["ls", "tree", "du"]);
 
-// Commands that are semantic-neutral in any position — pure output/status commands
+// Commands that are semantic-neutral in any position: pure output/status commands
 // that don't change the read/search nature of the overall pipeline.
 // e.g. `ls dir && echo "---" && ls dir2` is still a read-only compound command.
-const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(['echo', 'printf', 'true', 'false', ':' // bash no-op
+const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set([
+  "echo",
+  "printf",
+  "true",
+  "false",
+  ":", // bash no-op
 ]);
 
 // Commands that typically produce no stdout on success
-const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'rmdir', 'chmod', 'chown', 'chgrp', 'touch', 'ln', 'cd', 'export', 'unset', 'wait']);
+const BASH_SILENT_COMMANDS = new Set([
+  "mv",
+  "cp",
+  "rm",
+  "mkdir",
+  "rmdir",
+  "chmod",
+  "chown",
+  "chgrp",
+  "touch",
+  "ln",
+  "cd",
+  "export",
+  "unset",
+  "wait",
+]);
 
 /**
  * Checks if a bash command is a search or read operation.
@@ -125,14 +248,14 @@ export function isSearchOrReadBashCommand(command: string): {
     return {
       isSearch: false,
       isRead: false,
-      isList: false
+      isList: false,
     };
   }
   if (partsWithOperators.length === 0) {
     return {
       isSearch: false,
       isRead: false,
-      isList: false
+      isList: false,
     };
   }
   let hasSearch = false;
@@ -145,11 +268,11 @@ export function isSearchOrReadBashCommand(command: string): {
       skipNextAsRedirectTarget = false;
       continue;
     }
-    if (part === '>' || part === '>>' || part === '>&') {
+    if (part === ">" || part === ">>" || part === ">&") {
       skipNextAsRedirectTarget = true;
       continue;
     }
-    if (part === '||' || part === '&&' || part === '|' || part === ';') {
+    if (part === "||" || part === "&&" || part === "|" || part === ";") {
       continue;
     }
     const baseCommand = part.trim().split(/\s+/)[0];
@@ -167,7 +290,7 @@ export function isSearchOrReadBashCommand(command: string): {
       return {
         isSearch: false,
         isRead: false,
-        isList: false
+        isList: false,
       };
     }
     if (isPartSearch) hasSearch = true;
@@ -180,13 +303,13 @@ export function isSearchOrReadBashCommand(command: string): {
     return {
       isSearch: false,
       isRead: false,
-      isList: false
+      isList: false,
     };
   }
   return {
     isSearch: hasSearch,
     isRead: hasRead,
-    isList: hasList
+    isList: hasList,
   };
 }
 
@@ -212,11 +335,11 @@ function isSilentBashCommand(command: string): boolean {
       skipNextAsRedirectTarget = false;
       continue;
     }
-    if (part === '>' || part === '>>' || part === '>&') {
+    if (part === ">" || part === ">>" || part === ">&") {
       skipNextAsRedirectTarget = true;
       continue;
     }
-    if (part === '||' || part === '&&' || part === '|' || part === ';') {
+    if (part === "||" || part === "&&" || part === "|" || part === ";") {
       lastOperator = part;
       continue;
     }
@@ -224,7 +347,10 @@ function isSilentBashCommand(command: string): boolean {
     if (!baseCommand) {
       continue;
     }
-    if (lastOperator === '||' && BASH_SEMANTIC_NEUTRAL_COMMANDS.has(baseCommand)) {
+    if (
+      lastOperator === "||" &&
+      BASH_SEMANTIC_NEUTRAL_COMMANDS.has(baseCommand)
+    ) {
       continue;
     }
     hasNonFallbackCommand = true;
@@ -237,41 +363,103 @@ function isSilentBashCommand(command: string): boolean {
 
 // Check if background tasks are disabled at module load time
 const isBackgroundTasksDisabled =
-// eslint-disable-next-line custom-rules/no-process-env-top-level -- Intentional: schema must be defined at module load
-isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS);
-const bashCommandFlagScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
-const bashCommandFlagValueSchema = z.union([bashCommandFlagScalarSchema, z.array(bashCommandFlagScalarSchema)]);
+  // eslint-disable-next-line custom-rules/no-process-env-top-level -- Intentional: schema must be defined at module load
+  isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS);
+const bashCommandFlagScalarSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+]);
+const bashCommandFlagValueSchema = z.union([
+  bashCommandFlagScalarSchema,
+  z.array(bashCommandFlagScalarSchema),
+]);
 const bashCommandTokenSchema = z.union([
   z.strictObject({
-    kind: z.literal('arg'),
-    value: z.string().describe('Raw argument token rendered with safe Bash quoting')
+    kind: z.literal("arg"),
+    value: z
+      .string()
+      .describe("Raw argument token rendered with safe Bash quoting"),
   }),
   z.strictObject({
-    kind: z.literal('flag'),
-    name: z.string().describe('Flag name with or without leading dashes'),
-    value: bashCommandFlagValueSchema.optional().describe('Flag value. true emits the flag, false omits it, arrays repeat the same flag.'),
-    style: z.enum(['space', 'equals', 'boolean']).optional().describe('How to render the flag value. Default is space: --flag value.')
+    kind: z.literal("flag"),
+    name: z.string().describe("Flag name with or without leading dashes"),
+    value: bashCommandFlagValueSchema
+      .optional()
+      .describe(
+        "Flag value. true emits the flag, false omits it, arrays repeat the same flag.",
+      ),
+    style: z
+      .enum(["space", "equals", "boolean"])
+      .optional()
+      .describe(
+        "How to render the flag value. Default is space: --flag value.",
+      ),
   }),
   z.strictObject({
-    kind: z.literal('separator').describe('Render a -- separator before trailing positional arguments')
-  })
+    kind: z
+      .literal("separator")
+      .describe("Render a -- separator before trailing positional arguments"),
+  }),
 ]);
 const bashCommandPartsSchema = z.strictObject({
-  executable: z.string().describe('Base executable, for example docker, git, python, pytest, npm, or an executable path'),
-  tokens: z.array(bashCommandTokenSchema).optional().describe('Fully ordered argument tokens after the executable. Use this when flags must appear between subcommands, for example docker compose --file file up --detach service. When tokens is provided, grouped subcommands/flags/positionals are ignored.'),
-  subcommands: z.array(z.string()).optional().describe('Ordered CLI subcommands that come immediately after the executable'),
-  flags: z.array(z.strictObject({
-    name: z.string().describe('Flag name with or without leading dashes, for example f, file, --file, detach, or -k'),
-    value: bashCommandFlagValueSchema.optional().describe('Flag value. true emits the flag, false omits it, arrays repeat the same flag.'),
-    style: z.enum(['space', 'equals', 'boolean']).optional().describe('How to render the flag value. Default is space: --flag value.')
-  })).optional().describe('Ordered flags to render with safe Bash quoting'),
-  positionals: z.array(z.string()).optional().describe('Ordered positional arguments rendered after flags'),
-  trailing_args: z.array(z.string()).optional().describe('Arguments rendered after a -- separator')
+  executable: z
+    .string()
+    .describe(
+      "Base executable, for example docker, git, python, pytest, npm, or an executable path",
+    ),
+  tokens: z
+    .array(bashCommandTokenSchema)
+    .optional()
+    .describe(
+      "Fully ordered argument tokens after the executable. Use this when flags must appear between subcommands, for example docker compose --file file up --detach service. When tokens is provided, grouped subcommands/flags/positionals are ignored.",
+    ),
+  subcommands: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Ordered CLI subcommands that come immediately after the executable",
+    ),
+  flags: z
+    .array(
+      z.strictObject({
+        name: z
+          .string()
+          .describe(
+            "Flag name with or without leading dashes, for example f, file, --file, detach, or -k",
+          ),
+        value: bashCommandFlagValueSchema
+          .optional()
+          .describe(
+            "Flag value. true emits the flag, false omits it, arrays repeat the same flag.",
+          ),
+        style: z
+          .enum(["space", "equals", "boolean"])
+          .optional()
+          .describe(
+            "How to render the flag value. Default is space: --flag value.",
+          ),
+      }),
+    )
+    .optional()
+    .describe("Ordered flags to render with safe Bash quoting"),
+  positionals: z
+    .array(z.string())
+    .optional()
+    .describe("Ordered positional arguments rendered after flags"),
+  trailing_args: z
+    .array(z.string())
+    .optional()
+    .describe("Arguments rendered after a -- separator"),
 });
-const fullInputSchema = lazySchema(() => z.strictObject({
-  command: z.string().describe('The command to execute'),
-  timeout: semanticNumber(z.number().optional()).describe(`Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`),
-  description: z.string().optional().describe(`Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.
+const fullInputSchema = lazySchema(() =>
+  z.strictObject({
+    command: z.string().describe("The command to execute"),
+    timeout: semanticNumber(z.number().optional()).describe(
+      `Optional timeout in milliseconds (max ${getMaxTimeoutMs()})`,
+    ),
+    description: z.string().optional()
+      .describe(`Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.
 
 For simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):
 - ls → "List files in current directory"
@@ -282,19 +470,50 @@ For commands that are harder to parse at a glance (piped commands, obscure flags
 - find . -name "*.tmp" -exec rm {} \\; → "Find and delete all .tmp files recursively"
 - git reset --hard origin/main → "Discard all local changes and match remote main"
 - curl -s url | jq '.data[]' → "Fetch JSON from URL and extract data array elements"`),
-  run_in_background: semanticBoolean(z.boolean().optional()).describe(`Set to true to run the whole command as a tracked background task. Use this for long-running servers, watchers, port-forwards, SSH tunnels, and foreground container runs. Do not put '&', 'nohup', 'disown', 'echo $!', 'docker compose up -d', or 'docker run -d' in the command; remove shell-level detaching and set this field instead.`),
-  plan_only: semanticBoolean(z.boolean().optional()).describe('Set to true only when the user explicitly asks for a dry-run command plan. Normal commands execute directly.'),
-  syntax_confirmed: semanticBoolean(z.boolean().optional()).describe('Deprecated compatibility flag. It has no effect; normal commands execute directly after safety and permission checks.'),
-  command_parts: bashCommandPartsSchema.optional().describe('Optional structured Bash command form. Tau compiles these parts into a safely quoted Bash command. If the compiled result does not exactly match `command`, the parts are ignored and `command` executes as written (the result notes this). Use this for complex external CLI syntax instead of hand-quoting raw Bash.'),
-  dangerouslyDisableSandbox: semanticBoolean(z.boolean().optional()).describe('Set this to true to dangerously override sandbox mode and run commands without sandboxing.'),
-  workdir: z.string().optional().describe('Deprecated internal/back-compat execution directory. The model-facing schema omits this field; encode target directories in the command with absolute paths or native CLI location flags.'),
-  _simulatedSedEdit: z.object({
-    filePath: z.string(),
-    newContent: z.string()
-  }).optional().describe('Internal: pre-computed sed edit result from preview'),
-  _workdirFromCd: z.boolean().optional().describe('Internal: set when a leading `cd <dir> &&` was converted into workdir, so the session cwd can persist like a real shell'),
-  _commandPartsNote: z.string().optional().describe('Internal: set by validateInput when command_parts were ignored (mismatch or malformed); surfaced to the model as a result note')
-}));
+    run_in_background: semanticBoolean(z.boolean().optional()).describe(
+      `Set to true to run the whole command as a tracked background task. Use this for long-running servers, watchers, port-forwards, SSH tunnels, and foreground container runs. Do not put '&', 'nohup', 'disown', 'echo $!', 'docker compose up -d', or 'docker run -d' in the command; remove shell-level detaching and set this field instead.`,
+    ),
+    plan_only: semanticBoolean(z.boolean().optional()).describe(
+      "Set to true only when the user explicitly asks for a dry-run command plan. Normal commands execute directly.",
+    ),
+    syntax_confirmed: semanticBoolean(z.boolean().optional()).describe(
+      "Deprecated compatibility flag. It has no effect; normal commands execute directly after safety and permission checks.",
+    ),
+    command_parts: bashCommandPartsSchema
+      .optional()
+      .describe(
+        "Optional structured Bash command form. Tau compiles these parts into a safely quoted Bash command. If the compiled result does not exactly match `command`, the parts are ignored and `command` executes as written (the result notes this). Use this for complex external CLI syntax instead of hand-quoting raw Bash.",
+      ),
+    dangerouslyDisableSandbox: semanticBoolean(z.boolean().optional()).describe(
+      "Set this to true to dangerously override sandbox mode and run commands without sandboxing.",
+    ),
+    workdir: z
+      .string()
+      .optional()
+      .describe(
+        "Deprecated internal/back-compat execution directory. The model-facing schema omits this field; encode target directories in the command with absolute paths or native CLI location flags.",
+      ),
+    _simulatedSedEdit: z
+      .object({
+        filePath: z.string(),
+        newContent: z.string(),
+      })
+      .optional()
+      .describe("Internal: pre-computed sed edit result from preview"),
+    _workdirFromCd: z
+      .boolean()
+      .optional()
+      .describe(
+        "Internal: set when a leading `cd <dir> &&` was converted into workdir, so the session cwd can persist like a real shell",
+      ),
+    _commandPartsNote: z
+      .string()
+      .optional()
+      .describe(
+        "Internal: set by validateInput when command_parts were ignored (mismatch or malformed); surfaced to the model as a result note",
+      ),
+  }),
+);
 
 // Always omit workdir, _simulatedSedEdit and _workdirFromCd from the
 // model-facing schema. workdir is internal/back-compat only; the assistant must
@@ -314,21 +533,25 @@ For commands that are harder to parse at a glance (piped commands, obscure flags
 // internal/unknown keys are dropped from the PARSED RESULT instead of rejected.
 // call() still reads `_workdirFromCd` off the original input object (not a parse
 // result), and `_simulatedSedEdit` stays omitted here AND stripped in toolExecution
-// (defense-in-depth) — so neither internal cwd compatibility nor the sed-edit
+// (defense-in-depth): so neither internal cwd compatibility nor the sed-edit
 // guard breaks.
 const inputSchema = lazySchema(() => {
-  const omittedShape = (isBackgroundTasksDisabled ? fullInputSchema().omit({
-    run_in_background: true,
-    workdir: true,
-    _simulatedSedEdit: true,
-    _workdirFromCd: true,
-    _commandPartsNote: true
-  }) : fullInputSchema().omit({
-    workdir: true,
-    _simulatedSedEdit: true,
-    _workdirFromCd: true,
-    _commandPartsNote: true
-  })).shape;
+  const omittedShape = (
+    isBackgroundTasksDisabled
+      ? fullInputSchema().omit({
+          run_in_background: true,
+          workdir: true,
+          _simulatedSedEdit: true,
+          _workdirFromCd: true,
+          _commandPartsNote: true,
+        })
+      : fullInputSchema().omit({
+          workdir: true,
+          _simulatedSedEdit: true,
+          _workdirFromCd: true,
+          _commandPartsNote: true,
+        })
+  ).shape;
   return z.object(omittedShape);
 });
 type InputSchema = ReturnType<typeof inputSchema>;
@@ -336,19 +559,49 @@ type InputSchema = ReturnType<typeof inputSchema>;
 // Use fullInputSchema for the type to always include run_in_background
 // (even when it's omitted from the schema, the code needs to handle it)
 export type BashToolInput = z.infer<ReturnType<typeof fullInputSchema>>;
-const COMMON_BACKGROUND_COMMANDS = ['npm', 'yarn', 'pnpm', 'node', 'python', 'python3', 'go', 'cargo', 'make', 'docker', 'terraform', 'webpack', 'vite', 'jest', 'pytest', 'curl', 'wget', 'build', 'test', 'serve', 'watch', 'dev'] as const;
-function getCommandTypeForLogging(command: string): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS {
+const COMMON_BACKGROUND_COMMANDS = [
+  "npm",
+  "yarn",
+  "pnpm",
+  "node",
+  "python",
+  "python3",
+  "go",
+  "cargo",
+  "make",
+  "docker",
+  "terraform",
+  "webpack",
+  "vite",
+  "jest",
+  "pytest",
+  "curl",
+  "wget",
+  "build",
+  "test",
+  "serve",
+  "watch",
+  "dev",
+] as const;
+function getCommandTypeForLogging(
+  command: string,
+): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS {
   const parts = splitCommand_DEPRECATED(command);
-  if (parts.length === 0) return 'other' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
+  if (parts.length === 0)
+    return "other" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
 
   // Check each part of the command to see if any match common background commands
   for (const part of parts) {
-    const baseCommand = part.split(' ')[0] || '';
-    if (COMMON_BACKGROUND_COMMANDS.includes(baseCommand as (typeof COMMON_BACKGROUND_COMMANDS)[number])) {
+    const baseCommand = part.split(" ")[0] || "";
+    if (
+      COMMON_BACKGROUND_COMMANDS.includes(
+        baseCommand as (typeof COMMON_BACKGROUND_COMMANDS)[number],
+      )
+    ) {
       return baseCommand as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
     }
   }
-  return 'other' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
+  return "other" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
 }
 /** Bytes of persisted-output tail captured for the distilled preview. */
 const TAIL_SAMPLE_BYTES = 16_384;
@@ -359,19 +612,21 @@ const TAIL_SAMPLE_BYTES = 16_384;
  * no bytes beyond the head or on any read error (preview falls back to the
  * head-only behavior).
  */
-async function readPersistedTailSample(filePath: string, fileSize: number, headBytes: number): Promise<string | undefined> {
+async function readPersistedTailSample(
+  filePath: string,
+  fileSize: number,
+  headBytes: number,
+): Promise<string | undefined> {
   const start = Math.max(headBytes, fileSize - TAIL_SAMPLE_BYTES);
   const length = fileSize - start;
   if (length <= 0) return undefined;
   try {
-    const handle = await fsOpen(filePath, 'r');
+    const handle = await fsOpen(filePath, "r");
     try {
       const buffer = Buffer.alloc(length);
-      const {
-        bytesRead
-      } = await handle.read(buffer, 0, length, start);
+      const { bytesRead } = await handle.read(buffer, 0, length, start);
       if (bytesRead <= 0) return undefined;
-      return buffer.subarray(0, bytesRead).toString('utf8');
+      return buffer.subarray(0, bytesRead).toString("utf8");
     } finally {
       await handle.close();
     }
@@ -379,44 +634,111 @@ async function readPersistedTailSample(filePath: string, fileSize: number, headB
     return undefined;
   }
 }
-const outputSchema = lazySchema(() => z.object({
-  stdout: z.string().describe('The standard output of the command'),
-  stderr: z.string().describe('The standard error output of the command'),
-  rawOutputPath: z.string().optional().describe('Path to raw output file for large MCP tool outputs'),
-  interrupted: z.boolean().describe('Whether the command was interrupted'),
-  isImage: z.boolean().optional().describe('Flag to indicate if stdout contains image data'),
-  backgroundTaskId: z.string().optional().describe('ID of the background task if command is running in background'),
-  backgroundedByUser: z.boolean().optional().describe('True if the user manually backgrounded the command with Ctrl+B'),
-  assistantAutoBackgrounded: z.boolean().optional().describe('True if assistant-mode auto-backgrounded a long-running blocking command'),
-  dangerouslyDisableSandbox: z.boolean().optional().describe('Flag to indicate if sandbox mode was overridden'),
-  returnCodeInterpretation: z.string().optional().describe('Semantic interpretation for non-error exit codes with special meaning'),
-  noOutputExpected: z.boolean().optional().describe('Whether the command is expected to produce no output on success'),
-  commandPlan: z.string().optional().describe('Dry-run command plan when plan_only is true'),
-  structuredContent: z.array(z.any()).optional().describe('Structured content blocks'),
-  persistedOutputPath: z.string().optional().describe('Path to the persisted full output in tool-results dir (set when output is too large for inline)'),
-  persistedOutputSize: z.number().optional().describe('Total size of the output in bytes (set when output is too large for inline)'),
-  persistedTailSample: z.string().optional().describe('Last bytes of the persisted output (closing summaries land here); feeds the distilled preview, never shown raw'),
-  cwdNote: z.string().optional().describe('Model-facing note stating the directory the command ran in / session cwd changes'),
-  commandPartsNote: z.string().optional().describe('Model-facing note stating that mismatched/malformed command_parts were ignored and `command` ran as written')
-}));
+const outputSchema = lazySchema(() =>
+  z.object({
+    stdout: z.string().describe("The standard output of the command"),
+    stderr: z.string().describe("The standard error output of the command"),
+    rawOutputPath: z
+      .string()
+      .optional()
+      .describe("Path to raw output file for large MCP tool outputs"),
+    interrupted: z.boolean().describe("Whether the command was interrupted"),
+    isImage: z
+      .boolean()
+      .optional()
+      .describe("Flag to indicate if stdout contains image data"),
+    backgroundTaskId: z
+      .string()
+      .optional()
+      .describe(
+        "ID of the background task if command is running in background",
+      ),
+    backgroundedByUser: z
+      .boolean()
+      .optional()
+      .describe(
+        "True if the user manually backgrounded the command with Ctrl+B",
+      ),
+    assistantAutoBackgrounded: z
+      .boolean()
+      .optional()
+      .describe(
+        "True if assistant-mode auto-backgrounded a long-running blocking command",
+      ),
+    dangerouslyDisableSandbox: z
+      .boolean()
+      .optional()
+      .describe("Flag to indicate if sandbox mode was overridden"),
+    returnCodeInterpretation: z
+      .string()
+      .optional()
+      .describe(
+        "Semantic interpretation for non-error exit codes with special meaning",
+      ),
+    noOutputExpected: z
+      .boolean()
+      .optional()
+      .describe(
+        "Whether the command is expected to produce no output on success",
+      ),
+    commandPlan: z
+      .string()
+      .optional()
+      .describe("Dry-run command plan when plan_only is true"),
+    structuredContent: z
+      .array(z.any())
+      .optional()
+      .describe("Structured content blocks"),
+    persistedOutputPath: z
+      .string()
+      .optional()
+      .describe(
+        "Path to the persisted full output in tool-results dir (set when output is too large for inline)",
+      ),
+    persistedOutputSize: z
+      .number()
+      .optional()
+      .describe(
+        "Total size of the output in bytes (set when output is too large for inline)",
+      ),
+    persistedTailSample: z
+      .string()
+      .optional()
+      .describe(
+        "Last bytes of the persisted output (closing summaries land here); feeds the distilled preview, never shown raw",
+      ),
+    cwdNote: z
+      .string()
+      .optional()
+      .describe(
+        "Model-facing note stating the directory the command ran in / session cwd changes",
+      ),
+    commandPartsNote: z
+      .string()
+      .optional()
+      .describe(
+        "Model-facing note stating that mismatched/malformed command_parts were ignored and `command` ran as written",
+      ),
+  }),
+);
 type OutputSchema = ReturnType<typeof outputSchema>;
 export type Out = z.infer<OutputSchema>;
 
 // Re-export BashProgress from centralized types to break import cycles
-export type { BashProgress } from '../../types/tools.js';
-import type { BashProgress } from '../../types/tools.js';
+export type { BashProgress } from "../../types/tools.js";
+import type { BashProgress } from "../../types/tools.js";
 
 /**
  * Detect standalone or leading `sleep N` patterns that should use Monitor
- * instead. Catches `sleep 5`, `sleep 5 && check`, `sleep 5; check` — but
+ * instead. Catches `sleep 5`, `sleep 5 && check`, `sleep 5; check`: but
  * not sleep inside pipelines, subshells, or scripts (those are fine).
  */
 export function detectBlockedSleepPattern(command: string): string | null {
   const parts = splitCommand_DEPRECATED(command);
   if (parts.length === 0) return null;
-  const first = parts[0]?.trim() ?? '';
+  const first = parts[0]?.trim() ?? "";
   // Bare `sleep N` or `sleep N.N` as the first subcommand.
-  // Float durations (sleep 0.5) are allowed — those are legit pacing, not polls.
+  // Float durations (sleep 0.5) are allowed: those are legit pacing, not polls.
   const m = /^sleep\s+(\d+)\s*$/.exec(first);
   if (!m) return null;
   const secs = parseInt(m[1]!, 10);
@@ -424,8 +746,10 @@ export function detectBlockedSleepPattern(command: string): string | null {
 
   // `sleep N` alone → "what are you waiting for?"
   // `sleep N && check` → "use Monitor { command: check }"
-  const rest = parts.slice(1).join(' ').trim();
-  return rest ? `sleep ${secs} followed by: ${rest}` : `standalone sleep ${secs}`;
+  const rest = parts.slice(1).join(" ").trim();
+  return rest
+    ? `sleep ${secs} followed by: ${rest}`
+    : `standalone sleep ${secs}`;
 }
 
 /**
@@ -442,21 +766,25 @@ export function detectBlockedSleepPattern(command: string): string | null {
 type SimulatedSedEditResult = {
   data: Out;
 };
-type SimulatedSedEditContext = Pick<ToolUseContext, 'readFileState' | 'updateFileHistoryState'>;
+type SimulatedSedEditContext = Pick<
+  ToolUseContext,
+  "readFileState" | "updateFileHistoryState"
+>;
 
 /**
  * Applies a simulated sed edit directly instead of running sed.
  * This is used by the permission dialog to ensure what the user previews
  * is exactly what gets written to the file.
  */
-async function applySedEdit(simulatedEdit: {
-  filePath: string;
-  newContent: string;
-}, toolUseContext: SimulatedSedEditContext, parentMessage?: AssistantMessage): Promise<SimulatedSedEditResult> {
-  const {
-    filePath,
-    newContent
-  } = simulatedEdit;
+async function applySedEdit(
+  simulatedEdit: {
+    filePath: string;
+    newContent: string;
+  },
+  toolUseContext: SimulatedSedEditContext,
+  parentMessage?: AssistantMessage,
+): Promise<SimulatedSedEditResult> {
+  const { filePath, newContent } = simulatedEdit;
   const absoluteFilePath = expandPath(filePath);
   const fs = getFsImplementation();
 
@@ -465,16 +793,16 @@ async function applySedEdit(simulatedEdit: {
   let originalContent: string;
   try {
     originalContent = await fs.readFile(absoluteFilePath, {
-      encoding
+      encoding,
     });
   } catch (e) {
     if (isENOENT(e)) {
       return {
         data: {
-          stdout: '',
+          stdout: "",
           stderr: `sed: ${filePath}: No such file or directory\nExit code 1`,
-          interrupted: false
-        }
+          interrupted: false,
+        },
       };
     }
     throw e;
@@ -482,7 +810,11 @@ async function applySedEdit(simulatedEdit: {
 
   // Track file history before making changes (for undo support)
   if (fileHistoryEnabled() && parentMessage) {
-    await fileHistoryTrackEdit(toolUseContext.updateFileHistoryState, absoluteFilePath, parentMessage.uuid);
+    await fileHistoryTrackEdit(
+      toolUseContext.updateFileHistoryState,
+      absoluteFilePath,
+      parentMessage.uuid,
+    );
   }
 
   // Detect line endings and write new content
@@ -497,38 +829,40 @@ async function applySedEdit(simulatedEdit: {
     content: newContent,
     timestamp: getFileModificationTime(absoluteFilePath),
     offset: undefined,
-    limit: undefined
+    limit: undefined,
   });
 
   // Return success result matching sed output format (sed produces no output on success)
   return {
     data: {
-      stdout: '',
-      stderr: '',
-      interrupted: false
-    }
+      stdout: "",
+      stderr: "",
+      interrupted: false,
+    },
   };
 }
 export const BashTool = buildTool({
   name: BASH_TOOL_NAME,
-  searchHint: 'execute shell commands',
+  searchHint: "execute shell commands",
   // 30K chars - tool result persistence threshold
   maxResultSizeChars: 30_000,
   strict: true,
   // Hide BashTool on Windows when neither git-bash nor any other bash is
   // available. The shell layer would route bash commands to PowerShell,
-  // but the model's bash syntax (globs, pipes, heredocs) wouldn't parse —
+  // but the model's bash syntax (globs, pipes, heredocs) wouldn't parse:
   // better to offer only PowerShellTool so syntax and tool agree.
   isEnabled() {
-    if (getPlatform() === 'windows' && !findGitBashPath() && !process.env.SHELL) {
+    if (
+      getPlatform() === "windows" &&
+      !findGitBashPath() &&
+      !process.env.SHELL
+    ) {
       return false;
     }
     return true;
   },
-  async description({
-    description
-  }) {
-    return description || 'Run shell command';
+  async description({ description }) {
+    return description || "Run shell command";
   },
   async prompt() {
     return getSimplePrompt();
@@ -543,28 +877,26 @@ export const BashTool = buildTool({
     }
     const compoundCommandHasCd = commandHasAnyCd(input.command);
     const result = checkReadOnlyConstraints(input, compoundCommandHasCd);
-    return result.behavior === 'allow';
+    return result.behavior === "allow";
   },
   toAutoClassifierInput(input) {
     return input.command;
   },
-  async preparePermissionMatcher({
-    command
-  }) {
+  async preparePermissionMatcher({ command }) {
     // Hook `if` filtering is "no match → skip hook" (deny-like semantics), so
     // compound commands must fire the hook if ANY subcommand matches. Without
     // splitting, `ls && git push` would bypass a `Bash(git *)` security hook.
     const parsed = await parseForSecurity(command);
-    if (parsed.kind !== 'simple') {
+    if (parsed.kind !== "simple") {
       // parse-unavailable / too-complex: fail safe by running the hook.
       return () => true;
     }
     // Match on argv (strips leading VAR=val) so `FOO=bar git push` still
     // matches `Bash(git *)`.
-    const subcommands = parsed.commands.map(c => c.argv.join(' '));
-    return pattern => {
+    const subcommands = parsed.commands.map((c) => c.argv.join(" "));
+    return (pattern) => {
       const prefix = permissionRuleExtractPrefix(pattern);
-      return subcommands.some(cmd => {
+      return subcommands.some((cmd) => {
         if (prefix !== null) {
           return cmd === prefix || cmd.startsWith(`${prefix} `);
         }
@@ -574,11 +906,12 @@ export const BashTool = buildTool({
   },
   isSearchOrReadCommand(input) {
     const parsed = inputSchema().safeParse(input);
-    if (!parsed.success) return {
-      isSearch: false,
-      isRead: false,
-      isList: false
-    };
+    if (!parsed.success)
+      return {
+        isSearch: false,
+        isRead: false,
+        isList: false,
+      };
     return isSearchOrReadBashCommand(parsed.data.command);
   },
   get inputSchema(): InputSchema {
@@ -589,18 +922,18 @@ export const BashTool = buildTool({
   },
   userFacingName(input) {
     if (!input) {
-      return 'Bash';
+      return "Bash";
     }
     // Render sed in-place edits as file edits
     if (input.command) {
       if (input.plan_only) {
-        return 'BashPlan';
+        return "BashPlan";
       }
       const sedInfo = parseSedEditCommand(input.command);
       if (sedInfo) {
         return fileEditUserFacingName({
           file_path: sedInfo.filePath,
-          old_string: 'x'
+          old_string: "x",
         });
       }
     }
@@ -608,36 +941,39 @@ export const BashTool = buildTool({
     // `new RegExp` per call. userFacingName runs per-render for every bash
     // message in history; with ~50 msgs + one slow-to-tokenize command, this
     // exceeds the shimmer tick → transition abort → infinite retry (#21605).
-    return isEnvTruthy(process.env.CLAUDE_CODE_BASH_SANDBOX_SHOW_INDICATOR) && shouldUseSandbox(input) ? 'SandboxedBash' : 'Bash';
+    return isEnvTruthy(process.env.CLAUDE_CODE_BASH_SANDBOX_SHOW_INDICATOR) &&
+      shouldUseSandbox(input)
+      ? "SandboxedBash"
+      : "Bash";
   },
   getToolUseSummary(input) {
     if (!input?.command) {
       return null;
     }
-    const {
-      command,
-      description
-    } = input;
+    const { command, description } = input;
     if (description) {
       return input.plan_only ? `Plan: ${description}` : description;
     }
-    return input.plan_only ? `Plan: ${truncate(command, TOOL_SUMMARY_MAX_LENGTH)}` : truncate(command, TOOL_SUMMARY_MAX_LENGTH);
+    return input.plan_only
+      ? `Plan: ${truncate(command, TOOL_SUMMARY_MAX_LENGTH)}`
+      : truncate(command, TOOL_SUMMARY_MAX_LENGTH);
   },
   getActivityDescription(input) {
     if (!input?.command) {
-      return 'Running command';
+      return "Running command";
     }
     if (input.plan_only) {
       return `Planning ${input.description ?? truncate(input.command, TOOL_SUMMARY_MAX_LENGTH)}`;
     }
-    const desc = input.description ?? truncate(input.command, TOOL_SUMMARY_MAX_LENGTH);
+    const desc =
+      input.description ?? truncate(input.command, TOOL_SUMMARY_MAX_LENGTH);
     return `Running ${desc}`;
   },
   async validateInput(input: BashToolInput): Promise<ValidationResult> {
     input = normalizeBashExecutionInputInPlace(input);
     if (input.plan_only) {
       return {
-        result: true
+        result: true,
       };
     }
     // command_parts is advisory: execution, permissions, and sandbox
@@ -646,10 +982,13 @@ export const BashTool = buildTool({
     // quote differently from our compiler (same argv, different quoting) or
     // send degenerate parts (empty tokens), looping them on retries across
     // providers. Instead of blocking, drop mismatched/malformed parts and run
-    // `command` as written — identical to the same call without parts — and
+    // `command` as written: identical to the same call without parts: and
     // tell the model via a result note so it stops sending bad parts.
     try {
-      const commandPartsMatch = validateBashCommandPartsMatch(input.command, input.command_parts);
+      const commandPartsMatch = validateBashCommandPartsMatch(
+        input.command,
+        input.command_parts,
+      );
       if (commandPartsMatch && !commandPartsMatch.ok) {
         input._commandPartsNote = `command_parts ignored: they compile to \`${commandPartsMatch.compiledCommand}\` which does not match \`command\`; executed \`command\` as written. Omit command_parts unless they compile to the exact command.`;
         delete input.command_parts;
@@ -662,27 +1001,37 @@ export const BashTool = buildTool({
     // user-visible execution block. Path/command correction happens through
     // normalization and target discovery; a repeat is allowed to execute.
     if (!isBackgroundTasksDisabled) {
-      const repairedDetachedCommand = repairDetachedBackgroundCommand(input.command);
+      const repairedDetachedCommand = repairDetachedBackgroundCommand(
+        input.command,
+      );
       if (repairedDetachedCommand !== null) {
         input.command = repairedDetachedCommand;
         input.run_in_background = true;
       }
-      const detachedBackgroundMessage = buildDetachedBackgroundValidationMessage(input.command, input.run_in_background === true);
+      const detachedBackgroundMessage =
+        buildDetachedBackgroundValidationMessage(
+          input.command,
+          input.run_in_background === true,
+        );
       if (detachedBackgroundMessage !== null) {
         return {
           result: false,
           message: detachedBackgroundMessage,
-          errorCode: 10
+          errorCode: 10,
         };
       }
     }
-    if (feature('MONITOR_TOOL') && !isBackgroundTasksDisabled && !input.run_in_background) {
+    if (
+      feature("MONITOR_TOOL") &&
+      !isBackgroundTasksDisabled &&
+      !input.run_in_background
+    ) {
       const sleepPattern = detectBlockedSleepPattern(input.command);
       if (sleepPattern !== null) {
         return {
           result: false,
-          message: `Blocked: ${sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.`,
-          errorCode: 10
+          message: `Blocked: ${sleepPattern}. Run blocking commands in the background with run_in_background: true: you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.`,
+          errorCode: 10,
         };
       }
     }
@@ -691,7 +1040,7 @@ export const BashTool = buildTool({
       return {
         result: false,
         message: preflightValidation.message,
-        errorCode: 13
+        errorCode: 13,
       };
     }
     const syntaxValidation = await validateBashSyntax(input.command);
@@ -699,23 +1048,23 @@ export const BashTool = buildTool({
       return {
         result: false,
         message: syntaxValidation.message,
-        errorCode: 15
+        errorCode: 15,
       };
     }
     return {
-      result: true
+      result: true,
     };
   },
   async checkPermissions(input, context): Promise<PermissionResult> {
     input = normalizeBashExecutionInput(input);
     if (input.plan_only) {
       return {
-        behavior: 'allow',
+        behavior: "allow",
         updatedInput: input,
         decisionReason: {
-          type: 'other',
-          reason: 'Bash command planning does not execute the command'
-        }
+          type: "other",
+          reason: "Bash command planning does not execute the command",
+        },
       };
     }
     return bashToolHasPermission(input, context);
@@ -725,35 +1074,35 @@ export const BashTool = buildTool({
   renderToolUseQueuedMessage,
   renderToolResultMessage,
   // BashToolResultMessage shows <OutputLine content={stdout}> + stderr.
-  // UI never shows persistedOutputPath wrapper, backgroundInfo — those are
+  // UI never shows persistedOutputPath wrapper, backgroundInfo: those are
   // model-facing (mapToolResult... below).
-  extractSearchText({
-    stdout,
-    stderr
-  }) {
+  extractSearchText({ stdout, stderr }) {
     return stderr ? `${stdout}\n${stderr}` : stdout;
   },
-  mapToolResultToToolResultBlockParam({
-    interrupted,
-    stdout,
-    stderr,
-    isImage,
-    backgroundTaskId,
-    backgroundedByUser,
-    assistantAutoBackgrounded,
-    structuredContent,
-    persistedOutputPath,
-    persistedOutputSize,
-    persistedTailSample,
-    cwdNote,
-    commandPartsNote
-  }, toolUseID): ToolResultBlockParam {
+  mapToolResultToToolResultBlockParam(
+    {
+      interrupted,
+      stdout,
+      stderr,
+      isImage,
+      backgroundTaskId,
+      backgroundedByUser,
+      assistantAutoBackgrounded,
+      structuredContent,
+      persistedOutputPath,
+      persistedOutputSize,
+      persistedTailSample,
+      cwdNote,
+      commandPartsNote,
+    },
+    toolUseID,
+  ): ToolResultBlockParam {
     // Handle structured content
     if (structuredContent && structuredContent.length > 0) {
       return {
         tool_use_id: toolUseID,
-        type: 'tool_result',
-        content: structuredContent
+        type: "tool_result",
+        content: structuredContent,
       };
     }
 
@@ -765,38 +1114,43 @@ export const BashTool = buildTool({
     let processedStdout = stdout;
     if (stdout) {
       // Replace any leading newlines or lines with only whitespace
-      processedStdout = stdout.replace(/^(\s*\n)+/, '');
+      processedStdout = stdout.replace(/^(\s*\n)+/, "");
       // Still trim the end as before
       processedStdout = processedStdout.trimEnd();
     }
 
     // For large output that was persisted to disk, build <persisted-output>
-    // message for the model. The UI never sees this — it uses data.stdout.
+    // message for the model. The UI never sees this: it uses data.stdout.
     if (persistedOutputPath) {
       const preview = generatePreview(processedStdout, PREVIEW_SIZE_BYTES);
       // Distill source = head chunk + file tail (captured at call time):
       // closing summaries live at the end of the stream, past the
       // end-truncated in-memory head. Deterministic given the stored data,
       // so re-mapping yields byte-identical content.
-      const distillSource = persistedTailSample ? `${processedStdout}\n[… middle of output omitted …]\n${persistedTailSample}` : processedStdout;
-      processedStdout = buildLargeToolResultMessage({
-        filepath: persistedOutputPath,
-        originalSize: persistedOutputSize ?? 0,
-        isJson: false,
-        preview: preview.preview,
-        hasMore: preview.hasMore
-      }, distillSource);
+      const distillSource = persistedTailSample
+        ? `${processedStdout}\n[… middle of output omitted …]\n${persistedTailSample}`
+        : processedStdout;
+      processedStdout = buildLargeToolResultMessage(
+        {
+          filepath: persistedOutputPath,
+          originalSize: persistedOutputSize ?? 0,
+          isJson: false,
+          preview: preview.preview,
+          hasMore: preview.hasMore,
+        },
+        distillSource,
+      );
     }
     let errorMessage = stderr.trim();
     if (interrupted) {
       if (stderr) errorMessage += EOL;
-      errorMessage += '<error>Command was aborted before completion</error>';
+      errorMessage += "<error>Command was aborted before completion</error>";
     }
-    let backgroundInfo = '';
+    let backgroundInfo = "";
     if (backgroundTaskId) {
       const outputPath = getTaskOutputPath(backgroundTaskId);
       if (assistantAutoBackgrounded) {
-        backgroundInfo = `Command exceeded the assistant-mode blocking budget (${ASSISTANT_BLOCKING_BUDGET_MS / 1000}s) and was moved to the background with ID: ${backgroundTaskId}. It is still running — you will be notified when it completes. Output is being written to: ${outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.`;
+        backgroundInfo = `Command exceeded the assistant-mode blocking budget (${ASSISTANT_BLOCKING_BUDGET_MS / 1000}s) and was moved to the background with ID: ${backgroundTaskId}. It is still running: you will be notified when it completes. Output is being written to: ${outputPath}. In assistant mode, delegate long-running work to a subagent or use run_in_background to keep this conversation responsive.`;
       } else if (backgroundedByUser) {
         backgroundInfo = `Command was manually backgrounded by user with ID: ${backgroundTaskId}. Output is being written to: ${outputPath}`;
       } else {
@@ -805,40 +1159,59 @@ export const BashTool = buildTool({
     }
     return {
       tool_use_id: toolUseID,
-      type: 'tool_result',
-      content: [processedStdout, errorMessage, cwdNote ? `[${cwdNote}]` : '', commandPartsNote ? `[${commandPartsNote}]` : '', backgroundInfo].filter(Boolean).join('\n'),
-      is_error: interrupted
+      type: "tool_result",
+      content: [
+        processedStdout,
+        errorMessage,
+        cwdNote ? `[${cwdNote}]` : "",
+        commandPartsNote ? `[${commandPartsNote}]` : "",
+        backgroundInfo,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      is_error: interrupted,
     };
   },
-  async call(input: BashToolInput, toolUseContext, _canUseTool?: CanUseToolFn, parentMessage?: AssistantMessage, onProgress?: ToolCallProgress<BashProgress>) {
+  async call(
+    input: BashToolInput,
+    toolUseContext,
+    _canUseTool?: CanUseToolFn,
+    parentMessage?: AssistantMessage,
+    onProgress?: ToolCallProgress<BashProgress>,
+  ) {
     input = normalizeBashExecutionInput(input);
     if (input.plan_only) {
       const plan = await renderBashCommandPlan(input);
       return {
         data: {
           stdout: plan,
-          stderr: '',
+          stderr: "",
           interrupted: false,
           commandPlan: plan,
           noOutputExpected: false,
-          dangerouslyDisableSandbox: 'dangerouslyDisableSandbox' in input ? input.dangerouslyDisableSandbox as boolean | undefined : undefined
-        }
+          dangerouslyDisableSandbox:
+            "dangerouslyDisableSandbox" in input
+              ? (input.dangerouslyDisableSandbox as boolean | undefined)
+              : undefined,
+        },
       };
     }
     // Handle simulated sed edit - apply directly instead of running sed
     // This ensures what the user previewed is exactly what gets written
     if (input._simulatedSedEdit) {
-      return applySedEdit(input._simulatedSedEdit, toolUseContext, parentMessage);
+      return applySedEdit(
+        input._simulatedSedEdit,
+        toolUseContext,
+        parentMessage,
+      );
     }
-    const {
-      abortController,
-      getAppState,
-      setAppState,
-      setToolJSX
-    } = toolUseContext;
+    const { abortController, getAppState, setAppState, setToolJSX } =
+      toolUseContext;
     const stdoutAccumulator = new EndTruncatingAccumulator();
-    let stderrForShellReset = '';
-    let interpretationResult: ReturnType<typeof interpretCommandResult> | undefined;
+    let stderrForShellReset = "";
+    let interpretationResult:
+      | ReturnType<typeof interpretCommandResult>
+      | undefined;
     let progressCounter = 0;
     let wasInterrupted = false;
     let result: ExecResult;
@@ -851,7 +1224,7 @@ export const BashTool = buildTool({
     // File-location awareness: when a command targets a file (a script, a
     // package.json runner, a Compose file) that isn't in the run directory but
     // sits unambiguously in one subdirectory, run there automatically instead
-    // of failing — otherwise the model tends to loop on the identical command.
+    // of failing: otherwise the model tends to loop on the identical command.
     // Only when the model gave no workdir/cd of its own.
     let autoWorkdir: string | undefined;
     let autoWorkdirLabel: string | undefined;
@@ -891,7 +1264,7 @@ export const BashTool = buildTool({
     }
     if (!input.workdir) {
       // Search the run dir + workspace dirs + dirs used this session, so a
-      // target that lives in a different (but known) tree still resolves — the
+      // target that lives in a different (but known) tree still resolves: the
       // jkk/jurk / TP1 / TP2 case. Broadening is safe because a multi-candidate
       // result is SURFACED (below), not silently picked.
       const searchRoots = [
@@ -899,25 +1272,33 @@ export const BashTool = buildTool({
         ...allWorkingDirectories(getAppState().toolPermissionContext),
         ...getVisitedDirs(),
       ];
-      const targetRes = await resolveTargetWorkdir(input.command, cwdBeforeExec, searchRoots);
-      if (targetRes.kind === 'auto') {
+      const targetRes = await resolveTargetWorkdir(
+        input.command,
+        cwdBeforeExec,
+        searchRoots,
+      );
+      if (targetRes.kind === "auto") {
         // Bake the absolute location INTO the command (survives provider lanes +
         // run_in_background); do NOT rely on the fragile `workdir` field.
-        input.command = anchorCommandToDir(input.command, targetRes.workdir, 'bash');
+        input.command = anchorCommandToDir(
+          input.command,
+          targetRes.workdir,
+          "bash",
+        );
         anchorDir = targetRes.workdir;
         autoWorkdir = targetRes.relWorkdir;
         autoWorkdirLabel = targetRes.label;
-      } else if (targetRes.kind === 'ambiguous') {
+      } else if (targetRes.kind === "ambiguous") {
         // Several known candidates → DON'T guess. List the absolute paths and
         // run nothing; the model re-runs naming the one it means.
         return {
           data: {
-            stdout: '',
-            stderr: `${targetRes.label} exists in more than one known location:\n${targetRes.dirs.map(d => `  - ${d}`).join('\n')}\n\nRe-run naming the one you mean — use the absolute path (e.g. \`node /abs/dir/server.js\`, or \`docker compose -f /abs/dir/compose.yml up\`). Nothing was executed.`,
+            stdout: "",
+            stderr: `${targetRes.label} exists in more than one known location:\n${targetRes.dirs.map((d) => `  - ${d}`).join("\n")}\n\nRe-run naming the one you mean: use the absolute path (e.g. \`node /abs/dir/server.js\`, or \`docker compose -f /abs/dir/compose.yml up\`). Nothing was executed.`,
             interrupted: false,
             isImage: false,
-            noOutputExpected: false
-          }
+            noOutputExpected: false,
+          },
         };
       }
     }
@@ -925,8 +1306,9 @@ export const BashTool = buildTool({
       input.workdir = unresolvedWorkdir;
     }
     // When we anchored to a resolved dir, the command runs there by absolute
-    // path even though the session cwd is unchanged — report that dir.
-    const executionDir = anchorDir ?? resolveEffectiveBashCwd(input, cwdBeforeExec);
+    // path even though the session cwd is unchanged: report that dir.
+    const executionDir =
+      anchorDir ?? resolveEffectiveBashCwd(input, cwdBeforeExec);
     // Remember where this command actually ran so later commands can find files
     // that live here, even from a different cwd.
     recordVisitedDir(executionDir);
@@ -942,7 +1324,7 @@ export const BashTool = buildTool({
         preventCwdChanges,
         isMainThread,
         toolUseId: toolUseContext.toolUseId,
-        agentId: toolUseContext.agentId
+        agentId: toolUseContext.agentId,
       });
 
       // Consume the generator and capture the return value
@@ -954,15 +1336,15 @@ export const BashTool = buildTool({
           onProgress({
             toolUseID: `bash-progress-${progressCounter++}`,
             data: {
-              type: 'bash_progress',
+              type: "bash_progress",
               output: progress.output,
               fullOutput: progress.fullOutput,
               elapsedTimeSeconds: progress.elapsedTimeSeconds,
               totalLines: progress.totalLines,
               totalBytes: progress.totalBytes,
               taskId: progress.taskId,
-              timeoutMs: progress.timeoutMs
-            }
+              timeoutMs: progress.timeoutMs,
+            },
           });
         }
       } while (!generatorResult.done);
@@ -970,7 +1352,8 @@ export const BashTool = buildTool({
       // Get the final result from the generator's return value
       result = generatorResult.value;
       trackGitOperations(input.command, result.code, result.stdout);
-      const isInterrupt = result.interrupted && abortController.signal.reason === 'interrupt';
+      const isInterrupt =
+        result.interrupted && abortController.signal.reason === "interrupt";
 
       // Normally stderr is interleaved into stdout by the merged output fd, so
       // result.stderr is empty and this is a no-op. It is NOT empty on the
@@ -980,18 +1363,23 @@ export const BashTool = buildTool({
       // cwd deleted, EACCES/EPERM). Reading stdout alone threw that diagnostic
       // away and produced "nonzero exit code without diagnostic output".
       // Same for Shell.ts pipe mode, where stderr lands in its own buffer.
-      // Merge instead of assuming — correct on every platform and mode.
+      // Merge instead of assuming: correct on every platform and mode.
       const commandOutput = [result.stdout, result.stderr]
         .filter(Boolean)
         .join(EOL);
       stdoutAccumulator.append(commandOutput.trimEnd() + EOL);
 
       // Interpret the command result using semantic rules
-      interpretationResult = interpretCommandResult(input.command, result.code, commandOutput, '');
+      interpretationResult = interpretCommandResult(
+        input.command,
+        result.code,
+        commandOutput,
+        "",
+      );
 
       // Check for git index.lock error (stderr is in commandOutput now)
       if (commandOutput.includes(".git/index.lock': File exists")) {
-        logEvent('tengu_git_index_lock_error', {});
+        logEvent("tengu_git_index_lock_error", {});
       }
       if (interpretationResult.isError && !isInterrupt) {
         // Only add exit code if it's actually an error
@@ -1002,30 +1390,38 @@ export const BashTool = buildTool({
       if (!preventCwdChanges) {
         const appState = getAppState();
         if (resetCwdIfOutsideProject(appState.toolPermissionContext)) {
-          stderrForShellReset = stdErrAppendShellResetMessage('');
+          stderrForShellReset = stdErrAppendShellResetMessage("");
         }
         // A model-written leading `cd X && …` was converted into a one-off
         // workdir (bashWorkdir.ts), which intentionally skips the shell's own
         // cwd capture. Mirror real shell semantics by persisting the cd target
-        // as the session cwd — but only inside approved working directories,
+        // as the session cwd: but only inside approved working directories,
         // the same boundary resetCwdIfOutsideProject enforces for a bare `cd`.
         // Runs even when the command part failed: in a real shell, `cd X &&
         // failing-cmd` still leaves you in X.
-        if (input._workdirFromCd && input.workdir && !result.preSpawnError && !shouldMaintainProjectWorkingDir() && !isSameBashCwd(executionDir, getCwd()) && pathInAllowedWorkingPath(executionDir, appState.toolPermissionContext)) {
+        if (
+          input._workdirFromCd &&
+          input.workdir &&
+          !result.preSpawnError &&
+          !shouldMaintainProjectWorkingDir() &&
+          !isSameBashCwd(executionDir, getCwd()) &&
+          pathInAllowedWorkingPath(executionDir, appState.toolPermissionContext)
+        ) {
           try {
             setCwd(executionDir);
-            clearSystemPromptSectionCacheEntry('env_info_simple');
+            clearSystemPromptSectionCacheEntry("env_info_simple");
           } catch {
-            // Target vanished mid-command — keep the current session cwd
+            // Target vanished mid-command: keep the current session cwd
           }
         }
       }
 
       // Annotate output with sandbox violations if any (stderr is in commandOutput).
-      // Takes the output only — passing input.command here fed the command
+      // Takes the output only: passing input.command here fed the command
       // string in as the "stderr" and discarded the real output, which is what
       // made every failure report "nonzero exit code without diagnostic output".
-      const outputWithSbFailures = SandboxManager.annotateStderrWithSandboxFailures(commandOutput);
+      const outputWithSbFailures =
+        SandboxManager.annotateStderrWithSandboxFailures(commandOutput);
       if (result.preSpawnError) {
         throw new Error(result.preSpawnError);
       }
@@ -1033,15 +1429,33 @@ export const BashTool = buildTool({
         // stderr is merged into stdout (merged fd); outputWithSbFailures
         // already has the full output. Pass '' for stdout to avoid
         // duplication in getErrorParts() and processBashCommand.
-        const outputWithFailureGuidance = appendBashFailureGuidance(input.command, result.code, outputWithSbFailures, executionDir);
+        const outputWithFailureGuidance = appendBashFailureGuidance(
+          input.command,
+          result.code,
+          outputWithSbFailures,
+          executionDir,
+        );
         // On usage/invalid-option failures, append the binary's own
         // --help (authoritative, version-exact). Reactive: only spawns
         // when failure output matches a usage pattern. 3s timeout per
         // lookup; session-lifetime cache so each command is fetched once.
-        const outputWithVerifiedSyntax = await maybeAppendCommandHelp(input.command, outputWithFailureGuidance);
+        const outputWithVerifiedSyntax = await maybeAppendCommandHelp(
+          input.command,
+          outputWithFailureGuidance,
+        );
         // Record failure for retry guard before throwing
-        recordBashFailure(input.command, result.code, outputWithSbFailures, executionDir);
-        throw new ShellError('', outputWithVerifiedSyntax, result.code, result.interrupted);
+        recordBashFailure(
+          input.command,
+          result.code,
+          outputWithSbFailures,
+          executionDir,
+        );
+        throw new ShellError(
+          "",
+          outputWithVerifiedSyntax,
+          result.code,
+          result.interrupted,
+        );
       }
       wasInterrupted = result.interrupted;
     } finally {
@@ -1077,34 +1491,36 @@ export const BashTool = buildTool({
         // The in-memory stdout is the END-TRUNCATED head of the stream, but
         // closing summaries ("Tests: 2 failed, 296 passed") live at the END.
         // Capture the file tail once here (call-time, async) so the distilled
-        // preview in mapToolResultToToolResultBlockParam — which must stay
-        // synchronous and deterministic — can include it. Read from past the
+        // preview in mapToolResultToToolResultBlockParam: which must stay
+        // synchronous and deterministic: can include it. Read from past the
         // head chunk so head+tail never overlap.
         persistedTailSample = await readPersistedTailSample(
           dest,
           fileStat.size,
-          Buffer.byteLength(stdout, 'utf8'),
+          Buffer.byteLength(stdout, "utf8"),
         );
       } catch {
-        // File may already be gone — stdout preview is sufficient
+        // File may already be gone: stdout preview is sufficient
       }
     }
-    const commandType = input.command.split(' ')[0];
-    logEvent('tengu_bash_tool_command_executed', {
-      command_type: commandType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    const commandType = input.command.split(" ")[0];
+    logEvent("tengu_bash_tool_command_executed", {
+      command_type:
+        commandType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       stdout_length: stdout.length,
       stderr_length: 0,
       exit_code: result.code,
-      interrupted: wasInterrupted
+      interrupted: wasInterrupted,
     });
 
     // Log code indexing tool usage
     const codeIndexingTool = detectCodeIndexingFromCommand(input.command);
     if (codeIndexingTool) {
-      logEvent('tengu_code_indexing_tool_used', {
+      logEvent("tengu_code_indexing_tool_used", {
         tool: codeIndexingTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        source: 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        success: result.code === 0
+        source:
+          "cli" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        success: result.code === 0,
       });
     }
     let strippedStdout = stripEmptyLines(stdout);
@@ -1112,7 +1528,7 @@ export const BashTool = buildTool({
     // Tau hints protocol: CLIs/SDKs gated on CLAUDECODE=1 emit a
     // `<claude-code-hint />` tag to stderr (merged into stdout here). Scan,
     // record for useClaudeCodeHintRecommendation to surface, then strip
-    // so the model never sees the tag — a zero-token side channel.
+    // so the model never sees the tag: a zero-token side channel.
     // Stripping runs unconditionally (subagent output must stay clean too);
     // only the dialog recording is main-thread-only.
     const extracted = extractClaudeCodeHints(strippedStdout, input.command);
@@ -1122,24 +1538,28 @@ export const BashTool = buildTool({
     }
     let isImage = isImageOutput(strippedStdout);
 
-    // Cap image dimensions + size if present (CC-304 — see
+    // Cap image dimensions + size if present (CC-304: see
     // resizeShellImageOutput). Scope the decoded buffer so it can be reclaimed
     // before we build the output Out object.
     let compressedStdout = strippedStdout;
     if (isImage) {
-      const resized = await resizeShellImageOutput(strippedStdout, result.outputFilePath, persistedOutputSize);
+      const resized = await resizeShellImageOutput(
+        strippedStdout,
+        result.outputFilePath,
+        persistedOutputSize,
+      );
       if (resized) {
         compressedStdout = resized;
       } else {
         // Parse failed or file too large (e.g. exceeds MAX_IMAGE_FILE_SIZE).
         // Keep isImage in sync with what we actually send so the UI label stays
-        // accurate — mapToolResultToToolResultBlockParam's defensive
+        // accurate: mapToolResultToToolResultBlockParam's defensive
         // fallthrough will send text, not an image block.
         isImage = false;
       }
     }
     // Cwd transparency: state where the command ran whenever that could
-    // differ from what the model assumes — workdir overrides, persisted cd,
+    // differ from what the model assumes: workdir overrides, persisted cd,
     // or a session cwd that has drifted from the project root. This keeps the
     // model anchored to the real directory in long sessions and after
     // compaction, instead of relying on its memory of earlier `cd` calls.
@@ -1156,7 +1576,11 @@ export const BashTool = buildTool({
         cwdNote = `Shell cwd: ${cwdAfter}`;
       }
     }
-    if (!cwdNote && isMainThread && !isSameBashCwd(cwdAfter, getOriginalCwd())) {
+    if (
+      !cwdNote &&
+      isMainThread &&
+      !isSameBashCwd(cwdAfter, getOriginalCwd())
+    ) {
       cwdNote = `Session cwd: ${cwdAfter}`;
     }
     const data: Out = {
@@ -1171,21 +1595,27 @@ export const BashTool = buildTool({
       backgroundTaskId: result.backgroundTaskId,
       backgroundedByUser: result.backgroundedByUser,
       assistantAutoBackgrounded: result.assistantAutoBackgrounded,
-      dangerouslyDisableSandbox: 'dangerouslyDisableSandbox' in input ? input.dangerouslyDisableSandbox as boolean | undefined : undefined,
+      dangerouslyDisableSandbox:
+        "dangerouslyDisableSandbox" in input
+          ? (input.dangerouslyDisableSandbox as boolean | undefined)
+          : undefined,
       persistedOutputPath,
       persistedOutputSize,
-      persistedTailSample
+      persistedTailSample,
     };
     // Record success for retry guard (clears failure tracking for this command)
     recordBashSuccess(input.command, executionDir);
     return {
-      data
+      data,
     };
   },
   renderToolUseErrorMessage,
   isResultTruncated(output: Out): boolean {
-    return isOutputLineTruncated(output.stdout) || isOutputLineTruncated(output.stderr);
-  }
+    return (
+      isOutputLineTruncated(output.stdout) ||
+      isOutputLineTruncated(output.stderr)
+    );
+  },
 } satisfies ToolDef<InputSchema, Out, BashProgress>);
 async function* runShellCommand({
   input,
@@ -1195,7 +1625,7 @@ async function* runShellCommand({
   preventCwdChanges,
   isMainThread,
   toolUseId,
-  agentId
+  agentId,
 }: {
   input: BashToolInput;
   abortController: AbortController;
@@ -1205,26 +1635,24 @@ async function* runShellCommand({
   isMainThread?: boolean;
   toolUseId?: string;
   agentId?: AgentId;
-}): AsyncGenerator<{
-  type: 'progress';
-  output: string;
-  fullOutput: string;
-  elapsedTimeSeconds: number;
-  totalLines: number;
-  totalBytes?: number;
-  taskId?: string;
-  timeoutMs?: number;
-}, ExecResult, void> {
-  const {
-    command,
-    description,
-    timeout,
-    run_in_background,
-    workdir
-  } = input;
+}): AsyncGenerator<
+  {
+    type: "progress";
+    output: string;
+    fullOutput: string;
+    elapsedTimeSeconds: number;
+    totalLines: number;
+    totalBytes?: number;
+    taskId?: string;
+    timeoutMs?: number;
+  },
+  ExecResult,
+  void
+> {
+  const { command, description, timeout, run_in_background, workdir } = input;
   const timeoutMs = timeout || getDefaultTimeoutMs();
-  let fullOutput = '';
-  let lastProgressOutput = '';
+  let fullOutput = "";
+  let lastProgressOutput = "";
   let lastTotalLines = 0;
   let lastTotalBytes = 0;
   let backgroundShellId: string | undefined = undefined;
@@ -1234,7 +1662,7 @@ async function* runShellCommand({
   // waking the generator to yield a progress update.
   let resolveProgress: (() => void) | null = null;
   function createProgressSignal(): Promise<null> {
-    return new Promise<null>(resolve => {
+    return new Promise<null>((resolve) => {
       resolveProgress = () => resolve(null);
     });
   }
@@ -1242,8 +1670,9 @@ async function* runShellCommand({
   // Determine if auto-backgrounding should be enabled
   // Only enable for commands that are allowed to be auto-backgrounded
   // and when background tasks are not disabled
-  const shouldAutoBackground = !isBackgroundTasksDisabled && allowsAutomaticBackgrounding(command);
-  const shellCommand = await exec(command, abortController.signal, 'bash', {
+  const shouldAutoBackground =
+    !isBackgroundTasksDisabled && allowsAutomaticBackgrounding(command);
+  const shellCommand = await exec(command, abortController.signal, "bash", {
     timeout: timeoutMs,
     onProgress(lastLines, allLines, totalLines, totalBytes, isIncomplete) {
       lastProgressOutput = lastLines;
@@ -1260,7 +1689,7 @@ async function* runShellCommand({
     preventCwdChanges,
     shouldUseSandbox: shouldUseSandbox(input),
     shouldAutoBackground,
-    workdir
+    workdir,
   });
 
   // Start the command execution
@@ -1268,45 +1697,61 @@ async function* runShellCommand({
 
   // Helper to spawn a background task and return its ID
   async function spawnBackgroundTask(): Promise<string> {
-    const handle = await spawnShellTask({
-      command,
-      description: description || command,
-      shellCommand,
-      toolUseId,
-      agentId
-    }, {
-      abortController,
-      getAppState: () => {
-        // We don't have direct access to getAppState here, but spawn doesn't
-        // actually use it during the spawn process
-        throw new Error('getAppState not available in runShellCommand context');
+    const handle = await spawnShellTask(
+      {
+        command,
+        description: description || command,
+        shellCommand,
+        toolUseId,
+        agentId,
       },
-      setAppState
-    });
+      {
+        abortController,
+        getAppState: () => {
+          // We don't have direct access to getAppState here, but spawn doesn't
+          // actually use it during the spawn process
+          throw new Error(
+            "getAppState not available in runShellCommand context",
+          );
+        },
+        setAppState,
+      },
+    );
     return handle.taskId;
   }
 
   // Helper to start backgrounding with optional logging
-  function startBackgrounding(eventName: string, backgroundFn?: (shellId: string) => void): void {
+  function startBackgrounding(
+    eventName: string,
+    backgroundFn?: (shellId: string) => void,
+  ): void {
     // If a foreground task is already registered (via registerForeground in the
     // progress loop), background it in-place instead of re-spawning. Re-spawning
     // would overwrite tasks[taskId], emit a duplicate task_started SDK event,
     // and leak the first cleanup callback.
     if (foregroundTaskId) {
-      if (!backgroundExistingForegroundTask(foregroundTaskId, shellCommand, description || command, setAppState, toolUseId)) {
+      if (
+        !backgroundExistingForegroundTask(
+          foregroundTaskId,
+          shellCommand,
+          description || command,
+          setAppState,
+          toolUseId,
+        )
+      ) {
         return;
       }
       backgroundShellId = foregroundTaskId;
       logEvent(eventName, {
-        command_type: getCommandTypeForLogging(command)
+        command_type: getCommandTypeForLogging(command),
       });
       backgroundFn?.(foregroundTaskId);
       return;
     }
 
-    // No foreground task registered — spawn a new background task
+    // No foreground task registered: spawn a new background task
     // Note: spawn is essentially synchronous despite being async
-    void spawnBackgroundTask().then(shellId => {
+    void spawnBackgroundTask().then((shellId) => {
       backgroundShellId = shellId;
 
       // Wake the generator's Promise.race so it sees backgroundShellId.
@@ -1320,7 +1765,7 @@ async function* runShellCommand({
         resolve();
       }
       logEvent(eventName, {
-        command_type: getCommandTypeForLogging(command)
+        command_type: getCommandTypeForLogging(command),
       });
       if (backgroundFn) {
         backgroundFn(shellId);
@@ -1331,19 +1776,31 @@ async function* runShellCommand({
   // Set up auto-backgrounding on timeout if enabled
   // Only background commands that are allowed to be auto-backgrounded (not sleep, etc.)
   if (shellCommand.onTimeout && shouldAutoBackground) {
-    shellCommand.onTimeout(backgroundFn => {
-      startBackgrounding('tengu_bash_command_timeout_backgrounded', backgroundFn);
+    shellCommand.onTimeout((backgroundFn) => {
+      startBackgrounding(
+        "tengu_bash_command_timeout_backgrounded",
+        backgroundFn,
+      );
     });
   }
 
   // In assistant mode, the main agent should stay responsive. Auto-background
   // blocking commands after ASSISTANT_BLOCKING_BUDGET_MS so the agent can keep
-  // coordinating instead of waiting. The command keeps running — no state loss.
-  if (feature('KAIROS') && getKairosActive() && isMainThread && shouldAutoBackground && run_in_background !== true) {
+  // coordinating instead of waiting. The command keeps running: no state loss.
+  if (
+    feature("KAIROS") &&
+    getKairosActive() &&
+    isMainThread &&
+    shouldAutoBackground &&
+    run_in_background !== true
+  ) {
     setTimeout(() => {
-      if (shellCommand.status === 'running' && backgroundShellId === undefined) {
+      if (
+        shellCommand.status === "running" &&
+        backgroundShellId === undefined
+      ) {
         assistantAutoBackgrounded = true;
-        startBackgrounding('tengu_bash_command_assistant_auto_backgrounded');
+        startBackgrounding("tengu_bash_command_assistant_auto_backgrounded");
       }
     }, ASSISTANT_BLOCKING_BUDGET_MS).unref();
   }
@@ -1359,11 +1816,11 @@ async function* runShellCommand({
     // for an abort, both already 'completed'/'killed' with no output file
     // created. Registering it as a background task would hand back a phantom
     // task ID and later emit a completion <task-notification> pointing at a
-    // nonexistent .output file — which TaskOutput and ToolOutputRetrieve then
+    // nonexistent .output file: which TaskOutput and ToolOutputRetrieve then
     // both fail to read. Surface the failure inline instead, exactly like the
     // foreground path (a real spawn is still 'running' here, so it backgrounds
     // normally).
-    if (shellCommand.status !== 'running') {
+    if (shellCommand.status !== "running") {
       const result = await resultPromise;
       shellCommand.cleanup();
       if (result.preSpawnError) {
@@ -1372,15 +1829,15 @@ async function* runShellCommand({
       return result;
     }
     const shellId = await spawnBackgroundTask();
-    logEvent('tengu_bash_command_explicitly_backgrounded', {
-      command_type: getCommandTypeForLogging(command)
+    logEvent("tengu_bash_command_explicitly_backgrounded", {
+      command_type: getCommandTypeForLogging(command),
     });
     return {
-      stdout: '',
-      stderr: '',
+      stdout: "",
+      stderr: "",
       code: 0,
       interrupted: false,
-      backgroundTaskId: shellId
+      backgroundTaskId: shellId,
     };
   }
 
@@ -1388,22 +1845,29 @@ async function* runShellCommand({
   const startTime = Date.now();
   let foregroundTaskId: string | undefined = undefined;
   {
-    const initialResult = await Promise.race([resultPromise, new Promise<null>(resolve => {
-      const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_THRESHOLD_MS, resolve);
-      t.unref();
-    })]);
+    const initialResult = await Promise.race([
+      resultPromise,
+      new Promise<null>((resolve) => {
+        const t = setTimeout(
+          (r: (v: null) => void) => r(null),
+          PROGRESS_THRESHOLD_MS,
+          resolve,
+        );
+        t.unref();
+      }),
+    ]);
     if (initialResult !== null) {
       shellCommand.cleanup();
       return initialResult;
     }
     if (backgroundShellId) {
       return {
-        stdout: '',
-        stderr: '',
+        stdout: "",
+        stderr: "",
         code: 0,
         interrupted: false,
         backgroundTaskId: backgroundShellId,
-        assistantAutoBackgrounded
+        assistantAutoBackgrounded,
       };
     }
   }
@@ -1432,13 +1896,11 @@ async function* runShellCommand({
           markTaskNotified(result.backgroundTaskId, setAppState);
           const fixedResult: ExecResult = {
             ...result,
-            backgroundTaskId: undefined
+            backgroundTaskId: undefined,
           };
           // Mirror ShellCommand.#handleExit's large-output branch that was
           // skipped because #backgroundTaskId was set.
-          const {
-            taskOutput
-          } = shellCommand;
+          const { taskOutput } = shellCommand;
           if (taskOutput.stdoutToFile && !taskOutput.outputFileRedundant) {
             fixedResult.outputFilePath = taskOutput.path;
             fixedResult.outputFileSize = taskOutput.outputFileSize;
@@ -1461,26 +1923,26 @@ async function* runShellCommand({
       // Check if command was backgrounded (either via old mechanism or new backgroundAll)
       if (backgroundShellId) {
         return {
-          stdout: '',
-          stderr: '',
+          stdout: "",
+          stderr: "",
           code: 0,
           interrupted: false,
           backgroundTaskId: backgroundShellId,
-          assistantAutoBackgrounded
+          assistantAutoBackgrounded,
         };
       }
 
       // Check if this foreground task was backgrounded via backgroundAll()
       if (foregroundTaskId) {
         // shellCommand.status becomes 'backgrounded' when background() is called
-        if (shellCommand.status === 'backgrounded') {
+        if (shellCommand.status === "backgrounded") {
           return {
-            stdout: '',
-            stderr: '',
+            stdout: "",
+            stderr: "",
             code: 0,
             interrupted: false,
             backgroundTaskId: foregroundTaskId,
-            backgroundedByUser: true
+            backgroundedByUser: true,
           };
         }
       }
@@ -1491,34 +1953,45 @@ async function* runShellCommand({
 
       // Show minimal backgrounding UI if available
       // Skip if background tasks are disabled
-      if (!isBackgroundTasksDisabled && backgroundShellId === undefined && elapsedSeconds >= PROGRESS_THRESHOLD_MS / 1000 && setToolJSX) {
+      if (
+        !isBackgroundTasksDisabled &&
+        backgroundShellId === undefined &&
+        elapsedSeconds >= PROGRESS_THRESHOLD_MS / 1000 &&
+        setToolJSX
+      ) {
         // Register this command as a foreground task so it can be backgrounded via Ctrl+B
         if (!foregroundTaskId) {
-          foregroundTaskId = registerForeground({
-            command,
-            description: description || command,
-            shellCommand,
-            agentId
-          }, setAppState, toolUseId);
+          foregroundTaskId = registerForeground(
+            {
+              command,
+              description: description || command,
+              shellCommand,
+              agentId,
+            },
+            setAppState,
+            toolUseId,
+          );
         }
         setToolJSX({
           jsx: <BackgroundHint />,
           shouldHidePromptInput: false,
           shouldContinueAnimation: true,
-          showSpinner: true
+          showSpinner: true,
         });
       }
       yield {
-        type: 'progress',
+        type: "progress",
         fullOutput,
         output: lastProgressOutput,
         elapsedTimeSeconds: elapsedSeconds,
         totalLines: lastTotalLines,
         totalBytes: lastTotalBytes,
         taskId: shellCommand.taskOutput.taskId,
-        ...(timeout ? {
-          timeoutMs
-        } : undefined)
+        ...(timeout
+          ? {
+              timeoutMs,
+            }
+          : undefined),
       };
     }
   } finally {

@@ -3,18 +3,18 @@
  *
  * FileEditTool blocks an edit to a file that was never Read this session, so the
  * model reads first and its old_string is copied from real content instead of
- * guessed. A well-behaved model reads once and the next edit passes — no loop.
+ * guessed. A well-behaved model reads once and the next edit passes: no loop.
  * But a model that ignores the error could re-issue the identical blind edit
  * forever. This guard bounds that: it counts CONSECUTIVE blocks per file and,
  * after a small limit, tells the caller to stop blocking and fall back to
- * seeding read-state from disk (the pre-existing safe behavior — the old_string
+ * seeding read-state from disk (the pre-existing safe behavior: the old_string
  * match still guards correctness, so a wrong guess fails with "String to replace
  * not found", never a silent clobber). Retrying after the error is fine; an
  * infinite loop is not.
  *
  * State is module-level (session/process scoped), keyed by absolute file path,
- * with a short TTL so stale counters can't accumulate. A real Read of the file —
- * or a successful edit — clears the counter via noteFileRead(), so enforcement
+ * with a short TTL so stale counters can't accumulate. A real Read of the file:
+ * or a successful edit: clears the counter via noteFileRead(), so enforcement
  * always starts fresh for the next independent blind edit. Mirrors the
  * module-level + TTL shape of bashRetryGuard.
  */
@@ -22,19 +22,19 @@
 // Block a blind edit at most this many times per file before degrading to
 // seeding. 2 → the model gets the "read first" error, can retry, gets it once
 // more, then the third attempt is allowed through (loop broken).
-const MAX_CONSECUTIVE_BLOCKS = 2
-const BLOCK_TTL_MS = 5 * 60_000 // 5 minutes
+const MAX_CONSECUTIVE_BLOCKS = 2;
+const BLOCK_TTL_MS = 5 * 60_000; // 5 minutes
 
 interface BlockEntry {
-  count: number
-  lastAt: number
+  count: number;
+  lastAt: number;
 }
 
-const _blocks = new Map<string, BlockEntry>()
+const _blocks = new Map<string, BlockEntry>();
 
 function purgeStale(now: number): void {
   for (const [key, entry] of _blocks) {
-    if (now - entry.lastAt > BLOCK_TTL_MS) _blocks.delete(key)
+    if (now - entry.lastAt > BLOCK_TTL_MS) _blocks.delete(key);
   }
 }
 
@@ -49,16 +49,16 @@ export function shouldBlockUnreadEdit(
   filePath: string,
   now: number = Date.now(),
 ): boolean {
-  purgeStale(now)
-  const count = (_blocks.get(filePath)?.count ?? 0) + 1
+  purgeStale(now);
+  const count = (_blocks.get(filePath)?.count ?? 0) + 1;
   if (count > MAX_CONSECUTIVE_BLOCKS) {
     // Budget exhausted: stop blocking and let the edit proceed (seeded). Clear
     // the entry so an unrelated later attempt on this file starts fresh.
-    _blocks.delete(filePath)
-    return false
+    _blocks.delete(filePath);
+    return false;
   }
-  _blocks.set(filePath, { count, lastAt: now })
-  return true
+  _blocks.set(filePath, { count, lastAt: now });
+  return true;
 }
 
 /**
@@ -67,10 +67,10 @@ export function shouldBlockUnreadEdit(
  * edit of the same file starts enforcement from zero.
  */
 export function noteFileRead(filePath: string): void {
-  _blocks.delete(filePath)
+  _blocks.delete(filePath);
 }
 
 /** Reset all tracked state. For tests and context clears. */
 export function resetReadFirstGuard(): void {
-  _blocks.clear()
+  _blocks.clear();
 }

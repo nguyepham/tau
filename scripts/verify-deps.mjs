@@ -19,8 +19,8 @@
  *   node scripts/verify-deps.mjs --json     # machine-readable result
  */
 
-import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   readFileSync,
@@ -28,36 +28,36 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
-} from 'node:fs';
-import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+} from "node:fs";
+import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   acquireSynchronousUpdateLease,
   getGlobalUpdateLockPath,
   getManagedLocalUpdateLockPath,
   leaseEnvironment,
   releaseSynchronousUpdateLease,
-} from './update-lock.mjs';
+} from "./update-lock.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
-const defaultPackageRoot = resolve(dirname(__filename), '..');
+const defaultPackageRoot = resolve(dirname(__filename), "..");
 
-export const LIFECYCLE_MARKER_FILENAME = '.tau-lifecycle-complete.json';
+export const LIFECYCLE_MARKER_FILENAME = ".tau-lifecycle-complete.json";
 export const LIFECYCLE_MARKER_SCHEMA = 1;
-const TAU_PACKAGE_NAME = '@abdoknbgit/tau';
-const TAU_INSTALLER_SPEC = '@abdoknbgit/tau-installer@latest';
-const GLOBAL_UPDATE_LOCK_ENV = 'TAU_UPDATE_LOCK';
-const LOCAL_UPDATE_LOCK_ENV = 'TAU_LOCAL_UPDATE_LOCK';
+const TAU_PACKAGE_NAME = "@abdoknbgit/tau";
+const TAU_INSTALLER_SPEC = "@abdoknbgit/tau-installer@latest";
+const GLOBAL_UPDATE_LOCK_ENV = "TAU_UPDATE_LOCK";
+const LOCAL_UPDATE_LOCK_ENV = "TAU_LOCAL_UPDATE_LOCK";
 export const TAU_RUNTIME_ALLOW_SCRIPTS = Object.freeze([
   TAU_PACKAGE_NAME,
-  '@whiskeysockets/baileys',
-  'core-js',
-  'fsevents',
-  'node-pty',
-  'protobufjs',
-  'sharp',
+  "@whiskeysockets/baileys",
+  "core-js",
+  "fsevents",
+  "node-pty",
+  "protobufjs",
+  "sharp",
 ]);
 
 // A few declared dependencies intentionally have no CommonJS-resolvable root:
@@ -66,29 +66,29 @@ export const TAU_RUNTIME_ALLOW_SCRIPTS = Object.freeze([
 // those legitimate package shapes. Every other dependency must resolve through
 // Node's real package resolver, not merely contain a package.json file.
 const EXPLICIT_DEPENDENCY_RUNTIME_FILES = Object.freeze({
-  '@alcalzone/ansi-tokenize': ['build/index.js'],
-  '@modelcontextprotocol/sdk': [
-    'dist/esm/types.js',
-    'dist/esm/server/index.js',
-    'dist/esm/server/stdio.js',
-    'dist/esm/server/auth/errors.js',
-    'dist/esm/client/index.js',
-    'dist/esm/client/sse.js',
-    'dist/esm/client/stdio.js',
-    'dist/esm/client/streamableHttp.js',
-    'dist/esm/client/auth.js',
-    'dist/esm/shared/auth.js',
-    'dist/esm/shared/transport.js',
+  "@alcalzone/ansi-tokenize": ["build/index.js"],
+  "@modelcontextprotocol/sdk": [
+    "dist/esm/types.js",
+    "dist/esm/server/index.js",
+    "dist/esm/server/stdio.js",
+    "dist/esm/server/auth/errors.js",
+    "dist/esm/client/index.js",
+    "dist/esm/client/sse.js",
+    "dist/esm/client/stdio.js",
+    "dist/esm/client/streamableHttp.js",
+    "dist/esm/client/auth.js",
+    "dist/esm/shared/auth.js",
+    "dist/esm/shared/transport.js",
   ],
-  'vscode-langservers-extracted': [
-    'bin/vscode-html-language-server',
-    'bin/vscode-css-language-server',
-    'bin/vscode-json-language-server',
+  "vscode-langservers-extracted": [
+    "bin/vscode-html-language-server",
+    "bin/vscode-css-language-server",
+    "bin/vscode-json-language-server",
   ],
 });
 const MANIFEST_ONLY_DEPENDENCIES = new Set([
   // Imported only through TypeScript `import type`; no runtime entry exists.
-  'type-fest',
+  "type-fest",
 ]);
 const EXACT_SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -99,12 +99,12 @@ export function isExactVersion(value) {
   const prerelease = match[4];
   if (!prerelease) return true;
   return prerelease
-    .split('.')
+    .split(".")
     .every(
-      identifier =>
+      (identifier) =>
         !/^\d+$/.test(identifier) ||
-        identifier === '0' ||
-        !identifier.startsWith('0'),
+        identifier === "0" ||
+        !identifier.startsWith("0"),
     );
 }
 
@@ -118,7 +118,10 @@ function npmSupportsAllowScripts(version) {
 
 function readPackageManifest(packageRoot) {
   return JSON.parse(
-    readFileSync(join(packageRoot, 'package.json'), 'utf8').replace(/^\uFEFF/, ''),
+    readFileSync(join(packageRoot, "package.json"), "utf8").replace(
+      /^\uFEFF/,
+      "",
+    ),
   );
 }
 
@@ -133,18 +136,18 @@ export function getLifecycleMarkerStatus(packageRoot = defaultPackageRoot) {
   };
 
   if (!existsSync(markerPath)) {
-    return { ok: false, reason: 'missing', markerPath, expected };
+    return { ok: false, reason: "missing", markerPath, expected };
   }
 
   try {
-    const actual = JSON.parse(readFileSync(markerPath, 'utf8'));
+    const actual = JSON.parse(readFileSync(markerPath, "utf8"));
     const ok =
       actual?.schema === expected.schema &&
       actual?.packageName === expected.packageName &&
       actual?.version === expected.version;
     return {
       ok,
-      reason: ok ? 'complete' : 'mismatch',
+      reason: ok ? "complete" : "mismatch",
       markerPath,
       expected,
       actual,
@@ -152,7 +155,7 @@ export function getLifecycleMarkerStatus(packageRoot = defaultPackageRoot) {
   } catch (error) {
     return {
       ok: false,
-      reason: 'invalid',
+      reason: "invalid",
       markerPath,
       expected,
       error: error instanceof Error ? error.message : String(error),
@@ -195,8 +198,8 @@ export function writeLifecycleCompletionMarker(
   };
 
   writeFileSync(temporaryPath, `${JSON.stringify(marker)}\n`, {
-    encoding: 'utf8',
-    flag: 'wx',
+    encoding: "utf8",
+    flag: "wx",
   });
 
   try {
@@ -234,7 +237,7 @@ export function listRuntimeDeps(packageRoot) {
 function findDependencyManifest(packageRoot, dep) {
   let dir = resolve(packageRoot);
   for (;;) {
-    const manifestPath = join(dir, 'node_modules', dep, 'package.json');
+    const manifestPath = join(dir, "node_modules", dep, "package.json");
     if (existsSync(manifestPath)) return manifestPath;
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -251,8 +254,8 @@ function depResolves(packageRoot, dep, resolver) {
   const explicitFiles = EXPLICIT_DEPENDENCY_RUNTIME_FILES[dep];
   if (explicitFiles) {
     const dependencyRoot = dirname(manifestPath);
-    return explicitFiles.every(relativePath =>
-      existsSync(join(dependencyRoot, ...relativePath.split('/'))),
+    return explicitFiles.every((relativePath) =>
+      existsSync(join(dependencyRoot, ...relativePath.split("/"))),
     );
   }
 
@@ -266,21 +269,21 @@ function depResolves(packageRoot, dep, resolver) {
 
 /** Names of declared runtime deps that do NOT resolve. Fast (<10ms). */
 export function findMissingDeps(packageRoot = defaultPackageRoot) {
-  const resolver = createRequire(join(resolve(packageRoot), 'package.json'));
+  const resolver = createRequire(join(resolve(packageRoot), "package.json"));
   return listRuntimeDeps(packageRoot).filter(
-    dep => !depResolves(packageRoot, dep, resolver),
+    (dep) => !depResolves(packageRoot, dep, resolver),
   );
 }
 
-/** One-line progress bar on stderr (TTY only — silent when piped). */
+/** One-line progress bar on stderr (TTY only: silent when piped). */
 function drawProgress(current, total, label) {
   if (!process.stderr.isTTY) return;
   const width = 24;
   const filled = Math.round((current / total) * width);
-  const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+  const bar = "█".repeat(filled) + "░".repeat(width - filled);
   const line = `\r[tau] [${bar}] ${current}/${total} ${label}`;
   process.stderr.write(line.padEnd(Math.min(79, line.length + 20)));
-  if (current === total) process.stderr.write('\n');
+  if (current === total) process.stderr.write("\n");
 }
 
 /**
@@ -289,7 +292,7 @@ function drawProgress(current, total, label) {
  */
 export function verifyDeps(packageRoot = defaultPackageRoot, opts = {}) {
   const deps = listRuntimeDeps(packageRoot);
-  const resolver = createRequire(join(resolve(packageRoot), 'package.json'));
+  const resolver = createRequire(join(resolve(packageRoot), "package.json"));
   const missing = [];
   deps.forEach((dep, i) => {
     if (!depResolves(packageRoot, dep, resolver)) missing.push(dep);
@@ -299,26 +302,26 @@ export function verifyDeps(packageRoot = defaultPackageRoot, opts = {}) {
 }
 
 const OVERRIDDEN_NPM_CONFIGS = new Set([
-  'npm_config_allow_scripts',
-  'npm_config_ignore_scripts',
-  'npm_config_dangerously_allow_all_scripts',
-  'npm_config_strict_allow_scripts',
-  'npm_config_dry_run',
-  'npm_config_global',
-  'npm_config_location',
-  'npm_config_package_lock_only',
-  'npm_config_omit',
-  'npm_config_include',
-  'npm_config_optional',
-  'npm_config_production',
-  'npm_config_bin_links',
+  "npm_config_allow_scripts",
+  "npm_config_ignore_scripts",
+  "npm_config_dangerously_allow_all_scripts",
+  "npm_config_strict_allow_scripts",
+  "npm_config_dry_run",
+  "npm_config_global",
+  "npm_config_location",
+  "npm_config_package_lock_only",
+  "npm_config_omit",
+  "npm_config_include",
+  "npm_config_optional",
+  "npm_config_production",
+  "npm_config_bin_links",
 ]);
 
 /** Remove inherited npm switches that can silently weaken or redirect repair. */
 export function createRepairEnvironment(source = process.env, additions = {}) {
   const env = { ...source, ...additions };
   for (const key of Object.keys(env)) {
-    if (OVERRIDDEN_NPM_CONFIGS.has(key.toLowerCase().replaceAll('-', '_'))) {
+    if (OVERRIDDEN_NPM_CONFIGS.has(key.toLowerCase().replaceAll("-", "_"))) {
       delete env[key];
     }
   }
@@ -335,9 +338,10 @@ function getNpmInvocation(env, opts = {}) {
     };
   }
   return {
-    command: (opts.platform ?? process.platform) === 'win32' ? 'npm.cmd' : 'npm',
+    command:
+      (opts.platform ?? process.platform) === "win32" ? "npm.cmd" : "npm",
     prefixArguments: [],
-    shell: (opts.platform ?? process.platform) === 'win32',
+    shell: (opts.platform ?? process.platform) === "win32",
   };
 }
 
@@ -349,7 +353,7 @@ function comparablePath(path, platform = process.platform) {
     // A path can disappear while npm atomically replaces the package. The
     // resolved lexical path is still sufficient for the containment check.
   }
-  return platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function isSamePath(left, right, platform = process.platform) {
@@ -362,28 +366,31 @@ function isSamePath(left, right, platform = process.platform) {
  * tree is repaired in place; every other non-global tree fails closed and is
  * never redirected into a global installation.
  */
-export function classifyInstallation(packageRoot = defaultPackageRoot, opts = {}) {
+export function classifyInstallation(
+  packageRoot = defaultPackageRoot,
+  opts = {},
+) {
   const manifest = readPackageManifest(packageRoot);
   const platform = opts.platform ?? process.platform;
   const sourceCheckout =
-    existsSync(join(packageRoot, 'src')) &&
-    (existsSync(join(packageRoot, '.git')) ||
-      existsSync(join(packageRoot, 'package-lock.json')));
-  if (sourceCheckout) return { kind: 'development' };
+    existsSync(join(packageRoot, "src")) &&
+    (existsSync(join(packageRoot, ".git")) ||
+      existsSync(join(packageRoot, "package-lock.json")));
+  if (sourceCheckout) return { kind: "development" };
 
   const env = opts.env ?? process.env;
   const home = opts.homeDirectory ?? homedir();
-  const configHomes = [join(home, '.claude')];
+  const configHomes = [join(home, ".claude")];
   if (env.CLAUDE_CONFIG_DIR) configHomes.push(resolve(env.CLAUDE_CONFIG_DIR));
   for (const configHome of configHomes) {
     const expectedLocalRoot = join(
       configHome,
-      'local',
-      'node_modules',
-      ...String(manifest.name).split('/'),
+      "local",
+      "node_modules",
+      ...String(manifest.name).split("/"),
     );
     if (isSamePath(packageRoot, expectedLocalRoot, platform)) {
-      return { kind: 'managed-local', projectRoot: join(configHome, 'local') };
+      return { kind: "managed-local", projectRoot: join(configHome, "local") };
     }
   }
 
@@ -392,45 +399,45 @@ export function classifyInstallation(packageRoot = defaultPackageRoot, opts = {}
   const spawnSyncImpl = opts.spawnSyncImpl ?? spawnSync;
   const result = spawnSyncImpl(
     invocation.command,
-    [...invocation.prefixArguments, 'root', '--global'],
+    [...invocation.prefixArguments, "root", "--global"],
     {
       cwd: home,
       env: childEnv,
-      stdio: 'pipe',
+      stdio: "pipe",
       shell: invocation.shell,
       windowsHide: true,
       timeout: opts.probeTimeout ?? 30_000,
     },
   );
   const globalNodeModules =
-    result.status === 0 ? String(result.stdout ?? '').trim() : '';
+    result.status === 0 ? String(result.stdout ?? "").trim() : "";
   if (globalNodeModules) {
     const expectedGlobalRoot = join(
       globalNodeModules,
-      ...String(manifest.name).split('/'),
+      ...String(manifest.name).split("/"),
     );
     if (isSamePath(packageRoot, expectedGlobalRoot, platform)) {
-      return { kind: 'global', globalNodeModules };
+      return { kind: "global", globalNodeModules };
     }
   }
 
-  return { kind: 'installed-other' };
+  return { kind: "installed-other" };
 }
 
 function acquireRepairLease(installation, childEnv, opts = {}) {
   let lockPath;
   let envPrefix;
-  if (installation?.kind === 'global') {
+  if (installation?.kind === "global") {
     lockPath = getGlobalUpdateLockPath(
       childEnv,
       opts.homeDirectory ?? homedir(),
     );
     envPrefix = GLOBAL_UPDATE_LOCK_ENV;
-  } else if (installation?.kind === 'managed-local') {
+  } else if (installation?.kind === "managed-local") {
     lockPath = getManagedLocalUpdateLockPath(installation.projectRoot);
     envPrefix = LOCAL_UPDATE_LOCK_ENV;
   } else {
-    return { status: 'unlocked', lease: null };
+    return { status: "unlocked", lease: null };
   }
 
   const result = acquireSynchronousUpdateLease({
@@ -450,7 +457,7 @@ function acquireRepairLease(installation, childEnv, opts = {}) {
       ? {}
       : { isProcessAliveImpl: opts.isProcessAliveImpl }),
   });
-  if (result.status === 'acquired' || result.status === 'borrowed') {
+  if (result.status === "acquired" || result.status === "borrowed") {
     Object.assign(childEnv, leaseEnvironment(result.lease, envPrefix));
   }
   return result;
@@ -461,42 +468,45 @@ function releaseRepairLease(result) {
 }
 
 /** Reinstall this exact global Tau version through the reviewed installer. */
-export function repairGlobalLifecycle(packageRoot = defaultPackageRoot, opts = {}) {
+export function repairGlobalLifecycle(
+  packageRoot = defaultPackageRoot,
+  opts = {},
+) {
   const manifest = readPackageManifest(packageRoot);
   if (manifest.name !== TAU_PACKAGE_NAME || !isExactVersion(manifest.version)) {
     return false;
   }
 
   const sourceEnv = opts.env ?? process.env;
-  if (sourceEnv.TAU_LIFECYCLE_BRIDGE_REPAIR === '1') return false;
+  if (sourceEnv.TAU_LIFECYCLE_BRIDGE_REPAIR === "1") return false;
   const childEnv = createRepairEnvironment(sourceEnv, {
-    TAU_LIFECYCLE_BRIDGE_REPAIR: '1',
+    TAU_LIFECYCLE_BRIDGE_REPAIR: "1",
   });
   const invocation = getNpmInvocation(childEnv, opts);
   const spawnSyncImpl = opts.spawnSyncImpl ?? spawnSync;
   const interactive = opts.interactive ?? process.stderr.isTTY;
   const args = [
     ...invocation.prefixArguments,
-    'exec',
-    '--yes',
-    '--prefer-online',
-    '--no-fund',
-    '--no-audit',
-    '--ignore-scripts=false',
-    '--dry-run=false',
-    '--global=false',
-    '--package-lock-only=false',
-    '--bin-links=true',
+    "exec",
+    "--yes",
+    "--prefer-online",
+    "--no-fund",
+    "--no-audit",
+    "--ignore-scripts=false",
+    "--dry-run=false",
+    "--global=false",
+    "--package-lock-only=false",
+    "--bin-links=true",
     `--package=${TAU_INSTALLER_SPEC}`,
-    '--',
-    'tau-installer',
-    '--tau-version',
+    "--",
+    "tau-installer",
+    "--tau-version",
     manifest.version,
   ];
   const result = spawnSyncImpl(invocation.command, args, {
     cwd: opts.homeDirectory ?? homedir(),
     env: childEnv,
-    stdio: interactive ? 'inherit' : 'pipe',
+    stdio: interactive ? "inherit" : "pipe",
     shell: invocation.shell,
     windowsHide: true,
   });
@@ -507,13 +517,13 @@ export function repairGlobalLifecycle(packageRoot = defaultPackageRoot, opts = {
 function getReviewedLifecyclePolicy(manifest) {
   if (
     !TAU_RUNTIME_ALLOW_SCRIPTS.every(
-      name => manifest.allowScripts?.[name] === true,
+      (name) => manifest.allowScripts?.[name] === true,
     )
   ) {
     return null;
   }
   return Object.fromEntries(
-    TAU_RUNTIME_ALLOW_SCRIPTS.map(name => [name, true]),
+    TAU_RUNTIME_ALLOW_SCRIPTS.map((name) => [name, true]),
   );
 }
 
@@ -524,7 +534,7 @@ function replaceFileAtomically(filePath, contents, opts = {}) {
   let backupCreated = false;
   let replacementComplete = false;
 
-  writeFileSync(temporaryPath, contents, { encoding: 'utf8', flag: 'wx' });
+  writeFileSync(temporaryPath, contents, { encoding: "utf8", flag: "wx" });
   try {
     try {
       renameSync(temporaryPath, filePath);
@@ -573,43 +583,44 @@ export function repairManagedLocalLifecycle(
   }
 
   const projectRoot = installation?.projectRoot;
-  if (!projectRoot || installation.kind !== 'managed-local') return false;
+  if (!projectRoot || installation.kind !== "managed-local") return false;
 
   const sourceEnv = opts.env ?? process.env;
-  if (sourceEnv.TAU_LIFECYCLE_BRIDGE_REPAIR === '1') return false;
+  if (sourceEnv.TAU_LIFECYCLE_BRIDGE_REPAIR === "1") return false;
   const childEnv = createRepairEnvironment(sourceEnv, {
-    TAU_LIFECYCLE_BRIDGE_REPAIR: '1',
+    TAU_LIFECYCLE_BRIDGE_REPAIR: "1",
   });
 
   const policy = getReviewedLifecyclePolicy(manifest);
   if (!policy) return false;
 
-  const projectManifestPath = join(projectRoot, 'package.json');
+  const projectManifestPath = join(projectRoot, "package.json");
   let projectManifest;
   try {
     projectManifest = JSON.parse(
-      readFileSync(projectManifestPath, 'utf8').replace(/^\uFEFF/, ''),
+      readFileSync(projectManifestPath, "utf8").replace(/^\uFEFF/, ""),
     );
   } catch {
     return false;
   }
-  if (projectManifest.name !== 'tau-local' || projectManifest.private !== true) {
-    return false;
-  }
-
-  const repairLease = acquireRepairLease(installation, childEnv, opts);
   if (
-    repairLease.status !== 'acquired' &&
-    repairLease.status !== 'borrowed'
+    projectManifest.name !== "tau-local" ||
+    projectManifest.private !== true
   ) {
     return false;
   }
 
-  try {
+  const repairLease = acquireRepairLease(installation, childEnv, opts);
+  if (repairLease.status !== "acquired" && repairLease.status !== "borrowed") {
+    return false;
+  }
 
+  try {
     // This directory is created and owned by Tau's local installer. Keep the
     // approvals exact so unrelated packages cannot retain historical grants.
-    if (JSON.stringify(projectManifest.allowScripts) !== JSON.stringify(policy)) {
+    if (
+      JSON.stringify(projectManifest.allowScripts) !== JSON.stringify(policy)
+    ) {
       replaceFileAtomically(
         projectManifestPath,
         `${JSON.stringify({ ...projectManifest, allowScripts: policy }, null, 2)}\n`,
@@ -626,40 +637,42 @@ export function repairManagedLocalLifecycle(
     };
     const versionResult = spawnSyncImpl(
       invocation.command,
-      [...invocation.prefixArguments, '--version'],
-      { ...commonOptions, stdio: 'pipe' },
+      [...invocation.prefixArguments, "--version"],
+      { ...commonOptions, stdio: "pipe" },
     );
     const npmVersion =
-      versionResult.status === 0 ? String(versionResult.stdout ?? '').trim() : '';
+      versionResult.status === 0
+        ? String(versionResult.stdout ?? "").trim()
+        : "";
     if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(npmVersion)) {
       return false;
     }
 
     const args = [
-    ...invocation.prefixArguments,
-    'install',
-    `${TAU_PACKAGE_NAME}@${manifest.version}`,
-    '--global=false',
-    '--ignore-scripts=false',
-    '--dry-run=false',
-    '--package-lock-only=false',
-    '--bin-links=true',
-    '--include=optional',
-    ...(npmSupportsAllowScripts(npmVersion)
-      ? [
-          '--dangerously-allow-all-scripts=false',
-          '--strict-allow-scripts=true',
-        ]
-      : []),
-    '--no-audit',
-    '--no-fund',
+      ...invocation.prefixArguments,
+      "install",
+      `${TAU_PACKAGE_NAME}@${manifest.version}`,
+      "--global=false",
+      "--ignore-scripts=false",
+      "--dry-run=false",
+      "--package-lock-only=false",
+      "--bin-links=true",
+      "--include=optional",
+      ...(npmSupportsAllowScripts(npmVersion)
+        ? [
+            "--dangerously-allow-all-scripts=false",
+            "--strict-allow-scripts=true",
+          ]
+        : []),
+      "--no-audit",
+      "--no-fund",
     ];
     const interactive = opts.interactive ?? process.stderr.isTTY;
     let result;
     try {
       result = spawnSyncImpl(invocation.command, args, {
         ...commonOptions,
-        stdio: interactive ? 'inherit' : 'pipe',
+        stdio: interactive ? "inherit" : "pipe",
       });
     } finally {
       // A same-version install can run Tau's postinstall while leaving an
@@ -670,44 +683,44 @@ export function repairManagedLocalLifecycle(
     if (result.status !== 0) return false;
 
     const rebuildBase = [
-    ...invocation.prefixArguments,
-    'rebuild',
-    '--global=false',
-    '--ignore-scripts=false',
-    '--dry-run=false',
-    '--package-lock-only=false',
-    '--bin-links=true',
-    '--include=optional',
-    ...(npmSupportsAllowScripts(npmVersion)
-      ? [
-          '--dangerously-allow-all-scripts=false',
-          '--strict-allow-scripts=true',
-        ]
-      : []),
-    '--no-audit',
-    '--no-fund',
+      ...invocation.prefixArguments,
+      "rebuild",
+      "--global=false",
+      "--ignore-scripts=false",
+      "--dry-run=false",
+      "--package-lock-only=false",
+      "--bin-links=true",
+      "--include=optional",
+      ...(npmSupportsAllowScripts(npmVersion)
+        ? [
+            "--dangerously-allow-all-scripts=false",
+            "--strict-allow-scripts=true",
+          ]
+        : []),
+      "--no-audit",
+      "--no-fund",
     ];
     const lifecycleDependencies = TAU_RUNTIME_ALLOW_SCRIPTS.filter(
-      name => name !== TAU_PACKAGE_NAME,
+      (name) => name !== TAU_PACKAGE_NAME,
     );
     const dependencyRebuild = spawnSyncImpl(
       invocation.command,
       [...rebuildBase, ...lifecycleDependencies],
       {
         ...commonOptions,
-        stdio: interactive ? 'inherit' : 'pipe',
+        stdio: interactive ? "inherit" : "pipe",
       },
     );
     if (dependencyRebuild.status !== 0) return false;
 
-  // Rebuild Tau last. Its postinstall writes the completion marker only after
-  // the reviewed dependency lifecycles above have completed successfully.
+    // Rebuild Tau last. Its postinstall writes the completion marker only after
+    // the reviewed dependency lifecycles above have completed successfully.
     const tauRebuild = spawnSyncImpl(
       invocation.command,
       [...rebuildBase, TAU_PACKAGE_NAME],
       {
         ...commonOptions,
-        stdio: interactive ? 'inherit' : 'pipe',
+        stdio: interactive ? "inherit" : "pipe",
       },
     );
     return tauRebuild.status === 0;
@@ -726,23 +739,23 @@ export function repairDeps(packageRoot = defaultPackageRoot, opts = {}) {
   const env = createRepairEnvironment(opts.env ?? process.env, {
     // The install re-triggers our own postinstall; keep it from recursing
     // into another verify/repair cycle or slow optional steps.
-    TAU_REPAIR: '1',
-    TAU_SKIP_OLLAMA_PREPULL: '1',
-    TAU_SKIP_NATIVE_TOOLS_POSTINSTALL: '1',
+    TAU_REPAIR: "1",
+    TAU_SKIP_OLLAMA_PREPULL: "1",
+    TAU_SKIP_NATIVE_TOOLS_POSTINSTALL: "1",
   });
   const spawnSyncImpl = opts.spawnSyncImpl ?? spawnSync;
-  const installation = opts.installation ?? classifyInstallation(packageRoot, opts);
+  const installation =
+    opts.installation ?? classifyInstallation(packageRoot, opts);
   const repairLease = acquireRepairLease(installation, env, opts);
   if (
-    repairLease.status !== 'unlocked' &&
-    repairLease.status !== 'acquired' &&
-    repairLease.status !== 'borrowed'
+    repairLease.status !== "unlocked" &&
+    repairLease.status !== "acquired" &&
+    repairLease.status !== "borrowed"
   ) {
     return false;
   }
 
   try {
-
     // Prefer the exact npm that is driving the current lifecycle when
     // available (postinstall), otherwise the npm on PATH. `.cmd` shims need
     // shell:true on Windows with modern Node.
@@ -750,55 +763,54 @@ export function repairDeps(packageRoot = defaultPackageRoot, opts = {}) {
     const useNpmJs = npmExecPath && /\.[cm]?js$/.test(npmExecPath);
     const platform = opts.platform ?? process.platform;
     const nodeExecutable = opts.nodeExecutable ?? process.execPath;
-    const spawnNpm = args =>
+    const spawnNpm = (args) =>
       useNpmJs
         ? spawnSyncImpl(nodeExecutable, [npmExecPath, ...args], {
             cwd: packageRoot,
             env,
-            stdio: interactive ? 'inherit' : 'pipe',
+            stdio: interactive ? "inherit" : "pipe",
           })
-        : spawnSyncImpl(platform === 'win32' ? 'npm.cmd' : 'npm', args, {
+        : spawnSyncImpl(platform === "win32" ? "npm.cmd" : "npm", args, {
             cwd: packageRoot,
             env,
-            stdio: interactive ? 'inherit' : 'pipe',
-            shell: platform === 'win32',
+            stdio: interactive ? "inherit" : "pipe",
+            shell: platform === "win32",
           });
 
     const versionResult = useNpmJs
-      ? spawnSyncImpl(nodeExecutable, [npmExecPath, '--version'], {
+      ? spawnSyncImpl(nodeExecutable, [npmExecPath, "--version"], {
           cwd: packageRoot,
           env,
-          stdio: 'pipe',
+          stdio: "pipe",
         })
-      : spawnSyncImpl(platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'], {
+      : spawnSyncImpl(platform === "win32" ? "npm.cmd" : "npm", ["--version"], {
           cwd: packageRoot,
           env,
-          stdio: 'pipe',
-          shell: platform === 'win32',
+          stdio: "pipe",
+          shell: platform === "win32",
         });
 
-    const npmVersion = versionResult.status === 0
-      ? String(versionResult.stdout).trim()
-      : '';
+    const npmVersion =
+      versionResult.status === 0 ? String(versionResult.stdout).trim() : "";
     const supportsAllowScripts = npmSupportsAllowScripts(npmVersion);
     const args = [
-      'install',
-      '--global=false',
-      '--omit=dev',
-      '--include=optional',
-      '--ignore-scripts=false',
-      '--dry-run=false',
-      '--package-lock-only=false',
-      '--bin-links=true',
+      "install",
+      "--global=false",
+      "--omit=dev",
+      "--include=optional",
+      "--ignore-scripts=false",
+      "--dry-run=false",
+      "--package-lock-only=false",
+      "--bin-links=true",
       ...(supportsAllowScripts
         ? [
-            '--dangerously-allow-all-scripts=false',
-            '--strict-allow-scripts=true',
+            "--dangerously-allow-all-scripts=false",
+            "--strict-allow-scripts=true",
           ]
         : []),
-      '--no-audit',
-      '--no-fund',
-      ...(interactive ? [] : ['--loglevel=error', '--progress=false']),
+      "--no-audit",
+      "--no-fund",
+      ...(interactive ? [] : ["--loglevel=error", "--progress=false"]),
     ];
     const result = spawnNpm(args);
 
@@ -823,7 +835,7 @@ export function manualFixInstructions(packageName) {
     `If npm reports EEXIST on a 'tau' or 'claudex' file, delete that file`,
     `and re-run the install. If it reports EPERM on Windows, close every`,
     `running tau/claudex session first, then retry.`,
-  ].join('\n');
+  ].join("\n");
 }
 
 /**
@@ -831,18 +843,18 @@ export function manualFixInstructions(packageName) {
  * Returns true when the tree is complete at the end.
  */
 export function ensureDeps(packageRoot = defaultPackageRoot, opts = {}) {
-  const log = opts.quiet ? () => {} : msg => process.stderr.write(`${msg}\n`);
+  const log = opts.quiet ? () => {} : (msg) => process.stderr.write(`${msg}\n`);
   const { total, missing } = verifyDeps(packageRoot, opts);
   let markerStatus = opts.skipLifecycleMarker
-    ? { ok: true, reason: 'skipped' }
+    ? { ok: true, reason: "skipped" }
     : getLifecycleMarkerStatus(packageRoot);
   let installation = null;
 
   if (!markerStatus.ok) {
     installation = classifyInstallation(packageRoot, opts);
-    if (installation.kind === 'development') {
+    if (installation.kind === "development") {
       // Source checkouts are built and run directly, not by npm postinstall.
-      markerStatus = { ok: true, reason: 'development' };
+      markerStatus = { ok: true, reason: "development" };
     }
   }
 
@@ -854,13 +866,13 @@ export function ensureDeps(packageRoot = defaultPackageRoot, opts = {}) {
   if (missing.length > 0) {
     log(
       `[tau] ${missing.length} of ${total} runtime dependencies are missing:` +
-        ` ${missing.slice(0, 8).join(', ')}${missing.length > 8 ? ', ...' : ''}`,
+        ` ${missing.slice(0, 8).join(", ")}${missing.length > 8 ? ", ..." : ""}`,
     );
   }
   if (!markerStatus.ok) {
     log(
       `[tau] Lifecycle installation is incomplete (${markerStatus.reason}); ` +
-        'the exact Tau version must be reinstalled with reviewed scripts.',
+        "the exact Tau version must be reinstalled with reviewed scripts.",
     );
   }
 
@@ -868,10 +880,12 @@ export function ensureDeps(packageRoot = defaultPackageRoot, opts = {}) {
 
   if (!markerStatus.ok) {
     let repaired = false;
-    if (installation?.kind === 'global') {
-      log(`[tau] Repairing lifecycle installation for this exact Tau version...`);
+    if (installation?.kind === "global") {
+      log(
+        `[tau] Repairing lifecycle installation for this exact Tau version...`,
+      );
       repaired = repairGlobalLifecycle(packageRoot, opts);
-    } else if (installation?.kind === 'managed-local') {
+    } else if (installation?.kind === "managed-local") {
       log(
         `[tau] Repairing the managed local lifecycle for this exact Tau version...`,
       );
@@ -879,39 +893,36 @@ export function ensureDeps(packageRoot = defaultPackageRoot, opts = {}) {
     } else {
       log(
         `[tau] Refusing global lifecycle repair for ${
-          installation?.kind ?? 'an unclassified installation'
+          installation?.kind ?? "an unclassified installation"
         }.`,
       );
       return false;
     }
 
     if (!repaired) {
-      log('[tau] Exact-version lifecycle repair failed.');
+      log("[tau] Exact-version lifecycle repair failed.");
       return false;
     }
 
     const afterLifecycleDeps = verifyDeps(packageRoot, { quiet: true });
     const afterLifecycleMarker = getLifecycleMarkerStatus(packageRoot);
-    if (
-      afterLifecycleDeps.missing.length === 0 &&
-      afterLifecycleMarker.ok
-    ) {
+    if (afterLifecycleDeps.missing.length === 0 && afterLifecycleMarker.ok) {
       log(
-        `[tau] ✓ Lifecycle repair complete — ${total}/${total} dependencies verified`,
+        `[tau] ✓ Lifecycle repair complete: ${total}/${total} dependencies verified`,
       );
       return true;
     }
 
     log(
-      `[tau] Lifecycle repair incomplete — marker: ${afterLifecycleMarker.reason}; ` +
-        `missing dependencies: ${afterLifecycleDeps.missing.join(', ') || 'none'}`,
+      `[tau] Lifecycle repair incomplete: marker: ${afterLifecycleMarker.reason}; ` +
+        `missing dependencies: ${afterLifecycleDeps.missing.join(", ") || "none"}`,
     );
     return false;
   }
 
   log(`[tau] Repairing installation (npm install in ${packageRoot})...`);
   if (!repairDeps(packageRoot, opts)) {
-    log('[tau] npm dependency repair failed.');
+    log("[tau] npm dependency repair failed.");
     return false;
   }
 
@@ -920,12 +931,12 @@ export function ensureDeps(packageRoot = defaultPackageRoot, opts = {}) {
     ? { ok: true }
     : getLifecycleMarkerStatus(packageRoot);
   if (after.missing.length === 0 && afterMarker.ok) {
-    log(`[tau] ✓ Repair complete — ${total}/${total} dependencies verified`);
+    log(`[tau] ✓ Repair complete: ${total}/${total} dependencies verified`);
     return true;
   }
   log(
-    `[tau] Repair incomplete — still missing: ${after.missing.join(', ') || 'none'}; ` +
-      `lifecycle marker: ${afterMarker.ok ? 'complete' : afterMarker.reason}`,
+    `[tau] Repair incomplete: still missing: ${after.missing.join(", ") || "none"}; ` +
+      `lifecycle marker: ${afterMarker.ok ? "complete" : afterMarker.reason}`,
   );
   return false;
 }
@@ -937,12 +948,12 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const flags = new Set(process.argv.slice(2));
-  const quiet = flags.has('--quiet') || flags.has('--json');
-  const repair = flags.has('--repair');
+  const quiet = flags.has("--quiet") || flags.has("--json");
+  const repair = flags.has("--repair");
 
   let ok = false;
   try {
-    if (flags.has('--json')) {
+    if (flags.has("--json")) {
       const { total } = verifyDeps(defaultPackageRoot, { quiet: true });
       ok = ensureDeps(defaultPackageRoot, { repair, quiet: true });
       const after = verifyDeps(defaultPackageRoot, { quiet: true });
@@ -952,7 +963,9 @@ if (invokedDirectly) {
     } else {
       ok = ensureDeps(defaultPackageRoot, { repair, quiet });
       if (!ok && repair) {
-        process.stderr.write(`\n${manualFixInstructions(JSON.parse(readFileSync(join(defaultPackageRoot, 'package.json'), 'utf8')).name)}\n`);
+        process.stderr.write(
+          `\n${manualFixInstructions(JSON.parse(readFileSync(join(defaultPackageRoot, "package.json"), "utf8")).name)}\n`,
+        );
       }
     }
   } catch (err) {

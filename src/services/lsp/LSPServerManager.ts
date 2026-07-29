@@ -1,27 +1,27 @@
-import * as path from 'path'
-import { readdir } from 'fs/promises'
-import { pathToFileURL } from 'url'
-import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
-import { logError } from '../../utils/log.js'
-import { getAllLspServers } from './config.js'
+import * as path from "path";
+import { readdir } from "fs/promises";
+import { pathToFileURL } from "url";
+import { logForDebugging } from "../../utils/debug.js";
+import { errorMessage } from "../../utils/errors.js";
+import { logError } from "../../utils/log.js";
+import { getAllLspServers } from "./config.js";
 import {
   createLSPServerInstance,
   type LSPServerInstance,
-} from './LSPServerInstance.js'
-import type { ServerCapabilities } from 'vscode-languageserver-protocol'
-import type { ScopedLspServerConfig } from './types.js'
+} from "./LSPServerInstance.js";
+import type { ServerCapabilities } from "vscode-languageserver-protocol";
+import type { ScopedLspServerConfig } from "./types.js";
 
 function getFileLookupKeys(filePath: string): string[] {
-  const ext = path.extname(filePath).toLowerCase()
-  const baseName = path.basename(filePath).toLowerCase()
-  const keys = ext ? [ext] : []
+  const ext = path.extname(filePath).toLowerCase();
+  const baseName = path.basename(filePath).toLowerCase();
+  const keys = ext ? [ext] : [];
 
-  if (baseName.startsWith('.') && !keys.includes(baseName)) {
-    keys.push(baseName)
+  if (baseName.startsWith(".") && !keys.includes(baseName)) {
+    keys.push(baseName);
   }
 
-  return keys
+  return keys;
 }
 
 function getLanguageIdForFile(
@@ -29,11 +29,11 @@ function getLanguageIdForFile(
   filePath: string,
 ): string {
   for (const key of getFileLookupKeys(filePath)) {
-    const languageId = config.extensionToLanguage[key]
-    if (languageId) return languageId
+    const languageId = config.extensionToLanguage[key];
+    if (languageId) return languageId;
   }
 
-  return 'plaintext'
+  return "plaintext";
 }
 
 /**
@@ -42,43 +42,43 @@ function getLanguageIdForFile(
  */
 export type LSPServerManager = {
   /** Initialize the manager by loading all configured LSP servers */
-  initialize(): Promise<void>
+  initialize(): Promise<void>;
   /** Shutdown all running servers and clear state */
-  shutdown(): Promise<void>
+  shutdown(): Promise<void>;
   /** Get the LSP server instance for a given file path */
-  getServerForFile(filePath: string): LSPServerInstance | undefined
+  getServerForFile(filePath: string): LSPServerInstance | undefined;
   /** Ensure the appropriate LSP server is started for the given file */
-  ensureServerStarted(filePath: string): Promise<LSPServerInstance | undefined>
+  ensureServerStarted(filePath: string): Promise<LSPServerInstance | undefined>;
   /** Send a request to the appropriate LSP server for the given file */
   sendRequest<T>(
     filePath: string,
     method: string,
     params: unknown,
-  ): Promise<T | undefined>
+  ): Promise<T | undefined>;
   /** Get all running server instances */
-  getAllServers(): Map<string, LSPServerInstance>
+  getAllServers(): Map<string, LSPServerInstance>;
   /** Synchronize file open to LSP server (sends didOpen notification) */
-  openFile(filePath: string, content: string): Promise<void>
+  openFile(filePath: string, content: string): Promise<void>;
   /** Synchronize file change to LSP server (sends didChange notification) */
-  changeFile(filePath: string, content: string): Promise<void>
+  changeFile(filePath: string, content: string): Promise<void>;
   /** Synchronize file save to LSP server (sends didSave notification) */
-  saveFile(filePath: string): Promise<void>
+  saveFile(filePath: string): Promise<void>;
   /** Synchronize file close to LSP server (sends didClose notification) */
-  closeFile(filePath: string): Promise<void>
+  closeFile(filePath: string): Promise<void>;
   /** Check if a file is already open on a compatible LSP server */
-  isFileOpen(filePath: string): boolean
+  isFileOpen(filePath: string): boolean;
   /** Ensure the file's server is started and finished its initial project load. */
-  waitForFileServerReady(filePath: string, timeoutMs?: number): Promise<void>
+  waitForFileServerReady(filePath: string, timeoutMs?: number): Promise<void>;
   /** Aggregate indexing status across servers, for the UI progress bar. */
   getIndexingStatus(): {
-    indexing: boolean
-    percent: number
-    serverNames: string[]
-  }
+    indexing: boolean;
+    percent: number;
+    serverNames: string[];
+  };
   /** Capabilities the file's server advertises (after ensuring it's started). */
   getServerCapabilities(
     filePath: string,
-  ): Promise<ServerCapabilities | undefined>
+  ): Promise<ServerCapabilities | undefined>;
   /**
    * Find a source file under a directory that maps to a configured server.
    * When `requiredCapability` is set (e.g. 'workspaceSymbolProvider'), the
@@ -87,8 +87,8 @@ export type LSPServerManager = {
   findRoutableFile(
     dirPath: string,
     requiredCapability?: string,
-  ): Promise<string | undefined>
-}
+  ): Promise<string | undefined>;
+};
 
 /**
  * Creates an LSP server manager instance.
@@ -106,10 +106,10 @@ export type LSPServerManager = {
  */
 export function createLSPServerManager(): LSPServerManager {
   // Private state managed via closures
-  const servers: Map<string, LSPServerInstance> = new Map()
-  const extensionMap: Map<string, string[]> = new Map()
+  const servers: Map<string, LSPServerInstance> = new Map();
+  const extensionMap: Map<string, string[]> = new Map();
   // Track which files have been opened on which servers (URI -> server name)
-  const openedFiles: Map<string, string> = new Map()
+  const openedFiles: Map<string, string> = new Map();
 
   /**
    * Initialize the manager by loading all configured LSP servers.
@@ -117,20 +117,20 @@ export function createLSPServerManager(): LSPServerManager {
    * @throws {Error} If configuration loading fails
    */
   async function initialize(): Promise<void> {
-    let serverConfigs: Record<string, ScopedLspServerConfig>
+    let serverConfigs: Record<string, ScopedLspServerConfig>;
 
     try {
-      const result = await getAllLspServers()
-      serverConfigs = result.servers
+      const result = await getAllLspServers();
+      serverConfigs = result.servers;
       logForDebugging(
         `[LSP SERVER MANAGER] getAllLspServers returned ${Object.keys(serverConfigs).length} server(s)`,
-      )
+      );
     } catch (error) {
-      const err = error as Error
+      const err = error as Error;
       logError(
         new Error(`Failed to load LSP server configuration: ${err.message}`),
-      )
-      throw error
+      );
+      throw error;
     }
 
     // Build extension → server mapping
@@ -140,7 +140,7 @@ export function createLSPServerManager(): LSPServerManager {
         if (!config.command) {
           throw new Error(
             `Server ${serverName} missing required 'command' field`,
-          )
+          );
         }
         if (
           !config.extensionToLanguage ||
@@ -148,61 +148,61 @@ export function createLSPServerManager(): LSPServerManager {
         ) {
           throw new Error(
             `Server ${serverName} missing required 'extensionToLanguage' field`,
-          )
+          );
         }
 
         // Map file suffixes and supported dotfile names to this server.
-        const fileKeys = Object.keys(config.extensionToLanguage)
+        const fileKeys = Object.keys(config.extensionToLanguage);
         for (const key of fileKeys) {
-          const normalized = key.toLowerCase()
+          const normalized = key.toLowerCase();
           if (!extensionMap.has(normalized)) {
-            extensionMap.set(normalized, [])
+            extensionMap.set(normalized, []);
           }
-          const serverList = extensionMap.get(normalized)
+          const serverList = extensionMap.get(normalized);
           if (serverList) {
-            serverList.push(serverName)
+            serverList.push(serverName);
           }
         }
 
         // Create server instance
-        const instance = createLSPServerInstance(serverName, config)
-        servers.set(serverName, instance)
+        const instance = createLSPServerInstance(serverName, config);
+        servers.set(serverName, instance);
 
         // Register handler for workspace/configuration requests from the server
         // Some servers (like TypeScript) send these even when we say we don't support them
         instance.onRequest(
-          'workspace/configuration',
+          "workspace/configuration",
           (params: { items: Array<{ section?: string }> }) => {
             logForDebugging(
               `LSP: Received workspace/configuration request from ${serverName}`,
-            )
+            );
             // Return empty/null config for each requested item
             // This satisfies the protocol without providing actual configuration
-            return params.items.map(() => null)
+            return params.items.map(() => null);
           },
-        )
+        );
 
         if (config.alwaysOn) {
-          void instance.start().catch(error => {
+          void instance.start().catch((error) => {
             const err = new Error(
               `Failed to start always-on LSP server ${serverName}: ${errorMessage(error)}`,
-            )
-            logError(err)
-            logForDebugging(err.message, { level: 'error' })
-          })
+            );
+            logError(err);
+            logForDebugging(err.message, { level: "error" });
+          });
         }
       } catch (error) {
-        const err = error as Error
+        const err = error as Error;
         logError(
           new Error(
             `Failed to initialize LSP server ${serverName}: ${err.message}`,
           ),
-        )
+        );
         // Continue with other servers - don't fail entire initialization
       }
     }
 
-    logForDebugging(`LSP manager initialized with ${servers.size} servers`)
+    logForDebugging(`LSP manager initialized with ${servers.size} servers`);
   }
 
   /**
@@ -214,31 +214,31 @@ export function createLSPServerManager(): LSPServerManager {
    */
   async function shutdown(): Promise<void> {
     const toStop = Array.from(servers.entries()).filter(
-      ([, s]) => s.state === 'running' || s.state === 'error',
-    )
+      ([, s]) => s.state === "running" || s.state === "error",
+    );
 
     const results = await Promise.allSettled(
       toStop.map(([, server]) => server.stop()),
-    )
+    );
 
-    servers.clear()
-    extensionMap.clear()
-    openedFiles.clear()
+    servers.clear();
+    extensionMap.clear();
+    openedFiles.clear();
 
     const errors = results
       .map((r, i) =>
-        r.status === 'rejected'
+        r.status === "rejected"
           ? `${toStop[i]![0]}: ${errorMessage(r.reason)}`
           : null,
       )
-      .filter((e): e is string => e !== null)
+      .filter((e): e is string => e !== null);
 
     if (errors.length > 0) {
       const err = new Error(
-        `Failed to stop ${errors.length} LSP server(s): ${errors.join('; ')}`,
-      )
-      logError(err)
-      throw err
+        `Failed to stop ${errors.length} LSP server(s): ${errors.join("; ")}`,
+      );
+      logError(err);
+      throw err;
     }
   }
 
@@ -249,19 +249,19 @@ export function createLSPServerManager(): LSPServerManager {
    */
   function getServerForFile(filePath: string): LSPServerInstance | undefined {
     for (const key of getFileLookupKeys(filePath)) {
-      const serverNames = extensionMap.get(key)
+      const serverNames = extensionMap.get(key);
       if (!serverNames || serverNames.length === 0) {
-        continue
+        continue;
       }
 
       // Use first server (can add priority later)
-      const serverName = serverNames[0]
+      const serverName = serverNames[0];
       if (serverName) {
-        return servers.get(serverName)
+        return servers.get(serverName);
       }
     }
 
-    return undefined
+    return undefined;
   }
 
   /**
@@ -273,27 +273,27 @@ export function createLSPServerManager(): LSPServerManager {
   async function ensureServerStarted(
     filePath: string,
   ): Promise<LSPServerInstance | undefined> {
-    const server = getServerForFile(filePath)
-    if (!server) return undefined
+    const server = getServerForFile(filePath);
+    if (!server) return undefined;
 
-    // Await start() whenever the server isn't running yet — including the
+    // Await start() whenever the server isn't running yet: including the
     // 'starting' state, where another caller's start is in-flight. start() is
     // deduped, so this awaits the in-progress startup instead of racing it.
-    if (server.state !== 'running') {
+    if (server.state !== "running") {
       try {
-        await server.start()
+        await server.start();
       } catch (error) {
-        const err = error as Error
+        const err = error as Error;
         logError(
           new Error(
             `Failed to start LSP server for file ${filePath}: ${err.message}`,
           ),
-        )
-        throw error
+        );
+        throw error;
       }
     }
 
-    return server
+    return server;
   }
 
   /**
@@ -307,25 +307,25 @@ export function createLSPServerManager(): LSPServerManager {
     method: string,
     params: unknown,
   ): Promise<T | undefined> {
-    const server = await ensureServerStarted(filePath)
-    if (!server) return undefined
+    const server = await ensureServerStarted(filePath);
+    if (!server) return undefined;
 
     try {
-      return await server.sendRequest<T>(method, params)
+      return await server.sendRequest<T>(method, params);
     } catch (error) {
-      const err = error as Error
+      const err = error as Error;
       logError(
         new Error(
           `LSP request failed for file ${filePath}, method '${method}': ${err.message}`,
         ),
-      )
-      throw error
+      );
+      throw error;
     }
   }
 
   // Return public interface
   function getAllServers(): Map<string, LSPServerInstance> {
-    return servers
+    return servers;
   }
 
   /**
@@ -338,10 +338,10 @@ export function createLSPServerManager(): LSPServerManager {
     timeoutMs?: number,
   ): Promise<void> {
     try {
-      const server = await ensureServerStarted(filePath)
-      if (server) await server.waitUntilReady(timeoutMs)
+      const server = await ensureServerStarted(filePath);
+      if (server) await server.waitUntilReady(timeoutMs);
     } catch {
-      // Ignore — the caller's actual request will surface any real failure.
+      // Ignore: the caller's actual request will surface any real failure.
     }
   }
 
@@ -350,24 +350,24 @@ export function createLSPServerManager(): LSPServerManager {
    * Uses the slowest (min) percent so the bar only completes when all do.
    */
   function getIndexingStatus(): {
-    indexing: boolean
-    percent: number
-    serverNames: string[]
+    indexing: boolean;
+    percent: number;
+    serverNames: string[];
   } {
-    const warming: Array<{ name: string; percent: number }> = []
+    const warming: Array<{ name: string; percent: number }> = [];
     for (const [serverName, server] of servers) {
       if (server.indexing) {
-        warming.push({ name: serverName, percent: server.indexingPercent })
+        warming.push({ name: serverName, percent: server.indexingPercent });
       }
     }
     if (warming.length === 0) {
-      return { indexing: false, percent: 100, serverNames: [] }
+      return { indexing: false, percent: 100, serverNames: [] };
     }
     return {
       indexing: true,
-      percent: Math.min(...warming.map(w => w.percent)),
-      serverNames: warming.map(w => w.name),
-    }
+      percent: Math.min(...warming.map((w) => w.percent)),
+      serverNames: warming.map((w) => w.name),
+    };
   }
 
   /**
@@ -379,10 +379,10 @@ export function createLSPServerManager(): LSPServerManager {
     filePath: string,
   ): Promise<ServerCapabilities | undefined> {
     try {
-      const server = await ensureServerStarted(filePath)
-      return server?.capabilities
+      const server = await ensureServerStarted(filePath);
+      return server?.capabilities;
     } catch {
-      return undefined
+      return undefined;
     }
   }
 
@@ -406,147 +406,149 @@ export function createLSPServerManager(): LSPServerManager {
     requiredCapability?: string,
   ): Promise<string | undefined> {
     const skip = new Set([
-      'node_modules',
-      '.git',
-      'dist',
-      'build',
-      'out',
-      '.next',
-      'coverage',
-      'vendor',
-      '.cache',
-      'tmp',
-      '.venv',
-      'venv',
-      '__pycache__',
-    ])
-    const queue: string[] = [dirPath]
-    let visited = 0
-    let firstRoutable: string | undefined
-    const seenServers = new Set<LSPServerInstance>()
-    const candidates: Array<{ file: string; server: LSPServerInstance }> = []
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "out",
+      ".next",
+      "coverage",
+      "vendor",
+      ".cache",
+      "tmp",
+      ".venv",
+      "venv",
+      "__pycache__",
+    ]);
+    const queue: string[] = [dirPath];
+    let visited = 0;
+    let firstRoutable: string | undefined;
+    const seenServers = new Set<LSPServerInstance>();
+    const candidates: Array<{ file: string; server: LSPServerInstance }> = [];
     while (queue.length > 0 && visited < 4000) {
-      const dir = queue.shift()
-      if (dir === undefined) break
-      let entries
+      const dir = queue.shift();
+      if (dir === undefined) break;
+      let entries;
       try {
-        entries = await readdir(dir, { withFileTypes: true })
+        entries = await readdir(dir, { withFileTypes: true });
       } catch {
-        continue
+        continue;
       }
       for (const entry of entries) {
-        if (++visited > 4000) break
-        const full = path.join(dir, entry.name)
+        if (++visited > 4000) break;
+        const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          if (!skip.has(entry.name) && !entry.name.startsWith('.')) {
-            queue.push(full)
+          if (!skip.has(entry.name) && !entry.name.startsWith(".")) {
+            queue.push(full);
           }
         } else if (entry.isFile()) {
-          const server = getServerForFile(full)
-          if (server === undefined) continue
-          if (firstRoutable === undefined) firstRoutable = full
+          const server = getServerForFile(full);
+          if (server === undefined) continue;
+          if (firstRoutable === undefined) firstRoutable = full;
           // No capability requirement: the first routable file is enough.
-          if (!requiredCapability) return full
+          if (!requiredCapability) return full;
           if (!seenServers.has(server)) {
-            seenServers.add(server)
-            candidates.push({ file: full, server })
+            seenServers.add(server);
+            candidates.push({ file: full, server });
           }
         }
       }
     }
 
-    if (!requiredCapability) return firstRoutable
+    if (!requiredCapability) return firstRoutable;
 
     // Prefer already-running servers (capabilities are available instantly),
     // then start the rest until one advertises the capability.
     candidates.sort(
       (a, b) =>
-        (a.server.state === 'running' ? 0 : 1) -
-        (b.server.state === 'running' ? 0 : 1),
-    )
+        (a.server.state === "running" ? 0 : 1) -
+        (b.server.state === "running" ? 0 : 1),
+    );
     for (const { file } of candidates) {
       try {
-        const server = await ensureServerStarted(file)
-        const caps = server?.capabilities as Record<string, unknown> | undefined
-        if (caps && caps[requiredCapability]) return file
+        const server = await ensureServerStarted(file);
+        const caps = server?.capabilities as
+          | Record<string, unknown>
+          | undefined;
+        if (caps && caps[requiredCapability]) return file;
       } catch {
         // Try the next candidate.
       }
     }
-    return firstRoutable
+    return firstRoutable;
   }
 
   async function openFile(filePath: string, content: string): Promise<void> {
-    const server = await ensureServerStarted(filePath)
-    if (!server) return
+    const server = await ensureServerStarted(filePath);
+    if (!server) return;
 
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const fileUri = pathToFileURL(path.resolve(filePath)).href;
 
     // Skip if already opened on this server
     if (openedFiles.get(fileUri) === server.name) {
       logForDebugging(
         `LSP: File already open, skipping didOpen for ${filePath}`,
-      )
-      return
+      );
+      return;
     }
 
     // Get language ID from server's extensionToLanguage mapping
-    const languageId = getLanguageIdForFile(server.config, filePath)
+    const languageId = getLanguageIdForFile(server.config, filePath);
 
     try {
-      await server.sendNotification('textDocument/didOpen', {
+      await server.sendNotification("textDocument/didOpen", {
         textDocument: {
           uri: fileUri,
           languageId,
           version: 1,
           text: content,
         },
-      })
+      });
       // Track that this file is now open on this server
-      openedFiles.set(fileUri, server.name)
+      openedFiles.set(fileUri, server.name);
       logForDebugging(
         `LSP: Sent didOpen for ${filePath} (languageId: ${languageId})`,
-      )
+      );
     } catch (error) {
       const err = new Error(
         `Failed to sync file open ${filePath}: ${errorMessage(error)}`,
-      )
-      logError(err)
+      );
+      logError(err);
       // Re-throw to propagate error to caller
-      throw err
+      throw err;
     }
   }
 
   async function changeFile(filePath: string, content: string): Promise<void> {
-    const server = getServerForFile(filePath)
-    if (!server || server.state !== 'running') {
-      return openFile(filePath, content)
+    const server = getServerForFile(filePath);
+    if (!server || server.state !== "running") {
+      return openFile(filePath, content);
     }
 
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const fileUri = pathToFileURL(path.resolve(filePath)).href;
 
     // If file hasn't been opened on this server yet, open it first
     // LSP servers require didOpen before didChange
     if (openedFiles.get(fileUri) !== server.name) {
-      return openFile(filePath, content)
+      return openFile(filePath, content);
     }
 
     try {
-      await server.sendNotification('textDocument/didChange', {
+      await server.sendNotification("textDocument/didChange", {
         textDocument: {
           uri: fileUri,
           version: 1,
         },
         contentChanges: [{ text: content }],
-      })
-      logForDebugging(`LSP: Sent didChange for ${filePath}`)
+      });
+      logForDebugging(`LSP: Sent didChange for ${filePath}`);
     } catch (error) {
       const err = new Error(
         `Failed to sync file change ${filePath}: ${errorMessage(error)}`,
-      )
-      logError(err)
+      );
+      logError(err);
       // Re-throw to propagate error to caller
-      throw err
+      throw err;
     }
   }
 
@@ -555,23 +557,23 @@ export function createLSPServerManager(): LSPServerManager {
    * Called after file is written to disk to trigger diagnostics
    */
   async function saveFile(filePath: string): Promise<void> {
-    const server = getServerForFile(filePath)
-    if (!server || server.state !== 'running') return
+    const server = getServerForFile(filePath);
+    if (!server || server.state !== "running") return;
 
     try {
-      await server.sendNotification('textDocument/didSave', {
+      await server.sendNotification("textDocument/didSave", {
         textDocument: {
           uri: pathToFileURL(path.resolve(filePath)).href,
         },
-      })
-      logForDebugging(`LSP: Sent didSave for ${filePath}`)
+      });
+      logForDebugging(`LSP: Sent didSave for ${filePath}`);
     } catch (error) {
       const err = new Error(
         `Failed to sync file save ${filePath}: ${errorMessage(error)}`,
-      )
-      logError(err)
+      );
+      logError(err);
       // Re-throw to propagate error to caller
-      throw err
+      throw err;
     }
   }
 
@@ -583,33 +585,33 @@ export function createLSPServerManager(): LSPServerManager {
    * This will notify LSP servers that files are no longer in active use.
    */
   async function closeFile(filePath: string): Promise<void> {
-    const server = getServerForFile(filePath)
-    if (!server || server.state !== 'running') return
+    const server = getServerForFile(filePath);
+    if (!server || server.state !== "running") return;
 
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const fileUri = pathToFileURL(path.resolve(filePath)).href;
 
     try {
-      await server.sendNotification('textDocument/didClose', {
+      await server.sendNotification("textDocument/didClose", {
         textDocument: {
           uri: fileUri,
         },
-      })
+      });
       // Remove from tracking so file can be reopened later
-      openedFiles.delete(fileUri)
-      logForDebugging(`LSP: Sent didClose for ${filePath}`)
+      openedFiles.delete(fileUri);
+      logForDebugging(`LSP: Sent didClose for ${filePath}`);
     } catch (error) {
       const err = new Error(
         `Failed to sync file close ${filePath}: ${errorMessage(error)}`,
-      )
-      logError(err)
+      );
+      logError(err);
       // Re-throw to propagate error to caller
-      throw err
+      throw err;
     }
   }
 
   function isFileOpen(filePath: string): boolean {
-    const fileUri = pathToFileURL(path.resolve(filePath)).href
-    return openedFiles.has(fileUri)
+    const fileUri = pathToFileURL(path.resolve(filePath)).href;
+    return openedFiles.has(fileUri);
   }
 
   return {
@@ -628,5 +630,5 @@ export function createLSPServerManager(): LSPServerManager {
     getIndexingStatus,
     getServerCapabilities,
     findRoutableFile,
-  }
+  };
 }

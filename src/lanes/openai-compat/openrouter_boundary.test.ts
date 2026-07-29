@@ -2,97 +2,109 @@
  * Run: bun run src/lanes/openai-compat/openrouter_boundary.test.ts
  *
  * End-to-end proof that when the system prompt carries
- * SYSTEM_PROMPT_DYNAMIC_BOUNDARY (emitted for OpenRouter — see
+ * SYSTEM_PROMPT_DYNAMIC_BOUNDARY (emitted for OpenRouter: see
  * shouldEmitSystemPromptBoundary), the lane keeps volatile context OUT of the
  * cached system prefix AND keeps the whole request prefix byte-stable across
  * turns: the system message holds only the stable part, the volatile part is
  * pinned as a session-frozen leading user message, the literal marker never
  * reaches the wire, and every turn's message list is a pure prefix extension
- * of the previous turn's — the property implicit prefix caches (DeepSeek
+ * of the previous turn's: the property implicit prefix caches (DeepSeek
  * automatic, Gemini implicit, Anthropic breakpoints) actually hit on.
  */
 
 import type {
   AnthropicStreamEvent,
   ProviderMessage,
-} from '../../services/api/providers/base_provider.js'
-import { _resetSessionVolatileFreezeForTest } from '../shared/volatile_freeze.js'
-import { OpenAICompatLane } from './loop.js'
+} from "../../services/api/providers/base_provider.js";
+import { _resetSessionVolatileFreezeForTest } from "../shared/volatile_freeze.js";
+import { OpenAICompatLane } from "./loop.js";
 
-const MARKER = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
-const STABLE = 'You are a coding agent. Follow the rules.'
-const VOLATILE = 'gitStatus: branch master, 3 files changed\nToday is 2026-07-01'
+const MARKER = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
+const STABLE = "You are a coding agent. Follow the rules.";
+const VOLATILE =
+  "gitStatus: branch master, 3 files changed\nToday is 2026-07-01";
 
-let passed = 0
-let failed = 0
+let passed = 0;
+let failed = 0;
 
 async function test(name: string, fn: () => Promise<void>): Promise<void> {
   try {
-    await fn()
-    passed++
-    console.log(`  ok  ${name}`)
+    await fn();
+    passed++;
+    console.log(`  ok  ${name}`);
   } catch (e: any) {
-    failed++
-    console.log(`  FAIL ${name}: ${e?.message ?? String(e)}`)
+    failed++;
+    console.log(`  FAIL ${name}: ${e?.message ?? String(e)}`);
   }
 }
 
 function assert(cond: unknown, hint: string): void {
-  if (!cond) throw new Error(hint)
+  if (!cond) throw new Error(hint);
 }
 
 async function captureBody(
   system: string,
-  messages: ProviderMessage[] = [{ role: 'user', content: 'hi' }],
+  messages: ProviderMessage[] = [{ role: "user", content: "hi" }],
   sessionId?: string,
 ): Promise<Record<string, any>> {
-  const lane = new OpenAICompatLane()
-  lane.registerProvider('openrouter', 'sk-test', 'https://openrouter.ai/api/v1')
+  const lane = new OpenAICompatLane();
+  lane.registerProvider(
+    "openrouter",
+    "sk-test",
+    "https://openrouter.ai/api/v1",
+  );
 
-  const oldFetch = globalThis.fetch
-  let body: Record<string, any> | null = null
+  const oldFetch = globalThis.fetch;
+  let body: Record<string, any> | null = null;
   globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-    body = JSON.parse(String(init?.body ?? '{}')) as Record<string, any>
-    const sse = [
-      { choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: null }] },
-      {
-        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
-      },
-    ].map(c => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n'
+    body = JSON.parse(String(init?.body ?? "{}")) as Record<string, any>;
+    const sse =
+      [
+        {
+          choices: [
+            { index: 0, delta: { content: "ok" }, finish_reason: null },
+          ],
+        },
+        {
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+        },
+      ]
+        .map((c) => `data: ${JSON.stringify(c)}\n\n`)
+        .join("") + "data: [DONE]\n\n";
     return new Response(sse, {
       status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-    })
-  }) as typeof fetch
+      headers: { "content-type": "text/event-stream" },
+    });
+  }) as typeof fetch;
 
   try {
-    const events: AnthropicStreamEvent[] = []
+    const events: AnthropicStreamEvent[] = [];
     const stream = lane.streamAsProvider({
-      model: 'anthropic/claude-3.5-sonnet',
+      model: "anthropic/claude-3.5-sonnet",
       messages,
       system,
       tools: [],
       max_tokens: 64,
       signal: new AbortController().signal,
-      providerHint: 'openrouter',
+      providerHint: "openrouter",
       sessionId,
-    })
-    for await (const ev of stream) events.push(ev)
-    assert(body !== null, 'request body was not captured')
-    return body!
+    });
+    for await (const ev of stream) events.push(ev);
+    assert(body !== null, "request body was not captured");
+    return body!;
   } finally {
-    globalThis.fetch = oldFetch
-    lane.unregisterProvider('openrouter')
+    globalThis.fetch = oldFetch;
+    lane.unregisterProvider("openrouter");
   }
 }
 
 function messageText(m: any): string {
-  if (typeof m?.content === 'string') return m.content
+  if (typeof m?.content === "string") return m.content;
   if (Array.isArray(m?.content)) {
-    return m.content.map((p: any) => p?.text ?? '').join('')
+    return m.content.map((p: any) => p?.text ?? "").join("");
   }
-  return ''
+  return "";
 }
 
 /**
@@ -101,124 +113,131 @@ function messageText(m: any): string {
  * re-serialize both identically before the upstream tokenizes).
  */
 function normalizedConversation(body: Record<string, any>): string[] {
-  return (body.messages as any[]).map(m => `${m.role}|${messageText(m)}`)
+  return (body.messages as any[]).map((m) => `${m.role}|${messageText(m)}`);
 }
 
-console.log('openrouter system boundary split:')
+console.log("openrouter system boundary split:");
 
-await test('the marker never reaches the wire', async () => {
-  _resetSessionVolatileFreezeForTest()
-  const body = await captureBody(`${STABLE}\n${MARKER}\n${VOLATILE}`)
+await test("the marker never reaches the wire", async () => {
+  _resetSessionVolatileFreezeForTest();
+  const body = await captureBody(`${STABLE}\n${MARKER}\n${VOLATILE}`);
   assert(
     !JSON.stringify(body).includes(MARKER),
-    'literal boundary marker leaked into the request',
-  )
-})
+    "literal boundary marker leaked into the request",
+  );
+});
 
-await test('system message holds only the stable prefix', async () => {
-  _resetSessionVolatileFreezeForTest()
-  const body = await captureBody(`${STABLE}\n${MARKER}\n${VOLATILE}`)
-  const sys = body.messages.find((m: any) => m.role === 'system')
-  assert(sys, 'no system message')
-  const text = messageText(sys)
-  assert(text.includes(STABLE), `system missing stable text: ${text}`)
-  assert(!text.includes('gitStatus'), `volatile leaked into system: ${text}`)
-})
+await test("system message holds only the stable prefix", async () => {
+  _resetSessionVolatileFreezeForTest();
+  const body = await captureBody(`${STABLE}\n${MARKER}\n${VOLATILE}`);
+  const sys = body.messages.find((m: any) => m.role === "system");
+  assert(sys, "no system message");
+  const text = messageText(sys);
+  assert(text.includes(STABLE), `system missing stable text: ${text}`);
+  assert(!text.includes("gitStatus"), `volatile leaked into system: ${text}`);
+});
 
-await test('volatile context is pinned as the leading user message', async () => {
-  _resetSessionVolatileFreezeForTest()
+await test("volatile context is pinned as the leading user message", async () => {
+  _resetSessionVolatileFreezeForTest();
   const body = await captureBody(
     `${STABLE}\n${MARKER}\n${VOLATILE}`,
     [
-      { role: 'user', content: 'q1' },
-      { role: 'assistant', content: 'a1' },
-      { role: 'user', content: 'q2' },
+      { role: "user", content: "q1" },
+      { role: "assistant", content: "a1" },
+      { role: "user", content: "q2" },
     ],
-    'sess-leading',
-  )
-  const msgs = body.messages as any[]
-  assert(msgs[0]?.role === 'system', 'first message must be the system prompt')
+    "sess-leading",
+  );
+  const msgs = body.messages as any[];
+  assert(msgs[0]?.role === "system", "first message must be the system prompt");
   assert(
-    msgs[1]?.role === 'user' && messageText(msgs[1]).includes('gitStatus'),
+    msgs[1]?.role === "user" && messageText(msgs[1]).includes("gitStatus"),
     `volatile must sit at index 1 (fixed position), got roles: ${msgs
       .map((m: any) => m.role)
-      .join(',')}`,
-  )
+      .join(",")}`,
+  );
   // …and nowhere later: a moving copy is exactly the old cache-breaking bug.
   const later = msgs
     .slice(2)
-    .filter((m: any) => messageText(m).includes('gitStatus'))
-  assert(later.length === 0, 'volatile context duplicated later in history')
-})
+    .filter((m: any) => messageText(m).includes("gitStatus"));
+  assert(later.length === 0, "volatile context duplicated later in history");
+});
 
-await test('volatile bytes freeze to the first turn for the session', async () => {
-  _resetSessionVolatileFreezeForTest()
-  const sessionId = 'sess-freeze'
+await test("volatile bytes freeze to the first turn for the session", async () => {
+  _resetSessionVolatileFreezeForTest();
+  const sessionId = "sess-freeze";
   const turn1 = await captureBody(
     `${STABLE}\n${MARKER}\ngitStatus: ORIGINAL`,
-    [{ role: 'user', content: 'q1' }],
+    [{ role: "user", content: "q1" }],
     sessionId,
-  )
+  );
   const turn2 = await captureBody(
     `${STABLE}\n${MARKER}\ngitStatus: CHANGED`,
     [
-      { role: 'user', content: 'q1' },
-      { role: 'assistant', content: 'a1' },
-      { role: 'user', content: 'q2' },
+      { role: "user", content: "q1" },
+      { role: "assistant", content: "a1" },
+      { role: "user", content: "q2" },
     ],
     sessionId,
-  )
+  );
   assert(
-    JSON.stringify(turn1).includes('ORIGINAL'),
-    'turn 1 must carry its own volatile text',
-  )
-  const wire2 = JSON.stringify(turn2)
-  assert(wire2.includes('ORIGINAL'), 'turn 2 must replay the frozen turn-1 bytes')
+    JSON.stringify(turn1).includes("ORIGINAL"),
+    "turn 1 must carry its own volatile text",
+  );
+  const wire2 = JSON.stringify(turn2);
   assert(
-    !wire2.includes('CHANGED'),
-    'fresh volatile text must not rewrite the frozen block',
-  )
-})
+    wire2.includes("ORIGINAL"),
+    "turn 2 must replay the frozen turn-1 bytes",
+  );
+  assert(
+    !wire2.includes("CHANGED"),
+    "fresh volatile text must not rewrite the frozen block",
+  );
+});
 
-await test('every turn is a pure prefix extension of the previous one', async () => {
-  _resetSessionVolatileFreezeForTest()
-  const sessionId = 'sess-prefix-extension'
-  const u1: ProviderMessage = { role: 'user', content: 'first question' }
-  const a1: ProviderMessage = { role: 'assistant', content: 'first answer' }
-  const u2: ProviderMessage = { role: 'user', content: 'second question' }
-  const a2: ProviderMessage = { role: 'assistant', content: 'second answer' }
-  const u3: ProviderMessage = { role: 'user', content: 'third question' }
+await test("every turn is a pure prefix extension of the previous one", async () => {
+  _resetSessionVolatileFreezeForTest();
+  const sessionId = "sess-prefix-extension";
+  const u1: ProviderMessage = { role: "user", content: "first question" };
+  const a1: ProviderMessage = { role: "assistant", content: "first answer" };
+  const u2: ProviderMessage = { role: "user", content: "second question" };
+  const a2: ProviderMessage = { role: "assistant", content: "second answer" };
+  const u3: ProviderMessage = { role: "user", content: "third question" };
 
   // The app-side volatile tail churns every turn (fresh git status); the
   // frozen leading block must absorb it so the request prefix never rewrites.
-  const turn1 = await captureBody(`${STABLE}\n${MARKER}\ngitStatus: t1`, [u1], sessionId)
+  const turn1 = await captureBody(
+    `${STABLE}\n${MARKER}\ngitStatus: t1`,
+    [u1],
+    sessionId,
+  );
   const turn2 = await captureBody(
     `${STABLE}\n${MARKER}\ngitStatus: t2`,
     [u1, a1, u2],
     sessionId,
-  )
+  );
   const turn3 = await captureBody(
     `${STABLE}\n${MARKER}\ngitStatus: t3`,
     [u1, a1, u2, a2, u3],
     sessionId,
-  )
+  );
 
-  const c1 = normalizedConversation(turn1)
-  const c2 = normalizedConversation(turn2)
-  const c3 = normalizedConversation(turn3)
+  const c1 = normalizedConversation(turn1);
+  const c2 = normalizedConversation(turn2);
+  const c3 = normalizedConversation(turn3);
   assert(
     JSON.stringify(c2.slice(0, c1.length)) === JSON.stringify(c1),
-    `turn 1 is not a prefix of turn 2:\n${c1.join('\n')}\n---\n${c2.join('\n')}`,
-  )
+    `turn 1 is not a prefix of turn 2:\n${c1.join("\n")}\n---\n${c2.join("\n")}`,
+  );
   assert(
     JSON.stringify(c3.slice(0, c2.length)) === JSON.stringify(c2),
-    `turn 2 is not a prefix of turn 3:\n${c2.join('\n')}\n---\n${c3.join('\n')}`,
-  )
+    `turn 2 is not a prefix of turn 3:\n${c2.join("\n")}\n---\n${c3.join("\n")}`,
+  );
   assert(
     c2.length > c1.length && c3.length > c2.length,
-    'later turns must extend the conversation, not replace it',
-  )
-})
+    "later turns must extend the conversation, not replace it",
+  );
+});
 
-console.log(`\n${passed} passed, ${failed} failed`)
-if (failed > 0) process.exit(1)
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);
