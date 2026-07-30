@@ -6,7 +6,7 @@ import { useSettings } from "../hooks/useSettings.js";
 import { Box, NoSelect, RawAnsi, useTheme } from "../ink.js";
 import { isFullscreenEnvEnabled } from "../utils/fullscreen.js";
 import sliceAnsi from "../utils/sliceAnsi.js";
-import { expectColorDiff } from "./StructuredDiff/colorDiff.js";
+import { expectColorDiff, normalizeSyntaxTheme } from "./StructuredDiff/colorDiff.js";
 import { StructuredDiffFallback } from "./StructuredDiff/Fallback.js";
 type Props = {
   patch: StructuredPatchHunk;
@@ -80,7 +80,7 @@ function renderColorDiff(
   const hit = perHunk?.get(key);
   if (hit) return hit;
   const lines = new ColorDiff(patch, firstLine, filePath, fileContent).render(
-    theme,
+    normalizeSyntaxTheme(theme),
     width,
     dim,
   );

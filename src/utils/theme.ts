@@ -119,6 +119,7 @@ export const THEME_NAMES = [
   "light-ansi",
   "dark-ansi",
   "studio",
+  "catppuccin-macchiato",
 ] as const;
 
 /** A renderable theme. Always resolvable to a concrete color palette. */
@@ -909,6 +910,96 @@ const studioTheme: Theme = {
   backgroundMenu: "rgb(30,30,30)",
 };
 
+/**
+ * Catppuccin Macchiato theme: soothing pastel palette with medium contrast.
+ */
+const catppuccinMacchiatoTheme: Theme = {
+  autoAccept: "rgb(198,160,246)", // Mauve
+  bashBorder: "rgb(183,189,248)", // Lavender
+  claude: "rgb(138,173,244)", // Blue
+  claudeShimmer: "rgb(145,215,227)", // Sky
+  claudeBlue_FOR_SYSTEM_SPINNER: "rgb(138,173,244)", // Blue
+  claudeBlueShimmer_FOR_SYSTEM_SPINNER: "rgb(145,215,227)", // Sky
+  permission: "rgb(166,218,149)", // Rosewater
+  permissionShimmer: "rgb(240,198,198)", // Flamingo
+  planMode: "rgb(139,213,202)", // Teal
+  ide: "rgb(138,173,244)", // Blue
+  promptBorder: "rgb(147,154,183)", // Overlay2
+  promptBorderShimmer: "rgb(183,189,248)", // Lavender
+  text: "rgb(202,211,245)", // Text
+  inverseText: "rgb(36,39,58)", // Base
+  inactive: "rgb(110,115,141)", // Overlay0
+  inactiveShimmer: "rgb(128,135,162)", // Overlay1
+  subtle: "rgb(73,77,100)", // Surface1
+  suggestion: "rgb(145,215,227)", // Sky
+  remember: "rgb(183,189,248)", // Lavender
+  background: "rgb(36,39,58)", // Base
+  success: "rgb(166,218,149)", // Green
+  error: "rgb(237,135,150)", // Red
+  warning: "rgb(145,215,227)", // Sky
+  merged: "rgb(198,160,246)", // Mauve
+  warningShimmer: "rgb(245,169,127)", // Peach
+  diffAdded: "rgb(30,55,42)", // Dark green tint background
+  diffRemoved: "rgb(65,28,38)", // Dark red tint background
+  diffAddedDimmed: "rgb(34,48,40)", // Dimmed green line background
+  diffRemovedDimmed: "rgb(52,30,36)", // Dimmed red line background
+  diffAddedWord: "rgb(166,218,149)", // Bright Catppuccin Green text
+  diffRemovedWord: "rgb(237,135,150)", // Bright Catppuccin Red text
+  red_FOR_SUBAGENTS_ONLY: "rgb(237,135,150)", // Red
+  blue_FOR_SUBAGENTS_ONLY: "rgb(138,173,244)", // Blue
+  green_FOR_SUBAGENTS_ONLY: "rgb(166,218,149)", // Green
+  yellow_FOR_SUBAGENTS_ONLY: "rgb(238,212,159)", // Yellow
+  purple_FOR_SUBAGENTS_ONLY: "rgb(198,160,246)", // Mauve
+  orange_FOR_SUBAGENTS_ONLY: "rgb(245,169,127)", // Peach
+  pink_FOR_SUBAGENTS_ONLY: "rgb(245,189,230)", // Pink
+  cyan_FOR_SUBAGENTS_ONLY: "rgb(139,213,202)", // Teal
+  zen_FOR_SUBAGENTS_ONLY: "rgb(148,148,156)",
+  professionalBlue: "rgb(138,173,244)",
+  chromeYellow: "rgb(238,212,159)",
+  clawd_body: "rgb(183,189,248)", // Lavender
+  clawd_background: "rgb(30,32,48)", // Mantle
+  userMessageBackground: "rgb(52,62,92)", // Eye-catching Catppuccin Blue tint
+  userMessageBackgroundHover: "rgb(68,80,115)",
+  messageActionsBackground: "rgb(73,77,100)", // Surface1
+  selectionBg: "rgb(91,96,120)", // Surface2
+  bashMessageBackgroundColor: "rgb(30,32,48)", // Mantle
+  memoryBackgroundColor: "rgb(54,58,79)", // Surface0
+  rate_limit_fill: "rgb(183,189,248)", // Lavender
+  rate_limit_empty: "rgb(73,77,100)", // Surface1
+  fastMode: "rgb(245,169,127)", // Peach
+  fastModeShimmer: "rgb(244,219,214)", // Rosewater
+  briefLabelYou: "rgb(138,173,244)", // Blue
+  briefLabelClaude: "rgb(183,189,248)", // Lavender
+  rainbow_red: "rgb(237,135,150)",
+  rainbow_orange: "rgb(245,169,127)",
+  rainbow_yellow: "rgb(238,212,159)",
+  rainbow_green: "rgb(166,218,149)",
+  rainbow_blue: "rgb(125,196,228)",
+  rainbow_indigo: "rgb(138,173,244)",
+  rainbow_violet: "rgb(198,160,246)",
+  rainbow_red_shimmer: "rgb(240,198,198)",
+  rainbow_orange_shimmer: "rgb(244,219,214)",
+  rainbow_yellow_shimmer: "rgb(245,225,185)",
+  rainbow_green_shimmer: "rgb(185,230,175)",
+  rainbow_blue_shimmer: "rgb(145,215,227)",
+  rainbow_indigo_shimmer: "rgb(183,189,248)",
+  rainbow_violet_shimmer: "rgb(245,189,230)",
+  primary: "rgb(138,173,244)", // Blue
+  secondary: "rgb(183,189,248)", // Lavender
+  accent: "rgb(198,160,246)", // Mauve
+  info: "rgb(139,213,202)", // Teal
+  textMuted: "rgb(128,135,162)", // Overlay1
+  border: "rgb(91,96,120)", // Surface2
+  borderActive: "rgb(183,189,248)", // Lavender
+  borderSubtle: "rgb(73,77,100)", // Surface1
+  backgroundPanel: "rgb(36,39,58)", // Base
+  backgroundElement: "rgb(54,58,79)", // Surface0
+  backgroundMenu: "rgb(30,32,48)", // Mantle
+  brand: "rgb(183,189,248)", // Lavender
+  brandDim: "rgb(138,173,244)", // Blue
+  brandBright: "rgb(183,189,248)", // Lavender
+};
+
 function getBaseTheme(themeName: ThemeName): Theme {
   switch (themeName) {
     case "dark":
@@ -925,6 +1016,8 @@ function getBaseTheme(themeName: ThemeName): Theme {
       return darkDaltonizedTheme;
     case "studio":
       return studioTheme;
+    case "catppuccin-macchiato":
+      return catppuccinMacchiatoTheme;
     default:
       return tauDarkTheme;
   }
