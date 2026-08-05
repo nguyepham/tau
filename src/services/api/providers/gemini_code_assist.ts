@@ -48,8 +48,13 @@ import {
   ANTIGRAVITY_ENDPOINT_PROD,
 } from "../../../constants/antigravity.js";
 
-export const CODE_ASSIST_BASE = `${ANTIGRAVITY_ENDPOINT_PROD}/v1internal`;
-export const ANTIGRAVITY_GENERATION_BASE = `${ANTIGRAVITY_ENDPOINT_DAILY}/v1internal`;
+function formatAntigravityEndpoint(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "").replace(/\/v1internal$/, "");
+  return `${trimmed}/v1internal`;
+}
+
+export const CODE_ASSIST_BASE = formatAntigravityEndpoint(ANTIGRAVITY_ENDPOINT_PROD);
+export const ANTIGRAVITY_GENERATION_BASE = formatAntigravityEndpoint(ANTIGRAVITY_ENDPOINT_DAILY);
 
 // ─── Executor types ──────────────────────────────────────────────────
 // Two distinct executors route to the same Code Assist proxy but with
@@ -66,10 +71,15 @@ export function codeAssistGenerationBase(executor: GeminiExecutor): string {
 export function codeAssistGenerationBases(
   executor: GeminiExecutor,
 ): readonly string[] {
+  const custom = process.env.ANTIGRAVITY_BASE_URL || process.env.ANTIGRAVITY_HOST;
+  if (custom) {
+    return [formatAntigravityEndpoint(custom)];
+  }
   // Mirrors CLIProxyAPI's fallback order (daily → prod, sandbox dropped):
   // the non-sandbox daily channel is the one the real client uses and the
-  // one with reliable implicit-cache reads. The sandbox host: Tau's old
-  // primary: stays as a last-resort 404 fallback only.
+  // one with reliable implicit-cache reads. The sandbox channel accepts the same envelope but its
+  // implicit prompt cache measured flaky partial-prefix reads, so it is
+  // kept only as a last-resort 404 fallback.
   return executor === "antigravity"
     ? [
         ANTIGRAVITY_GENERATION_BASE,
@@ -97,6 +107,10 @@ const ANTIGRAVITY_GEMINI_ENDPOINT_TIMEOUT_MS = 6_000;
 // Tunable per machine: TAU_ANTIGRAVITY_GEMINI_ENDPOINT=prod|daily|sandbox
 // picks the primary (e.g. set `daily` to restore the previous behavior).
 function antigravityGeminiGenerationBases(): readonly string[] {
+  const custom = process.env.ANTIGRAVITY_BASE_URL || process.env.ANTIGRAVITY_HOST;
+  if (custom) {
+    return [formatAntigravityEndpoint(custom)];
+  }
   const prod = CODE_ASSIST_BASE;
   const daily = ANTIGRAVITY_GENERATION_BASE;
   const sandbox = `${ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX}/v1internal`;
