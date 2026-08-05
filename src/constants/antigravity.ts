@@ -11,9 +11,14 @@ export const ANTIGRAVITY_HUB_USER_AGENT =
 // implicit prompt cache measured flaky partial-prefix reads, so it is
 // kept only as a last-resort 404 fallback.
 export const ANTIGRAVITY_ENDPOINT_DAILY =
+  process.env.ANTIGRAVITY_BASE_URL ||
+  process.env.ANTIGRAVITY_HOST ||
   "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX =
   "https://daily-cloudcode-pa.sandbox.googleapis.com";
 export const ANTIGRAVITY_ENDPOINT_AUTOPUSH =
   "https://autopush-cloudcode-pa.sandbox.googleapis.com";
-export const ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com";
+export const ANTIGRAVITY_ENDPOINT_PROD =
+  process.env.ANTIGRAVITY_BASE_URL ||
+  process.env.ANTIGRAVITY_HOST ||
+  "https://cloudcode-pa.googleapis.com";
