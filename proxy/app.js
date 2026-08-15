@@ -20,8 +20,8 @@ const REASONING_EFFORT = "max";
 const TEMPERATURE = 0.3;
 
 const DEEPSEEK_API = "https://api.deepseek.com";
-const ANTIGRAVITY_API = "https://cloudcode-pa.googleapis.com";
-const ANTIGRAVITY_FALLBACK_API = "https://daily-cloudcode-pa.googleapis.com";
+const ANTIGRAVITY_API = "https://daily-cloudcode-pa.googleapis.com";
+const ANTIGRAVITY_FALLBACK_API = "https://cloudcode-pa.googleapis.com";
 
 const MODEL_MAP = {
   "deepseek-v4-flash": "deepseek-v4-flash",
@@ -538,8 +538,7 @@ app.use((req, res, next) => {
   if (
     req.originalUrl.startsWith("/v1internal") ||
     req.originalUrl.startsWith("/v1beta") ||
-    req.headers["x-goog-api-client"] ||
-    req.headers["x-request-source"] === "local" ||
+    req.headers["user-agent"]?.toLowerCase().includes("antigravity") ||
     req.body?.userAgent === "antigravity"
   ) {
     return handleAntigravityRequest(req, res);
