@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Config
-REPO_DIR="$HOME/harness/tau"
+REPO_DIR="$HOME/f/tau"
 UPSTREAM_REMOTE="upstream"
 UPSTREAM_BRANCH="master"
 FORK_REMOTE="origin"

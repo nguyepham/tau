@@ -16,22 +16,11 @@ import { fileURLToPath } from "node:url";
 // ─── Constants ────────────────────────────────────────────────────────────
 
 const THINKING_MODE = "disabled";
-const REASONING_EFFORT = "max";
 const TEMPERATURE = 0.3;
 
 const DEEPSEEK_API = "https://api.deepseek.com";
 const ANTIGRAVITY_API = "https://daily-cloudcode-pa.googleapis.com";
 const ANTIGRAVITY_FALLBACK_API = "https://cloudcode-pa.googleapis.com";
-
-const MODEL_MAP = {
-  "deepseek-v4-flash": "deepseek-v4-flash",
-  "deepseek-v4-pro": "deepseek-v4-pro",
-  "deepseek-chat": "deepseek-v4-flash",
-  "deepseek-reasoner": "deepseek-v4-pro",
-  "deepseek-coder": "deepseek-v4-flash",
-};
-
-const REASONING_MODELS = new Set(["deepseek-v4-pro", "deepseek-reasoner"]);
 
 const AVAILABLE_MODELS = [
   {
@@ -70,7 +59,6 @@ const TAU_TAGS = [
 
 let LOG_FILE = null;
 let _sessionRequestTokens = 0;
-let _sessionActive = false;
 
 function log(msg = "") {
   if (!LOG_FILE) return;
@@ -245,14 +233,6 @@ function processAntigravityConfig(data) {
     includeThoughts: true,
   };
 
-  // for (const obj of [data, data.request, genConfig]) {
-  //   if (obj) {
-  //     delete obj.temperature;
-  //     delete obj.topP;
-  //     delete obj.top_p;
-  //   }
-  // }
-
   return genConfig;
 }
 
@@ -350,7 +330,7 @@ async function handleAntigravityRequest(req, res) {
       lastMsg = extractLastUserMessage(unifiedMessages);
       msgCounts = countMessages(unifiedMessages);
 
-      const logData = JSON.parse(JSON.stringify(data));
+      const logData = structuredClone(data);
       if (logData.request?.contents) {
         logData.request.contents = `[Contents array elided, count: ${logData.request.contents.length}]`;
       } else if (logData.contents) {
@@ -575,7 +555,6 @@ app.post("/v1/session/start", (req, res) => {
   writeFileSync(LOG_FILE, header);
 
   _sessionRequestTokens = 0;
-  _sessionActive = true;
 
   res.json({ status: "ok", log_file: LOG_FILE, session_id: sessionId });
 });
@@ -607,7 +586,7 @@ app.post(["/v1/chat/completions", "/chat/completions"], async (req, res) => {
   data.temperature = temperature;
 
   // Log request (elide system prompts, tools)
-  const logData = JSON.parse(JSON.stringify(data));
+  const logData = structuredClone(data);
   if (logData.messages) {
     for (let i = 0; i < logData.messages.length; i++) {
       const m = logData.messages[i];
