@@ -1,11 +1,11 @@
-import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { c as _c } from "react/compiler-runtime";
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { installOAuthTokens } from '../cli/handlers/auth.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
+import { Box, Link, Text } from '../ink.js';
 import { setClipboard } from '../ink/termio/osc.js';
 import { useTerminalNotification } from '../ink/useTerminalNotification.js';
-import { Box, Link, Text } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getSSLErrorHint } from '../services/api/errorUtils.js';
 import { sendNotification } from '../services/notifier.js';
@@ -276,7 +276,7 @@ export function ConsoleOAuthFlow({
   useEffect(() => {
     if (mode === 'setup-token' && oauthStatus.state === 'success') {
       // Delay to ensure static content is fully rendered before exiting
-      const timer_0 = setTimeout((loginWithTauAi_0, onDone_0) => {
+      const timer_0 = setTimeout((loginWithClaudeAi_0, onDone_0) => {
         logEvent('tengu_oauth_success', {
           loginWithClaudeAi: loginWithClaudeAi_0
         });
