@@ -6,8 +6,8 @@ REPO_DIR="$HOME/f/tau"
 UPSTREAM_REMOTE="upstream"
 UPSTREAM_BRANCH="master"
 FORK_REMOTE="origin"
-MAIN_BRANCH="compress-system-prompt-new"
-BRANCHES=("master" "compress-system-prompt-new")
+MAIN_BRANCH="main"
+BRANCHES=("master" "main")
 
 cd "$REPO_DIR"
 
