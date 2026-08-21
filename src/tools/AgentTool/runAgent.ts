@@ -34,8 +34,8 @@ import type {
   MCPServerConnection,
   ScopedMcpServerConfig,
 } from "../../services/mcp/types.js";
-import type { Tool, Tools, ToolUseContext } from "../../Tool.js";
 import { killShellTasksForAgent } from "../../tasks/LocalShellTask/killShellTasks.js";
+import type { Tool, Tools, ToolUseContext } from "../../Tool.js";
 import type { Command } from "../../types/command.js";
 import type { AgentId } from "../../types/ids.js";
 import type {
@@ -50,6 +50,7 @@ import type {
   UserMessage,
 } from "../../types/message.js";
 import { createAttachmentMessage } from "../../utils/attachments.js";
+import { getGlobalConfig } from "../../utils/config.js";
 import { AbortError } from "../../utils/errors.js";
 import { getDisplayPath } from "../../utils/file.js";
 import {
@@ -58,15 +59,25 @@ import {
   READ_FILE_STATE_CACHE_SIZE,
 } from "../../utils/fileStateCache.js";
 import {
-  type CacheSafeParams,
   createSubagentContext,
+  type CacheSafeParams,
 } from "../../utils/forkedAgent.js";
+import { executeSubagentStartHooks } from "../../utils/hooks.js";
 import { registerFrontmatterHooks } from "../../utils/hooks/registerFrontmatterHooks.js";
 import { clearSessionHooks } from "../../utils/hooks/sessionHooks.js";
-import { executeSubagentStartHooks } from "../../utils/hooks.js";
 import { createUserMessage } from "../../utils/messages.js";
 import { getAgentModel } from "../../utils/model/agent.js";
 import type { ModelAlias } from "../../utils/model/aliases.js";
+import {
+  modelSupportsReasoning,
+  setOpenAIReasoningLevel,
+  type OpenAIReasoningLevel,
+} from "../../utils/model/openaiReasoning.js";
+import {
+  getAPIProvider,
+  setActiveProvider,
+  type APIProvider,
+} from "../../utils/model/providers.js";
 import {
   clearAgentTranscriptSubdir,
   recordSidechainTranscript,
@@ -77,6 +88,7 @@ import {
   isRestrictedToPluginOnly,
   isSourceAdminTrusted,
 } from "../../utils/settings/pluginOnlyPolicy.js";
+import { isSurfEnabled, recordSurfTurnStart } from "../../utils/surf/state.js";
 import {
   asSystemPrompt,
   type SystemPrompt,
@@ -89,19 +101,7 @@ import {
 import type { ContentReplacementState } from "../../utils/toolResultStorage.js";
 import { createAgentId } from "../../utils/uuid.js";
 import { resolveAgentTools } from "./agentToolUtils.js";
-import { type AgentDefinition, isBuiltInAgent } from "./loadAgentsDir.js";
-import { getGlobalConfig } from "../../utils/config.js";
-import {
-  getAPIProvider,
-  setActiveProvider,
-  type APIProvider,
-} from "../../utils/model/providers.js";
-import {
-  modelSupportsReasoning,
-  setOpenAIReasoningLevel,
-  type OpenAIReasoningLevel,
-} from "../../utils/model/openaiReasoning.js";
-import { isSurfEnabled, recordSurfTurnStart } from "../../utils/surf/state.js";
+import { isBuiltInAgent, type AgentDefinition } from "./loadAgentsDir.js";
 
 /**
  * Resolve the model a subagent should run under when /surf is on and the
@@ -949,15 +949,15 @@ export async function* runAgent({
       rootSetAppState,
     );
     /* eslint-disable @typescript-eslint/no-require-imports */
-    if (feature("MONITOR_TOOL")) {
-      const mcpMod =
-        require("../../tasks/MonitorMcpTask/MonitorMcpTask.js") as typeof import("../../tasks/MonitorMcpTask/MonitorMcpTask.js");
-      mcpMod.killMonitorMcpTasksForAgent(
-        agentId,
-        toolUseContext.getAppState,
-        rootSetAppState,
-      );
-    }
+    // if (feature("MONITOR_TOOL")) {
+    //   const mcpMod =
+    //     require("../../tasks/MonitorMcpTask/MonitorMcpTask.js") as typeof import("../../tasks/MonitorMcpTask/MonitorMcpTask.js");
+    //   mcpMod.killMonitorMcpTasksForAgent(
+    //     agentId,
+    //     toolUseContext.getAppState,
+    //     rootSetAppState,
+    //   );
+    // }
     /* eslint-enable @typescript-eslint/no-require-imports */
   }
 }

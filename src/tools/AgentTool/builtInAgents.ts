@@ -32,24 +32,25 @@ export function getBuiltInAgents(): AgentDefinition[] {
   // Use lazy require inside the function body to avoid circular dependency
   // issues at module init time. The coordinatorMode module depends on tools
   // which depend on AgentTool which imports this file.
-  if (feature("COORDINATOR_MODE")) {
-    if (isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const { getCoordinatorAgents } =
-        require("../../coordinator/workerAgent.js") as typeof import("../../coordinator/workerAgent.js");
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      return getCoordinatorAgents();
-    }
-  }
+  // if (feature("COORDINATOR_MODE")) {
+  //   if (isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)) {
+  //     /* eslint-disable @typescript-eslint/no-require-imports */
+  //     const { getCoordinatorAgents } =
+  //       require("../../coordinator/workerAgent.js") as typeof import("../../coordinator/workerAgent.js");
+  //     /* eslint-enable @typescript-eslint/no-require-imports */
+  //     return getCoordinatorAgents();
+  //   }
+  // }
 
   const agents: AgentDefinition[] = [
     GENERAL_PURPOSE_AGENT,
     STATUSLINE_SETUP_AGENT,
+    EXPLORE_AGENT,
   ];
 
-  if (areExplorePlanAgentsEnabled()) {
-    agents.push(EXPLORE_AGENT, PLAN_AGENT);
-  }
+  // if (areExplorePlanAgentsEnabled()) {
+  //   agents.push(EXPLORE_AGENT, PLAN_AGENT);
+  // }
 
   // Include Code Guide agent for non-SDK entrypoints
   const isNonSdkEntrypoint =
@@ -57,16 +58,16 @@ export function getBuiltInAgents(): AgentDefinition[] {
     process.env.CLAUDE_CODE_ENTRYPOINT !== "sdk-py" &&
     process.env.CLAUDE_CODE_ENTRYPOINT !== "sdk-cli";
 
-  if (isNonSdkEntrypoint) {
-    agents.push(CLAUDE_CODE_GUIDE_AGENT);
-  }
+  // if (isNonSdkEntrypoint) {
+  //   agents.push(CLAUDE_CODE_GUIDE_AGENT);
+  // }
 
-  if (
-    feature("VERIFICATION_AGENT") &&
-    getFeatureValue_CACHED_MAY_BE_STALE("tengu_hive_evidence", false)
-  ) {
-    agents.push(VERIFICATION_AGENT);
-  }
+  // if (
+  //   feature("VERIFICATION_AGENT") &&
+  //   getFeatureValue_CACHED_MAY_BE_STALE("tengu_hive_evidence", false)
+  // ) {
+  //   agents.push(VERIFICATION_AGENT);
+  // }
 
   return agents;
 }
