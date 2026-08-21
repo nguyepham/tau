@@ -32,6 +32,7 @@ import {
   PERMISSION_MODES,
   type PermissionMode,
 } from "../../utils/permissions/PermissionMode.js";
+import type { APIProvider } from "../../utils/model/providers.js";
 import {
   clearPluginAgentCache,
   loadPluginAgents,
@@ -115,6 +116,7 @@ export type BaseAgentDefinition = {
   hooks?: HooksSettings; // Session-scoped hooks registered when agent starts
   color?: AgentColorName;
   model?: string;
+  provider?: APIProvider;
   effort?: EffortValue;
   permissionMode?: PermissionMode;
   maxTurns?: number; // Maximum number of agentic turns before stopping

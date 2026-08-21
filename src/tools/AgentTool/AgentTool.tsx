@@ -119,7 +119,10 @@ import {
 } from "./loadAgentsDir.js";
 import { getPrompt } from "./prompt.js";
 import { runAgent } from "./runAgent.js";
-import { runWithForcedProvider } from "../../utils/forcedProvider.js";
+import {
+  getForcedProvider,
+  runWithForcedProvider,
+} from "../../utils/forcedProvider.js";
 import { isAPIProvider } from "../../utils/model/providers.js";
 import type { ModelAlias } from "../../utils/model/aliases.js";
 import {
@@ -727,7 +730,8 @@ export const AgentTool = buildTool({
         selectedAgent = found;
       }
 
-      // Same lifecycle constraint as the run_in_background guard above, but for
+      const _executeAgent = async () => {
+        // Same lifecycle constraint as the run_in_background guard above, but for
       // agent definitions that force background via `background: true`. Checked
       // here because selectedAgent is only now resolved.
       if (
@@ -1892,7 +1896,16 @@ export const AgentTool = buildTool({
           }),
         );
       }
-    }; // close _runBody arrow function
+    };
+
+    if (selectedAgent.provider && getForcedProvider() === undefined) {
+      return runWithForcedProvider(
+        { provider: selectedAgent.provider },
+        _executeAgent,
+      );
+    }
+    return _executeAgent();
+  }; // close _runBody arrow function
 
     const runBodyWithTeamModeRuntime = async () => {
       const recordedProvider = providerParam;
