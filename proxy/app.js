@@ -18,24 +18,11 @@ import { fileURLToPath } from "node:url";
 // ─── Constants ────────────────────────────────────────────────────────────
 
 const THINKING_MODE = "disabled";
-const REASONING_EFFORT = "max";
-
-const T_DESIGN = 0.6;
-const T_PLAN = 0.45;
-const T_TEST = 0.45;
-const T_IMPL = 0.1;
-const T_REVIEW = 0.4;
-const TEMPERATURE = 0.55;
-
-const TEMP_CONST_MAP = [
-  ["T_DESIGN", T_DESIGN],
-  ["T_PLAN", T_PLAN],
-  ["T_TEST", T_TEST],
-  ["T_IMPL", T_IMPL],
-  ["T_REVIEW", T_REVIEW],
-];
+const TEMPERATURE = 0.3;
 
 const DEEPSEEK_API = "https://api.deepseek.com";
+const ANTIGRAVITY_API = "https://daily-cloudcode-pa.googleapis.com";
+const ANTIGRAVITY_FALLBACK_API = "https://cloudcode-pa.googleapis.com";
 
 const MODEL_MAP = {
   "deepseek-v4-flash": "deepseek-v4-flash",
@@ -84,7 +71,6 @@ const TAU_TAGS = [
 
 let LOG_FILE = null;
 let _sessionRequestTokens = 0;
-let _sessionActive = false;
 
 function log(msg = "") {
   if (!LOG_FILE) return;
@@ -258,6 +244,295 @@ function logDeepSeekUsage(usageData, temperature, lastMsg, msgCounts) {
   log(`[USER]:\n${(lastMsg || "").slice(0, 500)}`);
 }
 
+// ─── Antigravity Config & Logging Helpers ─────────────────────────────────
+
+function getOrInitGenConfig(data) {
+  const req =
+    data.request && typeof data.request === "object" ? data.request : data;
+  return (req.generationConfig ??= {});
+}
+
+function processAntigravityConfig(data) {
+  const genConfig = getOrInitGenConfig(data);
+  genConfig.temperature = TEMPERATURE;
+  genConfig.topP = 0.85;
+  genConfig.thinkingConfig = {
+    ...genConfig.thinkingConfig,
+    includeThoughts: true,
+  };
+
+  return genConfig;
+}
+
+function extractResponseContentAndThought(candidates) {
+  let text = "",
+    thought = "";
+  for (const cand of candidates || []) {
+    if (cand.thinking) thought += cand.thinking;
+    if (cand.thought) thought += cand.thought;
+
+    for (const p of cand.content?.parts || []) {
+      if (p.thought === true && p.text) thought += p.text;
+      else if (p.thought) thought += p.thought;
+      else if (p.thoughtText) thought += p.thoughtText;
+      else if (p.text) text += p.text;
+    }
+  }
+  return { text, thought };
+}
+
+function logAntigravityResponse(
+  usageData,
+  genConfig,
+  lastMsg,
+  msgCounts,
+  thought,
+  content,
+  isGen,
+) {
+  if (usageData && isGen)
+    logAntigravityUsage(usageData, genConfig, lastMsg, msgCounts);
+  if (thought) log(`[ANTIGRAVITY THOUGHT]:\n${thought}`);
+  if (content) log(`[ANTIGRAVITY RESPONSE]:\n${content}`);
+}
+
+function logAntigravityUsage(usageData, genConfig, lastMsg, msgCounts) {
+  const prompt =
+    usageData?.promptTokenCount || usageData?.prompt_token_count || 0;
+  const completion =
+    usageData?.candidatesTokenCount || usageData?.candidates_token_count || 0;
+  const total = usageData?.totalTokenCount || usageData?.total_token_count || 0;
+  const cached =
+    usageData?.cachedContentTokenCount ||
+    usageData?.cached_content_token_count ||
+    0;
+  const cachedPct =
+    prompt > 0 ? `${((cached / prompt) * 100).toFixed(2)}%` : "N/A";
+
+  log("---");
+  log("[ANTIGRAVITY RESP]");
+  log(
+    `[CONFIG] temperature: ${genConfig.temperature ?? "N/A"}, topP: ${genConfig.topP ?? "N/A"}, topK: ${genConfig.topK ?? "N/A"}, thinkingConfig: ${JSON.stringify(genConfig.thinkingConfig ?? null)}`,
+  );
+  log("[MESSAGE COUNT]");
+  log(`  tau: ${msgCounts.tau}`);
+  log(`  tool: ${msgCounts.tool}`);
+  log(`  user: ${msgCounts.user}`);
+  log(`  response: ${msgCounts.response}`);
+  log(`  session: ${msgCounts.session}`);
+  const requestTokens = Math.max(0, prompt - _sessionRequestTokens);
+  _sessionRequestTokens = prompt;
+
+  log("[TOKEN COUNT]");
+  log(`  request: ${requestTokens} (cached: ${cachedPct})`);
+  log(`  prompt: ${prompt}`);
+  log(`  cached: ${cached}`);
+  log(`  response: ${completion}`);
+  log(`  session: ${total}`);
+  log(`[USER]:\n${(lastMsg || "").slice(0, 500)}`);
+}
+
+async function handleAntigravityRequest(req, res) {
+  try {
+    const data = req.body || {};
+    const unifiedMessages = extractUnifiedMessages(data);
+    const isGenRequest =
+      req.originalUrl.includes("generateContent") ||
+      req.originalUrl.includes("streamGenerateContent") ||
+      data.request?.contents ||
+      data.contents;
+
+    let genConfig = {};
+    let lastMsg = "";
+    let msgCounts = {
+      tau: 0,
+      user: 0,
+      injected: 0,
+      response: 0,
+      tool: 0,
+      session: 0,
+    };
+
+    if (isGenRequest) {
+      genConfig = processAntigravityConfig(data);
+      lastMsg = extractLastUserMessage(unifiedMessages);
+      msgCounts = countMessages(unifiedMessages);
+
+      const logData = structuredClone(data);
+      if (logData.request?.contents) {
+        logData.request.contents = `[Contents array elided, count: ${logData.request.contents.length}]`;
+      } else if (logData.contents) {
+        logData.contents = `[Contents array elided, count: ${logData.contents.length}]`;
+      }
+      log(`[ANTIGRAVITY REQ FULL]\n${JSON.stringify(logData, null, 2)}`);
+      log("---");
+      log(`[ANTIGRAVITY REQ] endpoint: ${req.originalUrl}`);
+      log(`[MODEL] ${data.model || data.request?.model || "antigravity"}`);
+      log(
+        `[CONFIG] temperature: ${genConfig.temperature ?? "N/A"}, topP: ${genConfig.topP ?? "N/A"}, topK: ${genConfig.topK ?? "N/A"}, thinkingConfig: ${JSON.stringify(genConfig.thinkingConfig ?? null)}`,
+      );
+    } else {
+      log(`[ANTIGRAVITY REQ NON-GEN] ${req.method} ${req.originalUrl}`);
+    }
+
+    let targetUrl = `${ANTIGRAVITY_API}${req.originalUrl}`;
+    const forwardHeaders = {};
+    for (const [key, val] of Object.entries(req.headers)) {
+      const lower = key.toLowerCase();
+      if (lower === "host" || lower === "content-length") continue;
+      forwardHeaders[key] = val;
+    }
+    if (!forwardHeaders["content-type"]) {
+      forwardHeaders["content-type"] = "application/json";
+    }
+
+    let resp;
+    try {
+      resp = await fetch(targetUrl, {
+        method: req.method,
+        headers: forwardHeaders,
+        body:
+          req.method !== "GET" && req.method !== "HEAD"
+            ? JSON.stringify(data)
+            : undefined,
+      });
+
+      if (resp.status === 404) {
+        log(
+          `[ANTIGRAVITY 404] ${targetUrl} returned 404, falling back to ${ANTIGRAVITY_FALLBACK_API}`,
+        );
+        const fallbackUrl = `${ANTIGRAVITY_FALLBACK_API}${req.originalUrl}`;
+        const fallbackResp = await fetch(fallbackUrl, {
+          method: req.method,
+          headers: forwardHeaders,
+          body:
+            req.method !== "GET" && req.method !== "HEAD"
+              ? JSON.stringify(data)
+              : undefined,
+        });
+        if (fallbackResp.ok || fallbackResp.status !== 404) {
+          resp = fallbackResp;
+        }
+      }
+    } catch (err) {
+      log(`[ANTIGRAVITY FETCH ERROR] ${err.message}`);
+      res
+        .status(502)
+        .json({
+          error: "Antigravity backend unreachable",
+          details: err.message,
+        });
+      return;
+    }
+
+    const isStream =
+      req.originalUrl.includes("streamGenerateContent") ||
+      req.originalUrl.includes("alt=sse") ||
+      Boolean(data.stream);
+
+    if (isStream) {
+      res.writeHead(resp.status, {
+        "Content-Type": resp.headers.get("content-type") || "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+
+      let usageData = null;
+      let fullContent = "";
+      let fullThought = "";
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+
+      function pump() {
+        reader
+          .read()
+          .then(({ done, value }) => {
+            if (done) {
+              logAntigravityResponse(
+                usageData,
+                genConfig,
+                lastMsg,
+                msgCounts,
+                fullThought,
+                fullContent,
+                isGenRequest,
+              );
+              res.end();
+              return;
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split("\n")) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith("data: ")) {
+                const payloadStr = trimmed.slice(6).trim();
+                if (payloadStr && payloadStr !== "[DONE]") {
+                  try {
+                    const parsed = JSON.parse(payloadStr);
+                    log(
+                      `[ANTIGRAVITY STREAM CHUNK]\n${JSON.stringify(parsed, null, 2)}`,
+                    );
+
+                    const resPayload = parsed.response || parsed;
+                    if (resPayload.usageMetadata)
+                      usageData = resPayload.usageMetadata;
+
+                    const { text, thought } = extractResponseContentAndThought(
+                      resPayload.candidates,
+                    );
+                    if (text) fullContent += text;
+                    if (thought) fullThought += thought;
+                  } catch {
+                    // skip parse errors
+                  }
+                }
+              }
+            }
+            res.write(chunk);
+            pump();
+          })
+          .catch((err) => {
+            log(`[ANTIGRAVITY STREAM PUMP ERROR] ${err.message}`);
+            res.end();
+          });
+      }
+      pump();
+    } else {
+      if (!resp.ok) {
+        const text = await resp.text();
+        log(`[ANTIGRAVITY ERROR] HTTP ${resp.status}: ${text.slice(0, 500)}`);
+        res
+          .status(resp.status)
+          .type(resp.headers.get("content-type") || "text/plain")
+          .send(text);
+        return;
+      }
+
+      const respJson = await resp.json();
+      log(`[ANTIGRAVITY RESP FULL]\n${JSON.stringify(respJson, null, 2)}`);
+
+      const resPayload = respJson.response || respJson;
+      const { text: fullContent, thought: fullThought } =
+        extractResponseContentAndThought(resPayload.candidates);
+      const usageData = resPayload.usageMetadata;
+
+      logAntigravityResponse(
+        usageData,
+        genConfig,
+        lastMsg,
+        msgCounts,
+        fullThought,
+        fullContent,
+        isGenRequest,
+      );
+
+      res.status(resp.status).json(respJson);
+    }
+  } catch (err) {
+    console.error("Uncaught exception in handleAntigravityRequest:", err);
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
+}
+
 // ─── Express app ──────────────────────────────────────────────────────────
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -295,7 +570,6 @@ app.post("/v1/session/start", (req, res) => {
   writeFileSync(LOG_FILE, header);
 
   _sessionRequestTokens = 0;
-  _sessionActive = true;
 
   res.json({ status: "ok", log_file: LOG_FILE, session_id: sessionId });
 });
@@ -325,7 +599,7 @@ app.post(["/v1/chat/completions", "/chat/completions"], async (req, res) => {
   data.temperature = temperature;
 
   // Log request (elide system prompts, tools)
-  const logData = JSON.parse(JSON.stringify(data));
+  const logData = structuredClone(data);
   if (logData.messages) {
     for (let i = 0; i < logData.messages.length; i++) {
       const m = logData.messages[i];
