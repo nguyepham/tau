@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings.js';
 import { Box, NoSelect, RawAnsi, useTheme } from '../ink.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import sliceAnsi from '../utils/sliceAnsi.js';
-import { expectColorDiff } from './StructuredDiff/colorDiff.js';
+import { expectColorDiff, normalizeSyntaxTheme } from './StructuredDiff/colorDiff.js';
 import { StructuredDiffFallback } from './StructuredDiff/Fallback.js';
 type Props = {
   patch: StructuredPatchHunk;
@@ -62,7 +62,7 @@ function renderColorDiff(patch: StructuredPatchHunk, firstLine: string | null, f
   let perHunk = RENDER_CACHE.get(patch);
   const hit = perHunk?.get(key);
   if (hit) return hit;
-  const lines = new ColorDiff(patch, firstLine, filePath, fileContent).render(theme, width, dim);
+  const lines = new ColorDiff(patch, firstLine, filePath, fileContent).render(normalizeSyntaxTheme(theme), width, dim);
   if (lines === null) return null;
 
   // Pre-split the gutter column once (cold-cache). sliceAnsi preserves
