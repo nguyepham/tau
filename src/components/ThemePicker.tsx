@@ -97,6 +97,7 @@ export function ThemePicker({
       : []),
     { label: 'Tau dark (red/brown glow)', value: 'dark' },
     { label: 'Studio (peach / blue / purple on near-black)', value: 'studio' },
+    { label: 'Catppuccin Macchiato', value: 'catppuccin-macchiato' },
     { label: 'Light mode', value: 'light' },
     {
       label: 'Dark mode (colorblind-friendly)',

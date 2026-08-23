@@ -31,9 +31,16 @@ export function expectColorFile(): typeof ColorFile | null {
   return getColorModuleUnavailableReason() === null ? ColorFile : null
 }
 
+export function normalizeSyntaxTheme(themeName: string): string {
+  if (themeName === 'catppuccin-macchiato') {
+    return 'dark-daltonized'
+  }
+  return themeName
+}
+
 export function getSyntaxTheme(themeName: string): SyntaxTheme | null {
   return getColorModuleUnavailableReason() === null
-    ? nativeGetSyntaxTheme(themeName)
+    ? nativeGetSyntaxTheme(normalizeSyntaxTheme(themeName))
     : null
 }
 
@@ -50,5 +57,5 @@ export function highlightCode(
   themeName: string,
 ): string {
   if (getColorModuleUnavailableReason() !== null) return code
-  return highlightCodeToAnsi(code, language, themeName)
+  return highlightCodeToAnsi(code, language, normalizeSyntaxTheme(themeName))
 }

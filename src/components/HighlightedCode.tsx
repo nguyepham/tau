@@ -8,7 +8,7 @@ import { highlightCodeWithNative } from '../utils/nativeRendering.js';
 import sliceAnsi from '../utils/sliceAnsi.js';
 import { countCharInString } from '../utils/stringUtils.js';
 import { HighlightedCodeFallback } from './HighlightedCode/Fallback.js';
-import { expectColorFile } from './StructuredDiff/colorDiff.js';
+import { expectColorFile, normalizeSyntaxTheme } from './StructuredDiff/colorDiff.js';
 type Props = {
   code: string;
   filePath: string;
@@ -90,7 +90,7 @@ export const HighlightedCode = memo(function HighlightedCode(t0) {
     }
     let t6;
     if ($[7] !== colorFile || $[8] !== dim || $[9] !== measuredWidth || $[10] !== theme) {
-      t6 = colorFile.render(theme, measuredWidth, dim);
+      t6 = colorFile.render(normalizeSyntaxTheme(theme), measuredWidth, dim);
       $[7] = colorFile;
       $[8] = dim;
       $[9] = measuredWidth;
