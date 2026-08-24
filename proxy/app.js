@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Tau proxy daemon — MITM between Tau CLI and DeepSeek.
+ * Tau proxy daemon: MITM between Tau CLI and backends (DeepSeek & Antigravity).
+ * Tau proxy daemon: MITM between Tau CLI and backends (DeepSeek & Antigravity).
  *
- * Overrides temperature, top_p, thinking on user requests.
+ * Overrides temperature, top_p/topP, top_k/topK, thinking on user requests.
+ * Overrides temperature, top_p/topP, top_k/topK, thinking on user requests.
  * Logs session details to ./proxy/logs/.
- *
- * Ported from proxy/app.py — DeepSeek only (no Antigravity).
  */
 
 import express from "express";
@@ -23,16 +23,6 @@ const TEMPERATURE = 0.3;
 const DEEPSEEK_API = "https://api.deepseek.com";
 const ANTIGRAVITY_API = "https://daily-cloudcode-pa.googleapis.com";
 const ANTIGRAVITY_FALLBACK_API = "https://cloudcode-pa.googleapis.com";
-
-const MODEL_MAP = {
-  "deepseek-v4-flash": "deepseek-v4-flash",
-  "deepseek-v4-pro": "deepseek-v4-pro",
-  "deepseek-chat": "deepseek-v4-flash",
-  "deepseek-reasoner": "deepseek-v4-pro",
-  "deepseek-coder": "deepseek-v4-flash",
-};
-
-const REASONING_MODELS = new Set(["deepseek-v4-pro", "deepseek-reasoner"]);
 
 const AVAILABLE_MODELS = [
   {
@@ -79,44 +69,46 @@ function log(msg = "") {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-function getTemperatureFromRequest(messages) {
-  let found = null;
-  for (const msg of messages) {
-    if (msg.role !== "user") continue;
-
-    let text = "";
-    if (typeof msg.content === "string") {
-      // Strip trailing tau tags to get actual user content
-      let content = msg.content;
-      let lastClose = -1;
-      let closeLen = 0;
-      for (const tag of TAU_TAGS) {
-        const close = `</${tag.slice(1)}`;
-        const ci = content.lastIndexOf(close);
-        if (ci > lastClose) {
-          lastClose = ci;
-          closeLen = close.length;
-        }
+function extractUnifiedMessages(data) {
+  if (Array.isArray(data.messages)) {
+    return data.messages;
+  }
+  const contents = data.request?.contents || data.contents;
+  if (Array.isArray(contents)) {
+    return contents.map((c) => {
+      const role = c.role === "model" ? "assistant" : c.role || "user";
+      let text = "";
+      if (Array.isArray(c.parts)) {
+        text = c.parts
+          .map((p) => {
+            if (typeof p === "string") return p;
+            if (p && typeof p === "object" && typeof p.text === "string")
+              return p.text;
+            return "";
+          })
+          .filter(Boolean)
+          .join(" ");
+      } else if (typeof c.content === "string") {
+        text = c.content;
       }
-      if (lastClose !== -1) {
-        content = content.slice(lastClose + closeLen);
-        content = content.slice(3); // strip leading newlines
-      }
-      text = content.toUpperCase();
-    } else if (Array.isArray(msg.content)) {
-      text = msg.content
-        .filter((p) => typeof p === "object")
-        .map((p) => p.text || "")
-        .join(" ")
-        .toUpperCase();
-    }
-    if (!text) continue;
+      return { role, content: text };
+    });
+  }
+  return [];
+}
 
-    for (const [name, temp] of TEMP_CONST_MAP) {
-      if (text.includes(name)) found = temp;
+function parseLastTauTag(c) {
+  let lastClose = -1;
+  let closeLen = 0;
+  for (const tag of TAU_TAGS) {
+    const close = `</${tag.slice(1)}`;
+    const ci = c.lastIndexOf(close);
+    if (ci > lastClose) {
+      lastClose = ci;
+      closeLen = close.length;
     }
   }
-  return found ?? TEMPERATURE;
+  return { lastClose, closeLen };
 }
 
 function extractLastUserMessage(messages) {
@@ -125,16 +117,7 @@ function extractLastUserMessage(messages) {
     if (msg.role !== "user") continue;
     let content = msg.content;
     if (typeof content === "string") {
-      let lastClose = -1;
-      let closeLen = 0;
-      for (const tag of TAU_TAGS) {
-        const close = `</${tag.slice(1)}`;
-        const ci = content.lastIndexOf(close);
-        if (ci > lastClose) {
-          lastClose = ci;
-          closeLen = close.length;
-        }
-      }
+      const { lastClose, closeLen } = parseLastTauTag(content);
       if (lastClose !== -1) {
         content = content.slice(lastClose + closeLen);
         content = content.slice(3);
@@ -167,16 +150,7 @@ function countMessages(messages) {
       if (typeof c !== "string") {
         user++;
       } else {
-        let lastClose = -1;
-        let closeLen = 0;
-        for (const tag of TAU_TAGS) {
-          const close = `</${tag.slice(1)}`;
-          const ci = c.lastIndexOf(close);
-          if (ci > lastClose) {
-            lastClose = ci;
-            closeLen = close.length;
-          }
-        }
+        const { lastClose, closeLen } = parseLastTauTag(c);
 
         const onlyTauTags =
           lastClose !== -1 && lastClose + closeLen === c.length;
@@ -539,7 +513,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
-// ─── Routes ───────────────────────────────────────────────────────────────
+// ─── Middleware / Routes ──────────────────────────────────────────────────
+
+// Antigravity routes middleware
+app.use((req, res, next) => {
+  if (
+    req.originalUrl.startsWith("/v1internal") ||
+    req.originalUrl.startsWith("/v1beta") ||
+    req.headers["user-agent"]?.toLowerCase().includes("antigravity") ||
+    req.body?.userAgent === "antigravity"
+  ) {
+    return handleAntigravityRequest(req, res);
+  }
+  next();
+});
 
 app.post("/v1/session/start", (req, res) => {
   const body = req.body || {};
@@ -557,7 +544,7 @@ app.post("/v1/session/start", (req, res) => {
     "=".repeat(60) +
     "\n  Tau Proxy session started\n" +
     "=".repeat(60) +
-    `\n  Started at : ${now.toISOString()}` +
+    `\n  Started at : ${formatDate(now)}` +
     `\n  Hostname   : ${hostname()}` +
     `\n  Session ID : ${sessionId}` +
     `\n  Log file   : ${LOG_FILE}` +
@@ -594,8 +581,10 @@ app.post(["/v1/chat/completions", "/chat/completions"], async (req, res) => {
   // Mutate request
   data.thinking = { type: THINKING_MODE };
   delete data.temperature;
+  delete data.topP;
+  data.top_p = 0.85;
 
-  const temperature = getTemperatureFromRequest(data.messages);
+  const temperature = TEMPERATURE;
   data.temperature = temperature;
 
   // Log request (elide system prompts, tools)
@@ -702,7 +691,7 @@ app.post(["/v1/chat/completions", "/chat/completions"], async (req, res) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", temperature: TEMPERATURE });
+  res.json({ status: "ok", temperature: TEMPERATURE, antigravity: true });
 });
 
 // Log non-200 status codes
