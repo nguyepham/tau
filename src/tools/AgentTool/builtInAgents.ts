@@ -41,7 +41,6 @@ export function getBuiltInAgents(): AgentDefinition[] {
 
   const agents: AgentDefinition[] = [
     GENERAL_PURPOSE_AGENT,
-    STATUSLINE_SETUP_AGENT,
     EXPLORE_AGENT,
   ];
 

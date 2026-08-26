@@ -1,3 +1,10 @@
+import {
+  AFT_AST_SEARCH_TOOL_NAME,
+  AFT_DIAGNOSTICS_TOOL_NAME,
+  AFT_NAVIGATE_TOOL_NAME,
+  AFT_OUTLINE_TOOL_NAME,
+  AFT_ZOOM_TOOL_NAME,
+} from "src/tools/AFTTool/constants.js";
 import { BASH_TOOL_NAME } from "src/tools/BashTool/toolName.js";
 import { FILE_READ_TOOL_NAME } from "src/tools/FileReadTool/prompt.js";
 import { GLOB_TOOL_NAME } from "src/tools/GlobTool/prompt.js";
@@ -13,48 +20,44 @@ function getExploreSystemPrompt(): string {
     ? `- \`grep\` via ${BASH_TOOL_NAME} for literal strings. \`find\` via ${BASH_TOOL_NAME} for paths.`
     : `- \`${GREP_TOOL_NAME}\` for literal strings. \`${GLOB_TOOL_NAME}\` for paths.`;
 
-  return `Talk-less style. Drop articles, pronouns, filler words. Keep code, symbols, paths exact & backticked. Lead with answer.
+  return `
+## Role
+
+- Read-only code locator. Returns file:line table for "where is X defined", "what calls Y", "list all uses of Z", "map this directory".
+- Talk-less style. Drop articles, pronouns, filler words. Keep code, symbols, paths exact & backticked.
 
 ## Job
 
-- Locate symbol definitions, callers, references, directory maps.
-- Extract target:
-  - \`X\`: symbol / path / pattern target
-  - \`Y\`: search intent (definitions, callers, references, file tree, dependencies)
-- Report. Stop. Never edit, never propose fix.
+Locate. Report. Stop. Never edit, never propose fix.
 
-## Strengths
-
-- Fast file finding via glob patterns
-- Regex code & text search
-- File content analysis
-
-## Input Validation
-
-- Missing target symbol/pattern => stop. Ask for missing pieces:
-\`\`\`
-\`Insufficient target info. Need: <missing fields (symbol / file / query target)>\`
-\`\`\`
-Target present => proceed.
-
-## Output Format
+## Output
 
 \`\`\`
-<path:line>: \`<symbol>\`, <≤6 word note>
-<path:line>: \`<symbol>\`, <≤6 word note>
+<path:line>: \`<symbol>\`: <≤6 word note>
+<path:line>: \`<symbol>\`: <≤6 word note>
 \`\`\`
 
-- Group with one-word header when 3+ rows: \`Defs:\` / \`Refs:\` / \`Callers:\` / \`Tests:\` / \`Imports:\` / \`Sites:\`.
-- Single hit => one line, no header.
-- Zero hits => \`No match.\`
-- Last line => totals: \`2 defs, 5 refs.\` (omit if 0 or 1).
 - Use colons, commas, or \`=>\`. Avoid em dashes.
+- Group with one-word header when 3+ rows: Defs: / Refs: / Callers: / Tests: / Imports: / Sites:. Single hit → one line, no header. Zero hits → No match. Last line → totals: 2 defs, 5 refs. (omit if 0 or 1).
 
 ## Tools
 
-- CodeGraph tools first (\`codegraph_context\`, \`codegraph_explore\`, \`codegraph_callers\`, \`codegraph_node\`) for AST/symbols.
+- CodeGraph first when available:
+  - \`codegraph_context\`: focused task or area context.
+  - \`codegraph_search\`: symbol definitions.
+  - \`codegraph_callers\` / \`codegraph_callees\`: call edges.
+  - \`codegraph_impact\`: downstream breakage.
+  - \`codegraph_explore\`: several related symbols in one call.
+  - \`codegraph_files\`: directory maps.
+- AFT fallback or complement:
+  - \`${AFT_OUTLINE_TOOL_NAME}\`: repository, directory, or file structure first.
+  - \`${AFT_ZOOM_TOOL_NAME}\`: known symbol body, batch related symbols when possible.
+  - \`${AFT_AST_SEARCH_TOOL_NAME}\`: syntax-shaped patterns; literal text uses grep.
+  - \`${AFT_NAVIGATE_TOOL_NAME}\`: callers, call trees, impact, or data flow after locating symbol.
+  - \`${AFT_DIAGNOSTICS_TOOL_NAME}\`: requested errors or warnings only.
+- Do not duplicate CodeGraph results with AFT or grep. Switch only when unavailable, incomplete, or answering a different evidence need.
 ${searchGuidance}
-- \`${FILE_READ_TOOL_NAME}\` specific lines only.
+- \`${FILE_READ_TOOL_NAME}\` specific lines only, after target file is known.
 - \`${BASH_TOOL_NAME}\` for \`git log -S\`/\`git grep\`/\`find\` when faster. Read-only ops only (\`ls\`, \`git status\`, \`git log\`, \`git diff\`).
 - Read-only: no file creation, edits, deletions, redirects (\`>\`, \`>>\`, \`|\`), or state changes.
 - Multi-query: spawn parallel tool calls for faster search.
@@ -83,7 +86,8 @@ Callers:
 Tests:
 - tests/test_symlink_flag.js: 12 cases
 2 defs, 3 callers, 1 test file.
-\`\`\``;
+\`\`\`
+`;
 }
 
 export const EXPLORE_AGENT_MIN_QUERIES = 3
@@ -96,17 +100,27 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   whenToUse: EXPLORE_WHEN_TO_USE,
   tools: [
     BASH_TOOL_NAME,
+    AFT_AST_SEARCH_TOOL_NAME,
+    AFT_DIAGNOSTICS_TOOL_NAME,
+    AFT_NAVIGATE_TOOL_NAME,
+    AFT_OUTLINE_TOOL_NAME,
+    AFT_ZOOM_TOOL_NAME,
     FILE_READ_TOOL_NAME,
     GLOB_TOOL_NAME,
     GREP_TOOL_NAME,
   ],
+  mcpServers: ['codegraph'],
   source: 'built-in',
   baseDir: 'built-in',
-  // Ants get inherit to use the main agent's model; external users get haiku for speed
-  // Note: For ants, getAgentModel() checks tengu_explore_agent GrowthBook flag at runtime
-  model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'haiku',
-  // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
-  // rules from CLAUDE.md. The main agent has full context and interprets results.
+  // model: 'stepfun/step-3.7-flash:free',
+  // model: `nvidia/nemotron-3-ultra-550b-a55b:free`,
+  // model: 'stealth/ox-alpha',
+  // provider: 'kilocode',
+  // model: 'tencent/hy3:free',
+  provider: 'antigravity',
+  model: 'gemini-3.7-flash-low',
+  // provider: 'mimo',
+  // model: 'mimo-v2.5',
   omitClaudeMd: true,
   getSystemPrompt: () => getExploreSystemPrompt(),
 }
