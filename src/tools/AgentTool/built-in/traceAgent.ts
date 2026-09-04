@@ -1,10 +1,3 @@
-import {
-  AFT_AST_SEARCH_TOOL_NAME,
-  AFT_DIAGNOSTICS_TOOL_NAME,
-  AFT_NAVIGATE_TOOL_NAME,
-  AFT_OUTLINE_TOOL_NAME,
-  AFT_ZOOM_TOOL_NAME,
-} from 'src/tools/AFTTool/constants.js'
 import { BASH_TOOL_NAME } from 'src/tools/BashTool/toolName.js'
 import { FILE_READ_TOOL_NAME } from 'src/tools/FileReadTool/prompt.js'
 import { GLOB_TOOL_NAME } from 'src/tools/GlobTool/prompt.js'
@@ -59,13 +52,6 @@ Gaps:
   - \`codegraph_impact\`: downstream failure reach.
   - \`codegraph_explore\`: several related symbols in one call.
   - \`codegraph_files\`: directory maps.
-- AFT fallback or complement:
-  - \`${AFT_OUTLINE_TOOL_NAME}\`: repository, directory, or file structure first.
-  - \`${AFT_ZOOM_TOOL_NAME}\`: known failure symbol body, batch related symbols when possible.
-  - \`${AFT_AST_SEARCH_TOOL_NAME}\`: syntax-shaped patterns; literal text uses grep.
-  - \`${AFT_NAVIGATE_TOOL_NAME}\`: callers, call trees, impact, or data flow after locating symbol.
-  - \`${AFT_DIAGNOSTICS_TOOL_NAME}\`: errors or warnings relevant to known failure.
-- Do not duplicate CodeGraph results with AFT or grep. Switch only when unavailable, incomplete, or answering a different evidence need.
 ${searchGuidance}
 - \`${FILE_READ_TOOL_NAME}\` specific lines only, after target file is known.
 - \`${BASH_TOOL_NAME}\` for \`git log -S\`/\`git grep\`/\`find\` when faster. Read-only ops only (\`ls\`, \`git status\`, \`git log\`, \`git diff\`).
@@ -82,11 +68,6 @@ export const TRACE_AGENT: BuiltInAgentDefinition = {
   whenToUse: TRACE_WHEN_TO_USE,
   tools: [
     BASH_TOOL_NAME,
-    AFT_AST_SEARCH_TOOL_NAME,
-    AFT_DIAGNOSTICS_TOOL_NAME,
-    AFT_NAVIGATE_TOOL_NAME,
-    AFT_OUTLINE_TOOL_NAME,
-    AFT_ZOOM_TOOL_NAME,
     FILE_READ_TOOL_NAME,
     GLOB_TOOL_NAME,
     GREP_TOOL_NAME,
@@ -95,7 +76,7 @@ export const TRACE_AGENT: BuiltInAgentDefinition = {
   source: 'built-in',
   baseDir: 'built-in',
   provider: 'antigravity',
-  model: 'gemini-3.7-flash-low',
+  model: 'gemini-3.7-flash-medium',
   omitClaudeMd: true,
   getSystemPrompt: () => getTraceSystemPrompt(),
 }
