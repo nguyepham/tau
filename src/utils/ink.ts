@@ -4,7 +4,7 @@ import {
   type AgentColorName,
 } from '../tools/AgentTool/agentColorManager.js'
 
-const DEFAULT_AGENT_THEME_COLOR = 'cyan_FOR_SUBAGENTS_ONLY'
+const DEFAULT_AGENT_THEME_COLOR = 'zen_FOR_SUBAGENTS_ONLY'
 
 /**
  * Convert a color string to Ink's TextProps['color'] format.
