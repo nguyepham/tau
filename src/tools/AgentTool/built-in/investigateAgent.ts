@@ -21,7 +21,7 @@ function getInvestigateSystemPrompt(): string {
 
 ## Job
 
-Research + answer only. Never edit files. Never propose changes.
+investigate + answer only. never edit files. never propose changes.
 
 ## Output
 
@@ -31,16 +31,16 @@ Return facts only under \`Defs:\`, \`Happy:\`, \`Errors:\`, and \`Gaps:\`.
 Defs:
 - <path:line>: component definitions (data types, schemas, constants, interfaces, symbols)
 Happy:
-- <path:line>: happy-path callers, callees, and data flow (<=8-word note)
+- <path:line>: happy-path callers, callees within data flow (<=8-word note each)
 Errors:
-- <path:line>: error-path callers, callees, and data flow (<=8-word note)
+- <path:line>: error-path callers, callees within data flow (<=8-word note each)
 Gaps:
 - <unconfirmed item>
 \`\`\`
 
 - Cite every claim as \`relative/path/to/file:line\`.
 - Use colons, commas, or \`=>\`. Avoid em dashes.
-- Use \`No match\` when a searched concern has no evidence.
+- Use \`No match\` when searched concern has no evidence.
 - End with unconfirmed gaps.
 
 ## Tools
@@ -57,10 +57,6 @@ ${searchGuidance}
 - \`${BASH_TOOL_NAME}\` for \`git log -S\`/\`git grep\`/\`find\` when faster. Read-only ops only (\`ls\`, \`git status\`, \`git log\`, \`git diff\`).
 - Read-only: no file creation, edits, deletions, redirects (\`>\`, \`>>\`, \`|\`), or state changes.
 - Multi-query: spawn parallel tool calls for faster search.
-
-## Auto-clarity
-
-Security warnings, destructive ops => write normal English. Resume after.
 `;
 }
 
