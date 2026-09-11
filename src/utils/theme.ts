@@ -50,6 +50,7 @@ export type Theme = {
   orange_FOR_SUBAGENTS_ONLY: string
   pink_FOR_SUBAGENTS_ONLY: string
   cyan_FOR_SUBAGENTS_ONLY: string
+  zen_FOR_SUBAGENTS_ONLY: string
   // Grove colors
   professionalBlue: string
   // Chrome colors
@@ -138,7 +139,7 @@ const darkTheme: Theme = {
   permissionShimmer: 'rgb(220,180,255)', // Bright violet shimmer
   planMode: 'rgb(100,220,215)', // Electric teal
   ide: 'rgb(130,200,255)', // Bright electric blue
-  promptBorder: 'rgb(120,130,180)', // Cool blue-gray
+  promptBorder: 'rgb(148,148,156)', // Cool blue-gray / default zen prompt bar color
   promptBorderShimmer: 'rgb(170,180,230)', // Lighter cool blue
   text: 'rgb(255,255,255)', // White
   inverseText: 'rgb(0,0,0)', // Black
@@ -171,6 +172,7 @@ const darkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,140,50)', // Neon orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,90,190)', // Neon pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(50,220,230)', // Neon cyan
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   // Grove colors
   professionalBlue: 'rgb(120,170,230)',
   // Chrome colors
@@ -241,7 +243,7 @@ const tauDarkTheme: Theme = {
   permissionShimmer: 'rgb(208,208,213)',
   planMode: 'rgb(146,146,154)',
   ide: 'rgb(180,180,186)',
-  promptBorder: 'rgb(78,80,88)',
+  promptBorder: 'rgb(148,148,156)',
   promptBorderShimmer: 'rgb(116,118,126)',
   text: 'rgb(206,206,210)',
   inverseText: 'rgb(12,12,14)',
@@ -273,6 +275,7 @@ const tauDarkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(220,104,58)',
   pink_FOR_SUBAGENTS_ONLY: 'rgb(228,96,116)',
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(155,132,110)',
+  zen_FOR_SUBAGENTS_ONLY: 'rgb(148,148,156)',
   professionalBlue: 'rgb(148,116,108)',
   chromeYellow: 'rgb(232,174,82)',
   clawd_body: 'rgb(210,210,216)',

@@ -117,7 +117,7 @@ export function useSwarmBanner(): SwarmBannerInfo {
     }
     return {
       text: name ? `@${name}` : task.description,
-      bgColor: getAgentColor(task.agentType) ?? 'cyan_FOR_SUBAGENTS_ONLY',
+      bgColor: getAgentColor(task.agentType) ?? 'zen_FOR_SUBAGENTS_ONLY',
     }
   }
 
@@ -142,12 +142,15 @@ export function useSwarmBanner(): SwarmBannerInfo {
     }
   }
 
-  return null
+  return {
+    text: '',
+    bgColor: 'zen_FOR_SUBAGENTS_ONLY',
+  }
 }
 
 function toThemeColor(
   colorName: string | undefined,
-  fallback: keyof Theme = 'cyan_FOR_SUBAGENTS_ONLY',
+  fallback: keyof Theme = 'zen_FOR_SUBAGENTS_ONLY',
 ): keyof Theme {
   return colorName && AGENT_COLORS.includes(colorName as AgentColorName)
     ? AGENT_COLOR_TO_THEME_COLOR[colorName as AgentColorName]
