@@ -6,7 +6,7 @@ import { INVESTIGATE_AGENT } from './built-in/investigateAgent.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { PLAN_AGENT } from './built-in/planAgent.js'
 import { STATUSLINE_SETUP_AGENT } from './built-in/statuslineSetup.js'
-import { VERIFICATION_AGENT } from './built-in/verificationAgent.js'
+import { TRACE_AGENT } from './built-in/traceAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
@@ -60,6 +60,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
   const agents: AgentDefinition[] = [
     GENERAL_PURPOSE_AGENT,
     INVESTIGATE_AGENT,
+    TRACE_AGENT,
     STATUSLINE_SETUP_AGENT,
   ];
 
