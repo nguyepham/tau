@@ -50,9 +50,9 @@ import { EVAL_TOOL_NAME } from '../tools/EvalTool/constants.js'
 import { VISUAL_DESIGN_AUDIT_TOOL_NAME } from '../tools/VisualDesignAuditTool/constants.js'
 import { BROWSER_TOOL_NAME } from '../tools/BrowserTool/constants.js'
 import {
-  EXPLORE_AGENT,
-  EXPLORE_AGENT_MIN_QUERIES,
-} from 'src/tools/AgentTool/built-in/exploreAgent.js'
+  INVESTIGATE_AGENT,
+  INVESTIGATE_AGENT_MIN_QUERIES,
+} from 'src/tools/AgentTool/built-in/investigateAgent.js'
 import { areExplorePlanAgentsEnabled } from 'src/tools/AgentTool/builtInAgents.js'
 import {
   isScratchpadEnabled,
@@ -574,7 +574,7 @@ function getSessionSpecificGuidanceSection(
     !isForkSubagentEnabled()
       ? [
           `For simple, directed codebase searches (e.g. for a specific file/class/function) use ${searchTools} directly.`,
-          `For broader codebase exploration and deep research, use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_AGENT.agentType}. This is slower than using ${searchTools} directly, so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than ${EXPLORE_AGENT_MIN_QUERIES} queries.`,
+          `For broader codebase exploration and deep research, use the ${AGENT_TOOL_NAME} tool with subagent_type=${INVESTIGATE_AGENT.agentType}. This is slower than using ${searchTools} directly, so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than ${INVESTIGATE_AGENT_MIN_QUERIES} queries.`,
         ]
       : []),
     hasSkills
