@@ -1,0 +1,117 @@
+
+                                  Tau v0.92.28
+
+                                                     ▄
+                    ▀▀█▀▀ █▀▀█  █  █  █▀▀▀  █▀▀█  █▀▀█  █▀▀▀
+                      █   █  █  █  █  █     █  █  █  █  █▀▀▀
+                      ▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀
+
+                              gpt-5.6-luna · OpenAI
+                                     ~/f/tau
+
+
+
+❯ /usage                                                                        
+  ⎿  (no content)
+
+❯ /agents 
+  ⎿  Agents dialog dismissed
+
+❯ /models                                                                       
+  ⎿  Set model to gpt-5.6-luna (switched to OpenAI)
+
+❯ /investigate how `/remote` command works                                      
+  ╰─ Found 10 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● 6 Investigate agents finished (ctrl+o to expand)
+   ├─ remote-entry: Trace remote command entry · 49 tool uses · 38.8k tokens
+   │  ⎿  Done
+   ├─remote-transport: Trace remote transport flow · 53 tool uses · 55.2k tokens
+
+   │  ⎿  Done
+   ├─ remote-config: Trace remote config state · 68 tool uses · 66.8k tokens
+   │  ⎿  Done
+   ├─remote-session: Trace remote session lifecycle · 61 tool uses · 57.8k
+     tokens
+   │  ⎿  Done
+   ├─ remote-cli: Trace remote CLI UX · 42 tool uses · 34.5k tokens
+   │  ⎿  Done
+   └─ remote-tests: Trace remote tests docs · 63 tool uses · 51.1k tokens
+      ⎿  Done
+
+● /remote exposes a local JSX command that pairs a phone/browser with the
+  running Tau session over authenticated HTTP/WebSocket.
+
+  Command entry + modes
+  - src/commands/remote/index.ts:3: registers /remote, alias /phone, modes
+  local|global|status|off.
+  - src/commands.ts:337: adds command to global command registry.
+  - src/commands/remote/remote.tsx:22: parses first argument.
+  - src/commands/remote/remote.tsx:27: off stops remote service.
+  - src/commands/remote/remote.tsx:33: status reads in-memory state.
+  - src/commands/remote/remote.tsx:50: local/global opens pairing UI.
+  - src/commands/remote/remote.tsx:53: no argument opens interactive mode
+  picker.
+  - README.md:108: documents /remote local and /remote global.
+
+  Startup lifecycle
+  - src/commands/remote/remote.tsx:129 => src/services/remote/lifecycle.ts:119:
+  pairing starts turnOn.
+  - src/services/remote/lifecycle.ts:159 => src/services/remote/lan.ts:67: local
+   mode selects best LAN IPv4.
+  - src/services/remote/state.ts:45: generates a 32-byte cryptographic token.
+  - src/services/remote/lifecycle.ts:171 => src/services/remote/server.ts:64:
+  starts HTTP + WebSocket server.
+  - src/services/remote/lifecycle.ts:191 => src/services/remote/tunnel.ts:81:
+  global mode starts a Cloudflare quick tunnel.
+  - src/services/remote/tunnel.ts:112: resolves cloudflared, including
+  TAU_CLOUDFLARED.
+  - src/services/remote/tunnel.ts:54: waits for tunnel readiness.
+  - src/commands/remote/remote.tsx:137: renders the pairing URL as an ASCII QR
+  code.
+  - src/commands/remote/remote.tsx:171: pairing dialog closes after a client
+  connects.
+
+  Browser transport
+  - src/services/remote/server.ts:78: serves bundled client UI from REMOTE_HTML.
+  - src/services/remote/webui.ts:321: client extracts token from URL fragment.
+  - src/services/remote/server.ts:156: validates WebSocket URL token.
+  - src/services/remote/server.ts:169: sends initial session snapshot.
+  - src/services/remote/server.ts:180: routes client prompts.
+  - src/services/remote/server.ts:182: routes interrupts.
+  - src/services/remote/server.ts:184: routes interactive replies.
+  - src/services/remote/router.ts:19: remote prompts enter the normal input
+  queue.
+  - src/utils/processUserInput/processUserInput.ts:429: bridge-origin commands
+  are checked against isBridgeSafeCommand.
+  - src/hooks/useRemoteMirror.tsx:108: streams message updates to clients.
+
+  Interactive permissions
+  - src/hooks/toolPermission/handlers/interactiveHandler.ts:451: sends
+  permission/question requests remotely.
+  - src/services/remote/interactive.ts:84: broadcasts pending asks.
+  - src/services/remote/interactive.ts:98: consumes client replies.
+  - src/hooks/toolPermission/handlers/interactiveHandler.ts:438: resolves the
+  local permission decision.
+
+  Shutdown + errors
+  - src/commands/remote/remote.tsx:27 => src/services/remote/lifecycle.ts:229:
+  /remote off closes tunnel/server and clears state.
+  - src/services/remote/lifecycle.ts:161: missing LAN address raises NoLanError.
+  - src/services/remote/tunnel.ts:87: missing cloudflared raises
+  TunnelUnavailableError.
+  - src/services/remote/tunnel.ts:120: tunnel startup timeout raises
+  TunnelStartError.
+  - src/services/remote/server.ts:110: occupied port 7777 falls back to an
+  ephemeral port.
+  - src/services/remote/server.ts:88: invalid image token returns HTTP 403.
+  - src/services/remote/server.ts:159: invalid WebSocket token destroys the
+  socket.
+  - src/commands/remote/remote.tsx:151: cancellation is suppressed.
+  - src/commands/remote/remote.tsx:152: other startup failures render an
+  unavailable dialog.
+
+  State is ephemeral, in-memory only. No external relay or persistence was
+  found. No dedicated /remote test files were found.
+
+✻ Cogitated for 5m 0s
