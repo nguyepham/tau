@@ -10,7 +10,7 @@ export const ANTIGRAVITY_HUB_USER_AGENT =
 // entirely). The sandbox channel accepts the same envelope but its
 // implicit prompt cache measured flaky partial-prefix reads, so it is
 // kept only as a last-resort 404 fallback.
-export const ANTIGRAVITY_ENDPOINT_DAILY = 'https://daily-cloudcode-pa.googleapis.com'
-export const ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX = 'https://daily-cloudcode-pa.sandbox.googleapis.com'
-export const ANTIGRAVITY_ENDPOINT_AUTOPUSH = 'https://autopush-cloudcode-pa.sandbox.googleapis.com'
-export const ANTIGRAVITY_ENDPOINT_PROD = 'https://cloudcode-pa.googleapis.com'
+export const ANTIGRAVITY_ENDPOINT_DAILY = process.env.ANTIGRAVITY_DAILY_ENDPOINT || "https://daily-cloudcode-pa.googleapis.com";
+export const ANTIGRAVITY_ENDPOINT_DAILY_SANDBOX = "https://daily-cloudcode-pa.sandbox.googleapis.com";
+export const ANTIGRAVITY_ENDPOINT_AUTOPUSH = "https://autopush-cloudcode-pa.sandbox.googleapis.com";
+export const ANTIGRAVITY_ENDPOINT_PROD = process.env.ANTIGRAVITY_PROD_ENDPOINT || "https://cloudcode-pa.googleapis.com";
