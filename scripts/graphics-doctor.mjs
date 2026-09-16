@@ -126,7 +126,12 @@ async function probe(timeoutMs = 1500) {
     output.write(`${ESC}[16t${ESC}[14t${ESC}[c`)
 
     const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline && !/\x1b\[\??[0-9;]*c/.test(buf)) {
+    // Pragmatic workaround: some transports deliver 14t/16t after DA1, contrary
+    // to the ordering assumed above. This 50 ms grace is not a protocol guarantee.
+    let seenSentinel = 0
+    while (Date.now() < deadline) {
+      if (!seenSentinel && /\x1b\[\??[0-9;]*c/.test(buf)) seenSentinel = Date.now()
+      if (seenSentinel && Date.now() - seenSentinel >= 50) break
       await new Promise(r => setTimeout(r, 20))
     }
   } finally {
@@ -256,7 +261,7 @@ let protocol = 'none'
 if (forced && forced !== 'off' && forced !== 'none' && forced !== '0') protocol = forced
 else if (env.TMUX || env.STY) protocol = 'none'
 else if (env.TERM_PROGRAM?.toLowerCase() === 'vscode') protocol = 'none'
-else if (env.KITTY_WINDOW_ID || /kitty|ghostty/i.test(env.TERM ?? '')) protocol = 'kitty'
+else if (env.KITTY_WINDOW_ID || /kitty|ghostty/i.test(env.TERM ?? '') || env.TERM_PROGRAM?.toLowerCase() === 'ghostty' || env.TERM_PROGRAM?.toLowerCase() === 'wezterm') protocol = 'kitty'
 else if (env.TERM_PROGRAM === 'iTerm.app') protocol = 'iterm2'
 else if (da1Params?.includes(4)) protocol = 'sixel'
 

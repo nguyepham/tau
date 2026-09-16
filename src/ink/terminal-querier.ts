@@ -230,10 +230,16 @@ export class TerminalQuerier {
     if (r.type === 'da1') {
       const s = this.queue.findIndex(p => p.kind === 'sentinel')
       if (s === -1) return
-      for (const p of this.queue.splice(0, s + 1)) {
-        if (p.kind === 'query') p.resolve(undefined)
-        else p.resolve()
-      }
+      // Pragmatic workaround: some transports deliver XTWINOPS 14t/16t
+      // replies after DA1. The 50 ms grace period is not a protocol guarantee.
+      setTimeout(() => {
+        const s2 = this.queue.findIndex(p => p.kind === 'sentinel')
+        if (s2 === -1) return
+        for (const p of this.queue.splice(0, s2 + 1)) {
+          if (p.kind === 'query') p.resolve(undefined)
+          else p.resolve()
+        }
+      }, 50)
     }
   }
 }
