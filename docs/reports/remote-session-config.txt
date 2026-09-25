@@ -1,0 +1,284 @@
+                                                                                
+                                  Tau v0.92.35                                  
+                                                                                
+                                                     ▄                          
+                    ▀▀█▀▀ █▀▀█  █  █  █▀▀▀  █▀▀█  █▀▀█  █▀▀▀                    
+                      █   █▀▀█  █  █  █     █  █  █  █  █▀▀▀                    
+                      ▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀  ▀▀▀▀                    
+                                                                                
+                              gpt-5.6-sol · OpenAI                              
+                                /home/nguyepham                                 
+                                                                                
+                                                                                
+                                                                                
+! gs (not sent to model)                                                        
+  ╰─ On branch main                                                             
+     Your branch is up to date with 'origin/main'.                              
+     … +7 lines (ctrl+o to expand)                                              
+                                                                                
+❯ give step-by-step guide on `switch WSL to mirrored networking (Windows 11     
+22H2+) and allow port 7777 in the Hyper-V firewall`. just plan, do not do       
+                                                                                
+● Web Search("site:learn.microsoft.com WSL mirrored networking .wslconfig )     
+             networkingMode mirrored Windows 11 22H2 Hyper-V firewall           
+             New-NetFirewallHyperVRule port VMCreatorId"                        
+  ╰─ Did 1 search in 1s                                                         
+                                                                                
+● Web Search"site:learn.microsoft.com New-NetFirewallHyperVRule WSL VMCreatorId)
+            40E0AC32 port 7777"                                                 
+  ╰─ Did 1 search in 1s                                                         
+                                                                                
+                                                                        10:07 PM
+● Plan                                                                          
+                                                                                
+  flowchart TD                                                                  
+      A[Check versions] --> B[Configure mirrored]                               
+      B --> C[Restart WSL]                                                      
+      C --> D[Open port 7777]                                                   
+      D --> E[Verify access]                                                    
+                                                                                
+  1. Check prerequisites                                                        
+                                                                                
+  In PowerShell:                                                                
+                                                                                
+  winver                                                                        
+  wsl --version                                                                 
+  wsl --status                                                                  
+                                                                                
+  Requirements:                                                                 
+                                                                                
+  - Windows 11 22H2+                                                            
+  - WSL 2, preferably WSL 2.0.9+                                                
+  - Update if needed:                                                           
+                                                                                
+  wsl --update                                                                  
+                                                                                
+  2. Configure mirrored networking                                              
+                                                                                
+  Open %UserProfile%\.wslconfig:                                                
+                                                                                
+  notepad $env:USERPROFILE\.wslconfig                                           
+                                                                                
+  Add or merge:                                                                 
+                                                                                
+  [wsl2]                                                                        
+  networkingMode=mirrored                                                       
+  firewall=true                                                                 
+                                                                                
+  Keep existing [wsl2] options. Do not create a second section.                 
+                                                                                
+  3. Restart WSL                                                                
+                                                                                
+  Save the file, then:                                                          
+                                                                                
+  wsl --shutdown                                                                
+  wsl                                                                           
+                                                                                
+  Check startup output for configuration errors.                                
+                                                                                
+  4. Confirm WSL firewall identity                                              
+                                                                                
+  Open PowerShell as Administrator:                                             
+                                                                                
+  Get-NetFirewallHyperVVMCreator                                                
+                                                                                
+  Confirm WSL uses:                                                             
+                                                                                
+  {40E0AC32-46A5-438A-A0B2-2B479E8F2E90}                                        
+                                                                                
+  5. Allow inbound TCP port 7777                                                
+                                                                                
+  Still in elevated PowerShell:                                                 
+                                                                                
+  New-NetFirewallHyperVRule `                                                   
+    -Name "WSL-Port-7777" `                                                     
+    -DisplayName "WSL TCP 7777" `                                               
+    -Direction Inbound `                                                        
+    -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `                     
+    -Protocol TCP `                                                             
+    -LocalPorts 7777                                                            
+                                                                                
+  Avoid DefaultInboundAction Allow: it opens all inbound WSL ports.             
+                                                                                
+  If the service uses UDP, add a separate UDP rule.                             
+                                                                                
+  6. Start service correctly                                                    
+                                                                                
+  Inside WSL, bind the service to all interfaces:                               
+                                                                                
+  0.0.0.0:7777                                                                  
+                                                                                
+  Binding only to 127.0.0.1 limits remote access.                               
+                                                                                
+  Verify listener:                                                              
+                                                                                
+  ss -lntp | grep ':7777'                                                       
+                                                                                
+  7. Verify firewall rule                                                       
+                                                                                
+  Elevated PowerShell:                                                          
+                                                                                
+  Get-NetFirewallHyperVRule `                                                   
+    -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' |                     
+    Where-Object Name -eq 'WSL-Port-7777'                                       
+                                                                                
+  Test locally:                                                                 
+                                                                                
+  Test-NetConnection localhost -Port 7777                                       
+                                                                                
+  Test from another LAN device against the Windows host IP:                     
+                                                                                
+  Test-NetConnection <WINDOWS-IP> -Port 7777                                    
+                                                                                
+  8. Rollback                                                                   
+                                                                                
+  Remove only the created rule:                                                 
+                                                                                
+  Remove-NetFirewallHyperVRule -Name "WSL-Port-7777"                            
+                                                                                
+  Restore NAT mode by removing networkingMode=mirrored or setting:              
+                                                                                
+  networkingMode=nat                                                            
+                                                                                
+  Then:                                                                         
+                                                                                
+  wsl --shutdown                                                                
+                                                                                
+  Sources: WSL networking, WSL configuration, Hyper-V firewall.                 
+                                                                                
+✻ Brewed for 34s                                                                
+                                                                                
+! hostname --all-ip-addresses (not sent to model)                               
+  ╰─ 172.20.123.161                                                             
+                                                                                
+! ip route show | grep -i default | awk '{ print $3}' (not sent to model)       
+  ╰─ 172.20.112.1                                                               
+                                                                                
+❯ give step-by-step guide on `forward port 7777 from Windows and start Tau with 
+ TAU_REMOTE_HOST set to the Wi-Fi address of this PC`. just plan, do not do     
+                                                                                
+  Searched for 3 patterns, read 4 files (ctrl+o to expand)                      
+                                                                                
+                                                                        10:34 PM
+● Plan: WSL 2 NAT port forwarding                                               
+                                                                                
+  flowchart TD                                                                  
+      A[Phone port 7777] --> B[Windows Wi-Fi IP]                                
+      B --> C[Port proxy]                                                       
+      C --> D[WSL port 7777]                                                    
+      D --> E[Tau remote]                                                       
+                                                                                
+  1. Get Windows Wi-Fi address                                                  
+                                                                                
+  In PowerShell:                                                                
+                                                                                
+  $wifi = (Get-NetIPAddress -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 |       
+    Where-Object PrefixOrigin -ne "WellKnown").IPAddress                        
+                                                                                
+  $wifi                                                                         
+                                                                                
+  Example: 192.168.1.50.                                                        
+                                                                                
+  2. Get WSL address                                                            
+                                                                                
+  $wsl = (wsl hostname -I).Trim().Split(' ')[0]                                 
+  $wsl                                                                          
+                                                                                
+  Example: 172.28.64.10.                                                        
+                                                                                
+  3. Confirm port 7777 is free inside WSL                                       
+                                                                                
+  wsl sh -lc "ss -lnt | grep ':7777 '"                                          
+                                                                                
+  No output => available. Tau otherwise selects another port, breaking this     
+  fixed forward.                                                                
+                                                                                
+  4. Add Windows port proxy                                                     
+                                                                                
+  Open PowerShell as Administrator:                                             
+                                                                                
+  netsh interface portproxy add v4tov4 `                                        
+    listenaddress=$wifi `                                                       
+    listenport=7777 `                                                           
+    connectaddress=$wsl `                                                       
+    connectport=7777                                                            
+                                                                                
+  This forwards $wifi:7777 to WSL $wsl:7777.                                    
+                                                                                
+  5. Allow TCP 7777 through Windows Firewall                                    
+                                                                                
+  Still elevated:                                                               
+                                                                                
+  New-NetFirewallRule `                                                         
+    -Name "Tau-Remote-7777" `                                                   
+    -DisplayName "Tau Remote TCP 7777" `                                        
+    -Direction Inbound `                                                        
+    -Protocol TCP `                                                             
+    -LocalAddress $wifi `                                                       
+    -LocalPort 7777 `                                                           
+    -Action Allow `                                                             
+    -Profile Private                                                            
+                                                                                
+  Ensure the Wi-Fi network profile is Private:                                  
+                                                                                
+  Get-NetConnectionProfile -InterfaceAlias "Wi-Fi"                              
+                                                                                
+  6. Verify forwarding                                                          
+                                                                                
+  netsh interface portproxy show v4tov4                                         
+  Get-NetFirewallRule -Name "Tau-Remote-7777"                                   
+                                                                                
+  7. Start Tau inside WSL                                                       
+                                                                                
+  TAU_REMOTE_HOST=192.168.1.50 tau                                              
+                                                                                
+  Replace 192.168.1.50 with $wifi, then inside Tau:                             
+                                                                                
+  /remote local                                                                 
+                                                                                
+  Tau advertises:                                                               
+                                                                                
+  http://192.168.1.50:7777/#<token>                                             
+                                                                                
+  8. Test from another Wi-Fi device                                             
+                                                                                
+  Open the generated URL or scan Tau’s QR code. Both devices must use the same  
+  LAN.                                                                          
+                                                                                
+  9. Recreate after address changes                                             
+                                                                                
+  WSL and Wi-Fi addresses may change after restart, reconnect, or router DHCP   
+  renewal. Remove the old proxy:                                                
+                                                                                
+  netsh interface portproxy delete v4tov4 `                                     
+    listenaddress=<OLD-WIFI-IP> `                                               
+    listenport=7777                                                             
+                                                                                
+  Then repeat steps 1–4. Update the firewall rule if the Wi-Fi address changed: 
+                                                                                
+  Set-NetFirewallRule -Name "Tau-Remote-7777" -LocalAddress $wifi               
+                                                                                
+  10. Rollback                                                                  
+                                                                                
+  Elevated PowerShell:                                                          
+                                                                                
+  netsh interface portproxy delete v4tov4 `                                     
+    listenaddress=$wifi `                                                       
+    listenport=7777                                                             
+                                                                                
+  Remove-NetFirewallRule -Name "Tau-Remote-7777"                                
+                                                                                
+  Inside Tau:                                                                   
+                                                                                
+  /remote off                                                                   
+                                                                                
+✻ Cogitated for 1m 17s                                                          
+                                                                                
+! hostname --all-ip-addresses (not sent to model)                               
+  ╰─ 172.20.123.161                                                             
+                                                                                
+! ip route show | grep -i default | awk '{ print $3}' (not sent to model)       
+  ╰─ 172.20.112.1                                                               
+                                                                                
+! ss -lnt | grep ':7777 ' (not sent to model)                                   
+  ╰─ (Bash completed with no output)                                            
