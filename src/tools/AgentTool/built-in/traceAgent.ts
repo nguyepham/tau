@@ -76,7 +76,7 @@ export const TRACE_AGENT: BuiltInAgentDefinition = {
   source: 'built-in',
   baseDir: 'built-in',
   provider: 'antigravity',
-  model: 'gemini-3.8-flash-medium',
+  model: 'gemini-3.8-flash-high',
   omitClaudeMd: true,
   // Returns a search report and is never continued — skip the result trailer.
   oneShot: true,

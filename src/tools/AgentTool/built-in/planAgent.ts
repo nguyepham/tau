@@ -84,7 +84,8 @@ export const PLAN_AGENT: BuiltInAgentDefinition = {
   source: 'built-in',
   tools: INVESTIGATE_AGENT.tools,
   baseDir: 'built-in',
-  model: 'inherit',
+  provider: 'antigravity',
+  model: 'gemini-3.8-flash-high',
   // Plan is read-only and can Read CLAUDE.md directly if it needs conventions.
   // Dropping it from context saves tokens without blocking access.
   omitClaudeMd: true,
